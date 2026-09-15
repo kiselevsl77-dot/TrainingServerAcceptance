@@ -1,0 +1,315 @@
+"""Реестр замечаний к API испытуемого сервера (FR-T7).
+
+Замечание — результат испытаний: несоответствие спецификации и/или фактического
+поведения сервера. Замечания формируются оператором (вручную, из любого места
+пульта) и автоматически — по известным дефектам, выявленным ранее (`KNOWN_DEFECTS`).
+Замечания попадают в отчёт отдельным разделом, сгруппированные по приоритету,
+а также в требования к API, которые выносятся в перспективный бэклог
+(`PROSPECTIVE_REQUIREMENTS` — в первую очередь субдатасеты).
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Any
+from uuid import uuid4
+
+PRIORITIES = ("P0", "P1", "P2")
+
+PRIORITY_HINTS: dict[str, str] = {
+    "P0": "блокирует корректную работу UI/проверки",
+    "P1": "мешает, но есть обходной путь",
+    "P2": "улучшение или эксплуатационное требование",
+}
+
+PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+
+MODULES = (
+    "Система",
+    "File Import",
+    "Записи и разметка",
+    "Loads",
+    "Datasets",
+    "ML models",
+    "Task service",
+    "Прочее",
+)
+
+SOURCE_OPERATOR = "оператор"
+SOURCE_AUTO = "авто"
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+@dataclass
+class ApiNote:
+    """Замечание к API (ручное или автоматическое)."""
+
+    note_id: str
+    created_at: str
+    title: str
+    module: str = "Прочее"
+    endpoint: str = ""
+    priority: str = "P1"
+    fact: str = ""
+    expected: str = ""
+    reproduction: str = ""
+    check_id: str | None = None
+    evidence: str = ""
+    source: str = SOURCE_OPERATOR
+
+    @property
+    def priority_rank(self) -> int:
+        """Порядок сортировки по приоритету (P0 → 0)."""
+        return PRIORITY_ORDER.get(self.priority.upper(), len(PRIORITY_ORDER))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Сериализует замечание."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ApiNote:
+        """Восстанавливает замечание из JSON."""
+        allowed = cls.__dataclass_fields__
+        payload = {key: value for key, value in data.items() if key in allowed}
+        payload.setdefault("note_id", uuid4().hex[:8])
+        payload.setdefault("created_at", _now_iso())
+        payload.setdefault("title", "Без названия")
+        return cls(**payload)
+
+
+def new_note(
+    title: str,
+    *,
+    module: str = "Прочее",
+    endpoint: str = "",
+    priority: str = "P1",
+    fact: str = "",
+    expected: str = "",
+    reproduction: str = "",
+    check_id: str | None = None,
+    evidence: str = "",
+    source: str = SOURCE_OPERATOR,
+) -> ApiNote:
+    """Создаёт замечание к API с новым идентификатором."""
+    return ApiNote(
+        note_id=uuid4().hex[:8],
+        created_at=_now_iso(),
+        title=title.strip(),
+        module=module,
+        endpoint=endpoint.strip(),
+        priority=priority.upper() if priority.upper() in PRIORITIES else "P1",
+        fact=fact.strip(),
+        expected=expected.strip(),
+        reproduction=reproduction.strip(),
+        check_id=check_id,
+        evidence=evidence.strip(),
+        source=source,
+    )
+
+
+def sorted_notes(notes: list[dict[str, Any] | ApiNote]) -> list[ApiNote]:
+    """Замечания в порядке отчёта: приоритет, затем время создания."""
+    restored = [note if isinstance(note, ApiNote) else ApiNote.from_dict(note) for note in notes]
+    return sorted(restored, key=lambda note: (note.priority_rank, note.created_at))
+
+
+def notes_by_priority(notes: list[dict[str, Any] | ApiNote]) -> dict[str, list[ApiNote]]:
+    """Замечания, сгруппированные по приоритету (P0/P1/P2)."""
+    grouped: dict[str, list[ApiNote]] = {priority: [] for priority in PRIORITIES}
+    for note in sorted_notes(notes):
+        grouped.setdefault(note.priority, []).append(note)
+    return grouped
+
+
+def has_note(notes: list[dict[str, Any] | ApiNote], title_prefix: str) -> bool:
+    """True, если замечание с таким началом заголовка уже зарегистрировано."""
+    prefix = title_prefix.strip().lower()
+    return any(
+        (note.title if isinstance(note, ApiNote) else str(note.get("title", "")))
+        .strip()
+        .lower()
+        .startswith(prefix)
+        for note in notes
+    )
+
+
+#: Известные дефекты/пробелы API, проверенные на живом сервисе.
+#: Пульт предлагает их как готовые замечания (FR-T7) — испытателю не нужно набирать текст вручную.
+KNOWN_DEFECTS: tuple[dict[str, str], ...] = (
+    {
+        "title": "Скачивание файлов с не-ASCII именами не работает (latin-1)",
+        "module": "File Import",
+        "endpoint": "GET /api/data/file/{file_id}/download",
+        "priority": "P0",
+        "fact": "Ответ 404 с detail \"'latin-1' codec can't encode characters…\"; заголовок "
+        "Content-Disposition формируется без filename*=UTF-8''.",
+        "expected": "Скачивание файла с любым допустимым именем (RFC 6266, filename*), HTTP 200.",
+        "reproduction": "Скачать markup-файл субдатасета с не-ASCII именем (например, 3Дпринтер.markup.csv).",
+    },
+    {
+        "title": "Скачивание отдаёт файл целиком: нет Content-Length, Range, ETag",
+        "module": "File Import",
+        "endpoint": "GET /api/data/file/{file_id}/download",
+        "priority": "P1",
+        "fact": "Спецификация обещает application/json со схемой {}; фактически "
+        "application/octet-stream без Content-Length и без Accept-Ranges (RAW-файлы до 2.1 ГБ).",
+        "expected": "Content-Length + поддержка Range/ETag либо presigned URL для больших файлов.",
+        "reproduction": "GET download крупного RAW-файла: проверить отсутствие Content-Length и Range.",
+    },
+    {
+        "title": "GET /api/data/files игнорирует limit/offset",
+        "module": "File Import",
+        "endpoint": "GET /api/data/files",
+        "priority": "P1",
+        "fact": "Параметры не описаны в спецификации и не влияют на результат (приходит весь реестр).",
+        "expected": "Серверная пагинация: limit/offset + общее число записей; либо документировать "
+        "полную выдачу.",
+        "reproduction": "Запросить GET /api/data/files?limit=5&offset=0 и сравнить count/размер выдачи.",
+    },
+    {
+        "title": "В GET /api/loads/list отсутствует phase_connection, фильтр ph_n не работает",
+        "module": "Loads",
+        "endpoint": "GET /api/loads/list",
+        "priority": "P0",
+        "fact": "Схема ответа в спецификации пуста; фактически приходит {loads, result_size, limit, "
+        "offset} без phase_connection, а POST/PUT его требуют. Фильтр ph_n ничего не фильтрует.",
+        "expected": "phase_connection в ответе списка и рабочий фильтр ph_n (по спецификации FR-3).",
+        "reproduction": "GET /api/loads/list?ph_n=Ph_A — сравнить выдачу с запросом без фильтра.",
+    },
+    {
+        "title": "Нет сущности «субдатасет» и связи «запись ↔ пара RAW+markup»",
+        "module": "Записи и разметка",
+        "endpoint": "GET /api/data/files",
+        "priority": "P0",
+        "fact": "Реестр файлов плоский: RAW и markup одной записи не связаны, дубли имён приходят "
+        "разными файлами, различаясь только size/import_date/s3_path.",
+        "expected": "Поля пары (record_id/role) либо сущность субдатасета; checksum и updated_at для "
+        "различения версий и дублей.",
+        "reproduction": "Найти в реестре два файла Antminer_S19.raw.csv с разным размером.",
+    },
+    {
+        "title": "Нет связи «датасет ↔ файлы» и агрегатов (записи/чанки)",
+        "module": "Datasets",
+        "endpoint": "GET /api/datasets/{dataset_id}",
+        "priority": "P1",
+        "fact": "Ответ содержит только метаданные: id, creation_date, name, description, type. "
+        "Состав датасета и структурные характеристики (число записей и чанков) недоступны.",
+        "expected": "GET /api/datasets/{id}/summary с составом и агрегатами либо отдельные эндпоинты.",
+        "reproduction": "GET /api/datasets/{dataset_id} — убедиться в отсутствии состава.",
+    },
+    {
+        "title": "POST /api/datasets/fill/{id} не возвращает task_id",
+        "module": "Datasets",
+        "endpoint": "POST /api/datasets/fill/{dataset_id}",
+        "priority": "P1",
+        "fact": "Ответ 202 не содержит идентификатора задачи, поэтому мониторинг возможен только "
+        "поиском задачи dataset-fill в GET /api/tasks/.",
+        "expected": "task_id в ответе (как у train/check/inference).",
+        "reproduction": "Выполнить fill и сопоставить ответ с задачами в GET /api/tasks/.",
+    },
+    {
+        "title": "Типы файлов вне перечисления: H5, REPORT_ZIP",
+        "module": "File Import",
+        "endpoint": "GET /api/data/files",
+        "priority": "P2",
+        "fact": "В спецификации описаны RAW/LOADS/ONNX, фактически встречаются H5 и REPORT_ZIP.",
+        "expected": "Расширить перечисление/справочник file_type и документировать его.",
+        "reproduction": "Отфильтровать реестр по file_type=H5 и file_type=REPORT_ZIP.",
+    },
+    {
+        "title": "DELETE /api/{file_id} расположен в корне /api/",
+        "module": "File Import",
+        "endpoint": "DELETE /api/{file_id}",
+        "priority": "P2",
+        "fact": "Маршрут удаления файла находится в корне /api/ (риск коллизий), ответ в "
+        "спецификации описан пустой схемой, batch-удаления пары нет.",
+        "expected": "DELETE /api/data/file/{file_id} и batch-операции для пары/записи.",
+        "reproduction": "Вызвать DELETE /api/{file_id} и проверить отсутствие batch-варианта.",
+    },
+    {
+        "title": "Удаление нагрузки отсутствует, категория — свободный текст",
+        "module": "Loads",
+        "endpoint": "GET /api/loads/list",
+        "priority": "P2",
+        "fact": "Эндпоинта удаления нагрузки нет; category — свободный текст с регистровыми "
+        "дублями, load_id/category фильтруются только точно.",
+        "expected": "DELETE /api/loads/{load_id}, справочник категорий, регистронезависимые фильтры.",
+        "reproduction": "Создать нагрузку через POST /api/loads и попытаться её удалить.",
+    },
+    {
+        "title": "У моделей не заполнено поле signals",
+        "module": "ML models",
+        "endpoint": "GET /api/ml_models/models",
+        "priority": "P2",
+        "fact": "signals пусто, классы описаны только в signal_aliases и не связаны с реестром нагрузок.",
+        "expected": "Заполнять signals при создании модели и/или полю device_id в реестре нагрузок.",
+        "reproduction": "GET /api/ml_models/models — проверить пустые signals у живых моделей.",
+    },
+)
+
+
+#: Перспективные требования к API (не блокируют испытания текущей версии сервера).
+PROSPECTIVE_REQUIREMENTS: tuple[dict[str, str], ...] = (
+    {
+        "title": "Субдатасет как сущность первого класса",
+        "module": "Записи и разметка",
+        "priority": "P1",
+        "detail": "POST/GET /api/subdatasets и /api/subdatasets/{id}/files; агрегаты (число записей "
+        "и чанков); признак группировки (дата измерений, назначение). Альтернатива — поля пары в "
+        "файле (record_id/pair_id/role) и группирующий признак.",
+    },
+    {
+        "title": "Агрегаты и структурные характеристики",
+        "module": "Datasets",
+        "priority": "P1",
+        "detail": "GET /api/datasets/{id}/summary (состав, записи, чанки, нагрузки) и серверные "
+        "характеристики субдатасета вместо клиентского разбора markup-файла.",
+    },
+    {
+        "title": "Связи load ↔ субдатасет ↔ датасет",
+        "module": "Loads",
+        "priority": "P1",
+        "detail": "Позволяют отказаться от эвристического «набора нагрузок» (по markup-файлу или по "
+        "имени субдатасета) и от ручного сравнения с реестром (замечание №2 к макету).",
+    },
+    {
+        "title": "Справочники и единый контракт",
+        "module": "Прочее",
+        "priority": "P1",
+        "detail": "Справочники фаз (Ph_n), категорий, file_type, DatasetType; единый формат ошибок; "
+        "описание формата markup-файла; updated_at и checksum для изменяемых сущностей.",
+    },
+    {
+        "title": "Эксплуатационные улучшения",
+        "module": "Прочее",
+        "priority": "P2",
+        "detail": "presigned URL/Range для больших файлов, batch-операции, сортировка, ETag, "
+        "securitySchemes/X-Api-Version, примеры в спецификации.",
+    },
+)
+
+
+def known_defect_notes() -> list[ApiNote]:
+    """Готовые замечания по известным дефектам (шаблоны для оператора)."""
+    return [
+        new_note(
+            defect["title"],
+            module=defect["module"],
+            endpoint=defect["endpoint"],
+            priority=defect["priority"],
+            fact=defect["fact"],
+            expected=defect["expected"],
+            reproduction=defect["reproduction"],
+            source=SOURCE_AUTO,
+        )
+        for defect in KNOWN_DEFECTS
+    ]
+
+
+def prospective_requirements() -> list[dict[str, str]]:
+    """Перспективные требования к API (раздел отчёта, не блокирует испытания)."""
+    return [dict(item) for item in PROSPECTIVE_REQUIREMENTS]
