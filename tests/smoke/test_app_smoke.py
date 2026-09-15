@@ -10,15 +10,19 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from acceptance import overrides as overrides_api
 from acceptance.api import Apis
 from acceptance.config import PultConfig
 from acceptance.http_log import Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
+from acceptance.overrides import OVERRIDES_FILENAME, Overrides
+from acceptance.records import record_id_for
 from acceptance.ui import state
 from acceptance.ui.state import Runtime
 from client.http import ApiHttpClient
@@ -42,6 +46,30 @@ FILES = [
         "s3_path": "LOADS/2026/09/09/Antminer_S19.markup.csv",
         "import_date": "2026-09-09T13:53:57",
         "file_type": "LOADS",
+    },
+    {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "file_name": "Antminer_S19.raw.csv",
+        "size": 1500,
+        "s3_path": "RAW/2026/09/09/1500/Antminer_S19.raw.csv",
+        "import_date": "2026-09-09T14:10:00",
+        "file_type": "RAW",
+    },
+    {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "file_name": "Loose_Unit.markup.csv",
+        "size": 200,
+        "s3_path": "LOADS/2026/09/09/Loose_Unit.markup.csv",
+        "import_date": "2026-09-09T14:20:00",
+        "file_type": "LOADS",
+    },
+    {
+        "id": "55555555-5555-4555-8555-555555555555",
+        "file_name": "model_1.h5",
+        "size": 5000,
+        "s3_path": "MODELS/2026/09/09/model_1.h5",
+        "import_date": "2026-09-09T14:30:00",
+        "file_type": "H5",
     },
 ]
 
@@ -97,6 +125,15 @@ def pult(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(state, "get_runtime", lambda: runtime)
     monkeypatch.setattr(state, "ensure_logging", lambda level, session_id=None: artifacts)
+    # ручные решения оператора: чтение — пусто, запись — во временный файл (герметичность теста)
+    monkeypatch.setattr(overrides_api, "load_overrides", lambda directory=None: Overrides())
+    monkeypatch.setattr(
+        overrides_api,
+        "save_overrides",
+        lambda overrides, directory=None: tmp_path / OVERRIDES_FILENAME,
+    )
+    # кэш реестра файлов общий для процесса: сбрасываем, чтобы тесты не влияли друг на друга
+    state.load_files.clear()
 
     app = AppTest.from_file(str(APP_PATH), default_timeout=60)
     app.session_state["pult_screen"] = "stand"
@@ -153,10 +190,86 @@ def test_logs_screen_lists_journal_records(pult):
 def test_planned_screens_render_as_stubs(pult):
     app, _ = pult
 
-    for screen in ("records", "checks", "console", "report"):
+    for screen in ("checks", "console", "report"):
         app = _open(app, screen)
         assert not app.exception, f"экран {screen} упал"
         assert app.info, f"экран {screen} не показал заглушку"
+
+
+# ---------------------------------------------------------------------------
+# Экран «Записи (RAW + markup)» — этап T1
+# ---------------------------------------------------------------------------
+def _metric_values(app: AppTest) -> dict[str, str]:
+    """Значения KPI экрана (подпись → значение)."""
+    return {metric.label: str(metric.value) for metric in app.metric}
+
+
+def _widget(app: AppTest, collection: str, key: str):
+    """Виджет экрана по его ключу."""
+    return next(widget for widget in getattr(app, collection) if widget.key == key)
+
+
+def test_records_screen_groups_files_into_records(pult):
+    app, _ = pult
+    app = _open(app, "records")
+
+    values = _metric_values(app)
+
+    assert not app.exception
+    assert app.title[0].value == "Записи (RAW + markup)"
+    assert values["Записей"] == "2"
+    assert values["С разметкой"] == "1 (50.0%)"
+    assert values["Дублей"] == "2"
+    assert values["Без разметки"] == "1"
+    assert values["Разметка без RAW"] == "1"
+    assert values["Прочих файлов"] == "1"
+
+
+def test_records_screen_shows_duplicates_and_unpaired_sections(pult):
+    app, _ = pult
+    app = _open(app, "records")
+
+    texts = " ".join(box.value for box in app.info) + " ".join(
+        caption.value for caption in app.caption
+    )
+
+    assert not app.exception
+    assert "дубли" in texts.lower()
+    assert "Разметка без RAW" in texts or "разметки без RAW" in texts
+
+
+def test_records_screen_saves_manual_decision(pult):
+    """Привязка свободной разметки к записи без разметки (TC-REC-03)."""
+    app, _ = pult
+    app = _open(app, "records")
+    target = record_id_for("Antminer_S19", UUID("33333333-3333-4333-8333-333333333333"))
+    select_key = f"records_link_{target}"
+    button_key = f"records_link_btn_{target}"
+
+    options = [
+        option for option in _widget(app, "selectbox", select_key).options if "Loose_Unit" in option
+    ]
+    assert options, "в кандидатах разметки нет свободного файла Loose_Unit.markup.csv"
+
+    _widget(app, "selectbox", select_key).select(options[0])
+    app.run()
+    next(button for button in app.button if button.key == button_key).click().run()
+
+    assert not app.exception
+    assert any("Решение сохранено" in box.value for box in app.success)
+
+
+def test_records_screen_marks_measured_duplicate_versions(pult):
+    """Версии дублей видны оператору (в сводной таблице — все строки)."""
+    app, _ = pult
+    app = _open(app, "records")
+
+    frames = app.dataframe
+    assert frames, "экран не показал сводную таблицу записей"
+    rows = frames[0].value.to_dict("records")
+
+    assert sum(1 for row in rows if row["Актуальная"] == "да") == 1
+    assert all("Версия" in row for row in rows)
 
 
 def test_pult_started_event_is_written_to_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

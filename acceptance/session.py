@@ -26,8 +26,14 @@ from uuid import uuid4
 
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TOOL_VERSION = "0.1.0"
+
+#: История версий схемы файла сессии:
+#:   v1 — базовые поля (инфо испытателя, снимки стенда, журнал, замечания, проверки);
+#:   v2 — добавлены `artifacts` (выгруженные доказательства: манифесты, запрошенные
+#:        выгрузки) и `markup_stats` (рассчитанные характеристики разметки по файлам).
+#: Файлы v1 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 STATUS_DRAFT = "черновик"
 STATUS_RUNNING = "идёт"
@@ -103,6 +109,8 @@ class TestSession:
     notes: list[dict[str, Any]] = field(default_factory=list)
     checks: list[dict[str, Any]] = field(default_factory=list)
     counters: dict[str, Any] = field(default_factory=dict)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    markup_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -165,6 +173,8 @@ class TestSession:
             "notes": self.notes,
             "checks": self.checks,
             "counters": self.counters,
+            "artifacts": self.artifacts,
+            "markup_stats": self.markup_stats,
             "history": self.history,
         }
 
@@ -187,6 +197,10 @@ class TestSession:
             notes=[dict(item) for item in (data.get("notes") or [])],
             checks=[dict(item) for item in (data.get("checks") or [])],
             counters=dict(data.get("counters") or {}),
+            artifacts=[dict(item) for item in (data.get("artifacts") or [])],
+            markup_stats={
+                str(key): dict(value) for key, value in (data.get("markup_stats") or {}).items()
+            },
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
@@ -288,6 +302,74 @@ def set_snapshot(session: TestSession, phase: str, snapshot: dict[str, Any]) -> 
     session.snapshots[phase] = {"at": now_iso(), **snapshot}
     session.add_history("stand_snapshot", f"Снимок стенда ({phase})", phase=phase)
     return session
+
+
+def add_artifact(
+    session: TestSession,
+    *,
+    kind: str,
+    path: Any,
+    size_bytes: int | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """Регистрирует выгруженный артефакт сессии (манифест, запрошенная выгрузка).
+
+    Артефакт — доказательство испытаний: он указывается в отчёте, чтобы результат
+    можно было проверить. Файлы лежат в `acceptance_data/artifacts/`.
+    """
+    file_path = Path(str(path))
+    record: dict[str, Any] = {
+        "at": now_iso(),
+        "kind": kind,
+        "name": file_path.name,
+        "path": file_path.as_posix(),
+        "size_bytes": size_bytes if size_bytes is not None else _safe_size(file_path),
+        "note": note,
+    }
+    session.artifacts.append(record)
+    session.add_history(
+        "artifact_saved", f"Артефакт: {record['name']}", kind=kind, path=record["path"]
+    )
+    return record
+
+
+def set_markup_stats(
+    session: TestSession,
+    file_id: Any,
+    *,
+    records: int | None = None,
+    chunks: int | None = None,
+    status: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Сохраняет характеристики разметки (записи/чанки) по `id` markup-файла.
+
+    Значения считает клиент (`lib.markup_stats`), серверных агрегатов в API нет,
+    поэтому результат фиксируется в сессии и указывается в отчёте как клиентская оценка.
+    """
+    payload: dict[str, Any] = {
+        "records": records,
+        "chunks": chunks,
+        "status": status,
+        "note": note,
+        "at": now_iso(),
+    }
+    session.markup_stats[str(file_id)] = payload
+    session.add_history(
+        "markup_stats",
+        f"Разбор разметки: записи = {records}, чанки = {chunks}",
+        file_id=str(file_id),
+        status=status,
+    )
+    return payload
+
+
+def _safe_size(path: Path) -> int:
+    """Размер файла, если он есть (иначе 0)."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
 
 
 def add_note_to_session(session: TestSession, note: Any) -> TestSession:

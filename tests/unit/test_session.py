@@ -8,12 +8,14 @@ from pathlib import Path
 from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.notes import new_note
 from acceptance.session import (
+    SCHEMA_VERSION,
     SNAP_END,
     SNAP_START,
     STATUS_CLOSED,
     STATUS_DRAFT,
     STATUS_RUNNING,
     SessionInfo,
+    add_artifact,
     add_note_to_session,
     close_session,
     collect_tool_version,
@@ -26,8 +28,12 @@ from acceptance.session import (
     save_session,
     session_json,
     session_meta,
+    set_markup_stats,
     set_snapshot,
     start_session,
+)
+from acceptance.session import (
+    TestSession as SessionModel,
 )
 
 
@@ -171,3 +177,67 @@ def test_session_info_ignores_unknown_keys():
     assert info.title == "Наименование"
     assert not hasattr(info, "unknown")
     assert not info.is_filled
+
+
+# ---------------------------------------------------------------------------
+# Схема v2: артефакты и характеристики разметки (этап T1)
+# ---------------------------------------------------------------------------
+def test_artifacts_and_markup_stats_round_trip(tmp_path: Path):
+    session = _session(tmp_path)
+    artifact = tmp_path / "records_manifest_20260915-101500.csv"
+    artifact.write_text("row_kind,record_id\nзапись,abc\n", encoding="utf-8-sig")
+
+    add_artifact(
+        session,
+        kind="records_manifest (CSV)",
+        path=artifact,
+        note="объединение в записи",
+    )
+    set_markup_stats(
+        session,
+        "22222222-2222-4222-8222-222222222222",
+        records=64,
+        chunks=8,
+        status="рассчитано (клиентская оценка)",
+        note="получено 1.2 КБ",
+    )
+    save_session(session, tmp_path)
+    restored = load_session(session.session_id, tmp_path)
+
+    assert restored.artifacts[0]["name"] == artifact.name
+    assert restored.artifacts[0]["size_bytes"] == artifact.stat().st_size
+    assert restored.artifacts[0]["kind"] == "records_manifest (CSV)"
+    assert restored.markup_stats["22222222-2222-4222-8222-222222222222"]["records"] == 64
+    assert restored.markup_stats["22222222-2222-4222-8222-222222222222"]["chunks"] == 8
+
+
+def test_add_artifact_and_set_markup_stats_write_history():
+    session = _session(Path("."))
+
+    add_artifact(session, kind="выгрузка", path=Path("artifacts/pair.zip"), size_bytes=2048)
+    set_markup_stats(session, "file-1", records=10, chunks=2, status="рассчитано", note="—")
+
+    events = [item["event"] for item in session.history]
+
+    assert "artifact_saved" in events
+    assert "markup_stats" in events
+    assert session.artifacts[0]["path"] == "artifacts/pair.zip"
+
+
+def test_schema_v1_file_is_read_with_defaults():
+    """Файл сессии, записанный до этапа T1 (schema v1), читается без ошибок."""
+    payload = _session(Path(".")).to_dict()
+    payload["schema_version"] = 1
+    payload.pop("artifacts")
+    payload.pop("markup_stats")
+
+    restored = SessionModel.from_dict(payload)
+
+    assert restored.schema_version == 1
+    assert restored.artifacts == []
+    assert restored.markup_stats == {}
+
+
+def test_current_schema_version_is_two():
+    assert SCHEMA_VERSION == 2
+    assert _session(Path(".")).to_dict()["schema_version"] == 2

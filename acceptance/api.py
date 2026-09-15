@@ -17,6 +17,7 @@ import httpx
 from acceptance.config import PultConfig
 from acceptance.http_log import Journal, LoggingTransport
 from acceptance.logging_setup import log_event
+from acceptance.records import build_records
 from acceptance.session import now_iso
 from client.datasets import DatasetsApi
 from client.errors import ClientError
@@ -92,6 +93,7 @@ def take_stand_snapshot(apis: Apis) -> dict[str, Any]:
         "version": None,
         "counts": {},
         "files": {},
+        "records": {},
         "errors": {},
     }
 
@@ -110,6 +112,16 @@ def take_stand_snapshot(apis: Apis) -> dict[str, Any]:
             "duplicate_names": sum(1 for count in names.values() if count > 1),
             "by_type": dict(Counter(file.file_type for file in files)),
         }
+        # объединение в записи — клиентское представление реестра (в API записей нет)
+        try:
+            overview = build_records(files)
+            snapshot["records"] = {
+                **overview.stats.to_dict(),
+                "attention": len(overview.requires_attention),
+                "manifest_rows": len(overview.manifest_rows()),
+            }
+        except (ValueError, TypeError, AttributeError) as exc:  # защитный контур снимка
+            snapshot["errors"]["records"] = f"объединение в записи не выполнено: {exc}"
     except ClientError as exc:
         snapshot["errors"]["files"] = str(exc)
 
@@ -140,6 +152,7 @@ def take_stand_snapshot(apis: Apis) -> dict[str, Any]:
         payload={
             "counts": snapshot["counts"],
             "files": snapshot["files"],
+            "records": snapshot["records"],
             "errors": snapshot["errors"],
             "server_build": _build_label(snapshot["version"]),
         },

@@ -41,7 +41,7 @@ st.set_page_config(page_title="Пульт испытаний · сервер о�
 SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
     "stand": ("🖥️ Стенд", stand.render),
     "session": ("🧪 Сессия испытаний", session.render),
-    "records": ("🧩 Записи и субдатасеты", records.render),
+    "records": ("🧩 Записи", records.render),
     "checks": ("✅ Чек-лист проверок", checks.render),
     "console": ("📡 Консоль запросов", console.render),
     "logs": ("🧾 Журнал", logs.render),
@@ -105,7 +105,7 @@ def _render_sidebar() -> None:
                 st.rerun()
 
     st.sidebar.divider()
-    st.sidebar.caption("Временный UI для испытаний текущего API · этап T0")
+    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T1")
 
 
 artifacts = state.ensure_logging(state.log_level(), state.current_session_id())

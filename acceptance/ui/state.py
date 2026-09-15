@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 import streamlit as st
 
 from acceptance.api import Apis, build_client
@@ -28,7 +29,9 @@ from acceptance.session import (
     save_session,
     session_exists,
 )
+from client.errors import ClientError
 from client.http import ApiHttpClient
+from client.schemas import FileMetadataResponse
 from client.settings import TrainingServerSettings, get_settings
 
 KEY_SESSION_ID = "pult_session_id"
@@ -178,3 +181,50 @@ def set_stand_status(payload: dict[str, Any]) -> None:
 def clear_stand_status() -> None:
     """Сбрасывает кэш проверки доступности сервера."""
     st.session_state.pop(KEY_STAND_STATUS, None)
+
+
+# ---------------------------------------------------------------------------
+# Реестр файлов (общий кэш: реестр читают и «Записи», и «Проверки»)
+# ---------------------------------------------------------------------------
+FILES_CACHE_TTL = 60.0
+
+
+@st.cache_data(ttl=FILES_CACHE_TTL, show_spinner="Загрузка реестра файлов…")
+def load_files() -> tuple[list[FileMetadataResponse], str | None]:
+    """Читает реестр файлов испытуемого сервера (кэш 60 с).
+
+    Returns:
+        Кортеж (файлы, текст ошибки). При ошибке список пуст, а текст показывается
+        оператору — экран не «падает». Кэш короче шага испытаний, поэтому только что
+        загруженные файлы видны почти сразу; кнопка обновления сбрасывает кэш.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return [], "Адрес испытуемого сервера не задан (TRAINING_SERVER_BASE_URL в .env)."
+
+    try:
+        response = runtime.apis.files.list_files()
+    except ClientError as exc:
+        return [], _error_text(exc)
+    except httpx.HTTPError as exc:
+        return [], f"Сеть недоступна: {exc}"
+    return list(response.files), None
+
+
+def refresh_files() -> None:
+    """Сбрасывает кэш реестра файлов (кнопка «Обновить реестр»)."""
+    load_files.clear()
+
+
+def current_markup_stats() -> dict[str, dict[str, Any]]:
+    """Рассчитанные характеристики разметки из текущей сессии (по `id` файла)."""
+    session = current_session()
+    if session is None:
+        return {}
+    return {str(key): dict(value) for key, value in session.markup_stats.items()}
+
+
+def _error_text(exc: Exception) -> str:
+    """Текст ошибки API, пригодный для показа оператору."""
+    status = getattr(exc, "status_code", None)
+    return f"[{status}] {exc}" if status else str(exc)
