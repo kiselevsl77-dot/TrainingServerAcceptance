@@ -29,7 +29,6 @@ import streamlit as st
 from acceptance import overrides as overrides_api
 from acceptance.http_log import label_context
 from acceptance.logging_setup import log_event
-from acceptance.notes import known_defect_notes
 from acceptance.paths import ARTIFACT_DIR
 from acceptance.records import (
     STATS_BLOCKED,
@@ -43,11 +42,11 @@ from acceptance.records import (
 from acceptance.session import (
     TestSession,
     add_artifact,
-    add_note_to_session,
     now_iso,
     set_markup_stats,
 )
 from acceptance.ui import state
+from acceptance.ui.common import api_notes
 from acceptance.ui.common.flash import render_flash, set_flash
 from acceptance.ui.common.pagination import render_pagination
 from client.errors import ClientError, NotFoundError
@@ -964,35 +963,19 @@ def _create_note(
     session: TestSession | None,
     silent: bool = False,
 ) -> None:
-    """Создаёт замечание к API из шаблона известного дефекта и добавляет его в сессию."""
-    template = next(
-        (note for note in known_defect_notes() if title_part.lower() in note.title.lower()),
-        None,
-    )
-    if template is None:
-        set_flash("error", f"Шаблон замечания не найден: {title_part}")
-        st.rerun()
+    """Создаёт замечание к API из шаблона известного дефекта и добавляет его в сессию.
 
-    template.check_id = check_id
-    template.evidence = evidence
-    log_event(
-        "api_note_created",
-        f"Замечание к API: {template.title}",
-        module="records",
+    Логика (поиск шаблона, тексты сообщений, дедупликация, запись журнала) — общий
+    хелпер пульта `acceptance.ui.common.api_notes`, один для всех экранов.
+    """
+    api_notes.create_note_from_template(
+        title_part,
+        session=session,
         check_id=check_id,
-        payload=template.to_dict(),
+        evidence=evidence,
+        module="records",
+        silent=silent,
     )
-    if session is None:
-        set_flash(
-            "warning",
-            f"Замечание «{template.title}» создано, но сессия не выбрана — в отчёт не попадёт.",
-        )
-    else:
-        add_note_to_session(session, template)
-        state.store_session(session)
-        if not silent:
-            set_flash("success", f"Замечание добавлено в сессию: {template.title}")
-    st.rerun()
 
 
 # ---------------------------------------------------------------------------

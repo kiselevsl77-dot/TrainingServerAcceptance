@@ -1,4 +1,4 @@
-"""Интеграционные проверки живого стенда (только чтение, этапы T0–T1).
+"""Интеграционные проверки живого стенда (только чтение, этапы T0–T2).
 
 Запуск:
 
@@ -6,8 +6,8 @@
     python -m pytest -m integration
 
 Тесты **не выполняют** ресурсоёмких и изменяющих операций: только `/health`,
-`/version` и чтение реестров (снимок стенда). Проверяется, что все запросы
-попадают в журнал пульта.
+`/version`, чтение реестров (снимок стенда), объединение записей и читающие
+вызовы консоли запросов. Проверяется, что все запросы попадают в журнал пульта.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import pytest
 
 from acceptance.api import Apis, build_client, take_stand_snapshot
+from acceptance.exchange import ERROR_NOT_FOUND, build_console_client, execute_request
 from acceptance.http_log import Journal
 from acceptance.records import build_records
 from client.settings import load_settings
@@ -127,3 +128,77 @@ def test_live_markup_download_gives_records_and_chunks_or_api_defect():
     assert stats.records > 0, "markup-файл не содержит строк данных"
     assert stats.chunks > 0, "в markup-файле нет колонки chunkID"
     assert any(record.path.endswith("/download") for record in journal.records)
+
+
+# ---------------------------------------------------------------------------
+# Этап T2: консоль запросов на живом стенде (только чтение)
+# ---------------------------------------------------------------------------
+def test_live_console_reading_request_returns_status_and_journal_ref():
+    """Читающий вызов консоли: статус, заголовки, тело и привязка к записи журнала."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_console_client(settings, journal)
+    try:
+        result = execute_request(
+            client, method="GET", path="/health", label="TC-CONSOLE", journal=journal
+        )
+    finally:
+        client.close()
+
+    assert result.ok, f"живой стенд ответил {result.status_label}: {result.error}"
+    assert result.status == 200
+    assert result.journal_seq == journal.records[-1].seq
+    assert isinstance(result.body_json, dict)
+    assert str(result.body_json.get("status", "")).lower() == "ok"
+    assert result.duration_ms >= 0
+    assert result.headers.get("content-type", "").startswith("application/json")
+
+
+def test_live_console_query_parameters_reach_the_server():
+    """Параметры консоли доходят до сервера (живой реестр файлов по имени)."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_console_client(settings, journal)
+    try:
+        result = execute_request(
+            client,
+            method="GET",
+            path="/api/data/files",
+            query={"file_name": "Antminer"},
+            label="TC-FILE-01",
+            journal=journal,
+        )
+    finally:
+        client.close()
+
+    assert result.ok, f"живой стенд ответил {result.status_label}: {result.error}"
+    assert isinstance(result.body_json, dict)
+    files = result.body_json.get("files") or []
+    assert files, "фильтр по имени не вернул файлов"
+    assert all("Antminer" in str(item.get("file_name", "")) for item in files)
+    assert journal.records[-1].label == "TC-FILE-01"
+
+
+def test_live_console_404_is_a_result_not_an_exception():
+    """Известный дефект стенда (404 на скачивание) не роняет консоль, а фиксируется."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_console_client(settings, journal)
+    try:
+        result = execute_request(
+            client,
+            method="GET",
+            path="/api/data/file/00000000-0000-4000-8000-000000000000/download",
+            label="TC-CONSOLE",
+            binary=True,
+            journal=journal,
+            keep_content=True,
+        )
+    finally:
+        client.close()
+
+    assert result.is_error
+    assert result.error_kind == ERROR_NOT_FOUND
+    assert result.status == 404
+    assert result.error
+    assert result.journal_seq is not None

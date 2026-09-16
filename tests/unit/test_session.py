@@ -16,9 +16,12 @@ from acceptance.session import (
     STATUS_RUNNING,
     SessionInfo,
     add_artifact,
+    add_console_call,
     add_note_to_session,
     close_session,
     collect_tool_version,
+    console_calls_by_label,
+    console_calls_summary,
     delete_session,
     list_sessions,
     load_session,
@@ -238,6 +241,106 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_two():
-    assert SCHEMA_VERSION == 2
-    assert _session(Path(".")).to_dict()["schema_version"] == 2
+def test_current_schema_version_is_three():
+    assert SCHEMA_VERSION == 3
+    assert _session(Path(".")).to_dict()["schema_version"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Схема v3: ручные вызовы консоли запросов (этап T2)
+# ---------------------------------------------------------------------------
+def test_console_calls_round_trip_and_history(tmp_path: Path):
+    """Вызовы консоли сохраняются в сессии вместе с меткой и номером журнала."""
+    session = _session(tmp_path)
+    add_console_call(
+        session,
+        label="TC-FILE-01",
+        method="get",
+        path="/api/data/files",
+        status=200,
+        duration_ms=12.34,
+        journal_seq=7,
+        operation="get /api/data/files",
+        safety="read",
+        note="сверка количества файлов",
+    )
+    add_console_call(
+        session,
+        label="TC-TR-01",
+        method="post",
+        path="/api/ml_models/models/m-1/train",
+        status=202,
+        duration_ms=120.0,
+        journal_seq=8,
+        operation="post /api/ml_models/models/{model_id}/train",
+        safety="heavy",
+        task_id="task-77",
+        note="карточка запуска: цель «проверить обучение»",
+    )
+    add_console_call(
+        session,
+        label="TC-TASK-01",
+        method="GET",
+        path="/api/tasks/2f1b",
+        duration_ms=5.0,
+        journal_seq=9,
+        operation="get /api/tasks/{task_id}",
+        safety="read",
+        error="[404] задача не найдена",
+    )
+    save_session(session, tmp_path)
+    restored = load_session(session.session_id, tmp_path)
+
+    first, second, third = restored.console_calls
+    assert first["method"] == "GET"  # регистр приводится к верхнему
+    assert first["status"] == 200
+    assert first["duration_ms"] == 12.3
+    assert first["journal_seq"] == 7
+    assert first["label"] == "TC-FILE-01"
+    assert second["task_id"] == "task-77"
+    assert third["status"] is None
+    assert "404" in third["error"]
+
+    events = [item["event"] for item in restored.history]
+    assert events.count("console_call") == 3
+    assert "console_task_started" in events
+
+
+def test_console_calls_grouping_and_summary():
+    """Сводка вызовов консоли: по метке, классам статусов и операциям."""
+    session = _session(Path("."))
+    for label, status in (("TC-SYS-01", 200), ("TC-SYS-01", 404), ("TC-FILE-02", 201)):
+        add_console_call(
+            session,
+            label=label,
+            method="GET",
+            path="/health",
+            status=status,
+            operation="get /health",
+            safety="read",
+            error="" if status < 400 else "нет",
+        )
+
+    grouped = console_calls_by_label(session)
+    summary = console_calls_summary(session)
+
+    assert sorted(grouped) == ["TC-FILE-02", "TC-SYS-01"]
+    assert len(grouped["TC-SYS-01"]) == 2
+    assert summary["total"] == 3
+    assert summary["errors"] == 1
+    assert summary["labels"] == 2
+    assert summary["tasks"] == 0
+    assert summary["by_status_class"] == {"2xx": 2, "4xx": 1}
+    assert summary["by_operation"] == {"get /health": 3}
+
+
+def test_schema_v2_file_is_read_with_defaults():
+    """Файл сессии этапа T1 (schema v2) читается без ошибок."""
+    payload = _session(Path(".")).to_dict()
+    payload["schema_version"] = 2
+    payload.pop("console_calls", None)
+
+    restored = SessionModel.from_dict(payload)
+
+    assert restored.schema_version == 2
+    assert restored.console_calls == []

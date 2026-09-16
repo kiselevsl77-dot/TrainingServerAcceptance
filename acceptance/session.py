@@ -26,14 +26,16 @@ from uuid import uuid4
 
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
 #:   v1 — базовые поля (инфо испытателя, снимки стенда, журнал, замечания, проверки);
 #:   v2 — добавлены `artifacts` (выгруженные доказательства: манифесты, запрошенные
-#:        выгрузки) и `markup_stats` (рассчитанные характеристики разметки по файлам).
-#: Файлы v1 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:        выгрузки) и `markup_stats` (рассчитанные характеристики разметки по файлам);
+#:   v3 — добавлены `console_calls` (ручные вызовы консоли запросов: операция, метка
+#:        проверки, статус, номер записи журнала) — след действий оператора для отчёта.
+#: Файлы v1/v2 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 STATUS_DRAFT = "черновик"
 STATUS_RUNNING = "идёт"
@@ -111,6 +113,7 @@ class TestSession:
     counters: dict[str, Any] = field(default_factory=dict)
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     markup_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+    console_calls: list[dict[str, Any]] = field(default_factory=list)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -175,6 +178,7 @@ class TestSession:
             "counters": self.counters,
             "artifacts": self.artifacts,
             "markup_stats": self.markup_stats,
+            "console_calls": self.console_calls,
             "history": self.history,
         }
 
@@ -201,6 +205,7 @@ class TestSession:
             markup_stats={
                 str(key): dict(value) for key, value in (data.get("markup_stats") or {}).items()
             },
+            console_calls=[dict(item) for item in (data.get("console_calls") or [])],
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
@@ -370,6 +375,96 @@ def _safe_size(path: Path) -> int:
         return path.stat().st_size
     except OSError:
         return 0
+
+
+def add_console_call(
+    session: TestSession,
+    *,
+    label: str,
+    method: str,
+    path: str,
+    status: int | None = None,
+    duration_ms: float | None = None,
+    journal_seq: int | None = None,
+    operation: str = "",
+    safety: str = "",
+    request_body: str = "",
+    error: str = "",
+    note: str = "",
+    task_id: str = "",
+) -> dict[str, Any]:
+    """Регистрирует ручной вызов консоли запросов в сессии (FR-T3).
+
+    Запись нужна отчёту: по ней видно, что оператор выполнял вручную, с какой
+    меткой проверки и в какой записи журнала (воспроизводимость, NFR-T7). Для
+    ресурсоёмких операций дополнительно фиксируется `task_id` — этап T4 (монитор
+    задач) подхватывает такие задачи, даже если они запущены вне чек-листа.
+    """
+    record: dict[str, Any] = {
+        "at": now_iso(),
+        "label": label,
+        "operation": operation,
+        "safety": safety,
+        "method": method.strip().upper(),
+        "path": path,
+        "status": status,
+        "duration_ms": round(duration_ms, 1) if duration_ms is not None else None,
+        "journal_seq": journal_seq,
+        "task_id": task_id,
+        "request_body": request_body,
+        "error": error,
+        "note": note,
+    }
+    session.console_calls.append(record)
+    outcome = status if status is not None else (error or "нет ответа")
+    session.add_history(
+        "console_call",
+        f"Консоль: {record['method']} {path} → {outcome}",
+        label=label,
+        operation=operation,
+        safety=safety,
+        journal_seq=journal_seq,
+        task_id=task_id,
+    )
+    if task_id:
+        session.add_history(
+            "console_task_started",
+            f"Задача создана из консоли: {task_id}",
+            label=label,
+            operation=operation,
+            task_id=task_id,
+            journal_seq=journal_seq,
+        )
+    return record
+
+
+def console_calls_by_label(session: TestSession) -> dict[str, list[dict[str, Any]]]:
+    """Вызовы консоли в сессии, сгруппированные по метке проверки (для отчёта)."""
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for call in session.console_calls:
+        grouped.setdefault(str(call.get("label") or "без метки"), []).append(dict(call))
+    return grouped
+
+
+def console_calls_summary(session: TestSession) -> dict[str, Any]:
+    """Сводка ручных вызовов консоли: всего, ошибок, по классам статусов и операциям."""
+    calls = [dict(item) for item in session.console_calls]
+    by_status_class: dict[str, int] = {}
+    by_operation: dict[str, int] = {}
+    for call in calls:
+        status = call.get("status")
+        key = f"{int(status) // 100}xx" if isinstance(status, int) else "нет ответа"
+        by_status_class[key] = by_status_class.get(key, 0) + 1
+        operation = str(call.get("operation") or f"{call.get('method')} {call.get('path')}")
+        by_operation[operation] = by_operation.get(operation, 0) + 1
+    return {
+        "total": len(calls),
+        "errors": sum(1 for call in calls if call.get("error")),
+        "labels": len(console_calls_by_label(session)),
+        "tasks": sum(1 for call in calls if call.get("task_id")),
+        "by_status_class": by_status_class,
+        "by_operation": by_operation,
+    }
 
 
 def add_note_to_session(session: TestSession, note: Any) -> TestSession:

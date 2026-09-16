@@ -20,6 +20,7 @@ import streamlit as st
 
 from acceptance.api import Apis, build_client
 from acceptance.config import PultConfig, load_config
+from acceptance.exchange import build_console_client
 from acceptance.http_log import Journal
 from acceptance.logging_setup import LoggingArtifacts, log_event, setup_logging
 from acceptance.paths import ensure_dirs
@@ -68,6 +69,44 @@ def _client(
     settings = TrainingServerSettings(base_url=base_url, timeout=timeout)
     config = PultConfig(body_limit=body_limit, log_bodies=log_bodies, journal_max=max_records)
     return build_client(settings, _journal(max_records), config=config)
+
+
+@st.cache_resource(show_spinner=False)
+def _console_client(
+    base_url: str,
+    timeout: float,
+    body_limit: int,
+    log_bodies: bool,
+    max_records: int,
+) -> httpx.Client:
+    """«Сырой» httpx-клиент консоли запросов (FR-T3).
+
+    Консоли нужны статус, заголовки и сырое тело ответа, поэтому она работает
+    отдельным клиентом, но с тем же `LoggingTransport`: записи консоли попадают
+    в общий журнал пульта и в JSONL текущей сессии.
+    """
+    settings = TrainingServerSettings(base_url=base_url, timeout=timeout)
+    config = PultConfig(body_limit=body_limit, log_bodies=log_bodies, journal_max=max_records)
+    return build_console_client(settings, _journal(max_records), config=config)
+
+
+def console_client() -> httpx.Client | None:
+    """Клиент консоли запросов; None, если стенд не настроен (FR-T3).
+
+    Настройки и журнал берутся из текущего `Runtime`, поэтому консоль использует
+    тот же журнал, что экраны и проверки (запросы консоли видны в «Журнале» и в
+    JSONL сессии). В тестах подменяется `_console_client` — точка кэширования.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return None
+    return _console_client(
+        runtime.settings.base_url,
+        runtime.settings.timeout,
+        runtime.config.body_limit,
+        runtime.config.log_bodies,
+        runtime.config.journal_max,
+    )
 
 
 @st.cache_resource(show_spinner=False)
