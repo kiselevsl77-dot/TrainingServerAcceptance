@@ -1,12 +1,18 @@
-"""Тесты каталога проверок чек-листа (FR-T4, этап T4).
+"""Тесты каталога проверок чек-листа (FR-T4, этапы T3–T4).
 
-Главная проверка — **совпадение каталога с программой испытаний**: описания
-проверок группы `TC-TASK` должны соответствовать таблице `docs/02`
-(идентификатор, название, требования, класс), а состав групп — сводке §14.
+Главная проверка — **совпадение каталога с программой испытаний**: описания проверок
+групп `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD`, `TC-TASK` должны соответствовать
+таблицам `docs/02` (идентификатор, название, требования, класс).
 
-Дополнительно проверяется, что каталог «сшит» с остальными частями пульта:
-эндпоинты проверок есть в реестре консоли, автоматические сценарии объявлены в
-`acceptance.checks.tasks`, а структура готова к добавлению групп T3–T10.
+Дополнительно проверяется связность каталога с остальными частями пульта:
+
+    * эндпоинты проверок есть в реестре консоли (`acceptance.endpoints`), а негативные
+      пробы (`probe_paths`) — наоборот, **отсутствуют**: их отсутствие и подтверждается;
+    * автоматические сценарии объявлены в модулях-владельцах и видны общему реестру
+      `acceptance.checks.runner`;
+    * у проверок с ожидаемым дефектом API есть шаблон замечания (`notes.note_from_check`);
+    * модули проверок совпадают со справочником замечаний (`notes.MODULES`);
+    * структура каталога готова к этапам T5–T10 (10 групп, 69 проверок).
 """
 
 from __future__ import annotations
@@ -17,8 +23,8 @@ from pathlib import Path
 import pytest
 
 from acceptance import endpoints as ep
-from acceptance.checks import catalog
-from acceptance.checks import tasks as check_tasks
+from acceptance import notes
+from acceptance.checks import catalog, runner
 from acceptance.checks.registry import CheckClass, CheckSpec
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
@@ -38,8 +44,22 @@ GROUP_HEADINGS: dict[str, str] = {
     "## 13. TC-CLEAN": "TC-CLEAN",
 }
 
-SUMMARY_BEGIN = "## 14."
-SUMMARY_END = "## 15."
+#: Группы, наполненные в каталоге (этапы T3 и T4).
+IMPLEMENTED_GROUPS: tuple[str, ...] = ("TC-SYS", "TC-FILE", "TC-REC", "TC-LOAD", "TC-TASK")
+
+#: Состав классов по таблицам `docs/02` §4–§8. Замечание: сводка §14 для `TC-FILE`
+#: указывает «tech 10, live 4», но в таблице §5 у `TC-FILE-14` (удаление
+#: несуществующего файла) класс `tech` — каталог следует таблице, а не сводке.
+CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
+    "TC-SYS": {"tech": 5, "manual": 1},
+    "TC-FILE": {"tech": 11, "live": 3},
+    "TC-REC": {"tech": 5, "manual": 1},
+    "TC-LOAD": {"tech": 7},
+    "TC-TASK": {"tech": 4, "live": 3, "manual": 1},
+}
+
+#: Проверки без автоматического сценария (выполняются только оператором).
+MANUAL_CHECKS: tuple[str, ...] = ("TC-SYS-06", "TC-REC-03", "TC-TASK-08")
 
 CHECK_ROW = re.compile(
     r"^\|\s*(?P<id>TC-[A-Z]+-\d{2})\s*\|(?P<title>[^|]*)\|(?P<requirement>[^|]*)\|"
@@ -83,12 +103,14 @@ def checklist_rows(checklist: str, group_key: str) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 # Совпадение каталога с программой испытаний
 # ---------------------------------------------------------------------------
-def test_task_group_matches_checklist(checklist: str):
-    """Группа `TC-TASK` совпадает с таблицей `docs/02` §8 (id, название, класс)."""
-    rows = checklist_rows(checklist, "TC-TASK")
-    specs = catalog.by_group("TC-TASK")
+@pytest.mark.parametrize("group_key", IMPLEMENTED_GROUPS)
+def test_group_matches_checklist(checklist: str, group_key: str):
+    """Группа совпадает с таблицей `docs/02` (id, название, требования, класс)."""
+    rows = checklist_rows(checklist, group_key)
+    specs = catalog.by_group(group_key)
 
-    assert len(rows) == 8
+    assert rows, f"в docs/02 нет строк группы {group_key}"
+    assert len(rows) == len(specs)
     assert [row["id"] for row in rows] == [spec.check_id for spec in specs]
     for row, spec in zip(rows, specs, strict=True):
         assert row["title"] == spec.title, spec.check_id
@@ -96,27 +118,27 @@ def test_task_group_matches_checklist(checklist: str):
         assert CLASS_BY_LABEL[row["klass"]] == spec.check_class, spec.check_id
 
 
-def test_group_counts_match_summary(checklist: str):
-    """Состав групп совпадает со сводкой `docs/02` §14 (все 69 проверок)."""
-    start = checklist.index(SUMMARY_BEGIN)
-    summary = checklist[start : checklist.index(SUMMARY_END, start)]
-    documented = {
-        match.group(1): int(match.group(2))
-        for match in re.finditer(r"\|\s*(TC-[A-Z]+)\s*\|\s*(\d+)\s*\|", summary)
-    }
+@pytest.mark.parametrize("group_key", IMPLEMENTED_GROUPS)
+def test_group_classes_match_checklist(group_key: str):
+    """Состав классов группы совпадает с таблицей программы испытаний."""
+    classes: dict[str, int] = {}
+    for spec in catalog.by_group(group_key):
+        classes[str(spec.check_class)] = classes.get(str(spec.check_class), 0) + 1
 
-    assert documented == {group.key: group.plan.checks_total for group in catalog.GROUPS}
-    assert catalog.PLANNED_CHECKS_TOTAL == 69
+    assert classes == CLASSES_BY_GROUP[group_key]
 
 
-def test_groups_are_ready_for_next_stages():
-    """Каталог описывает все 10 групп; на этапе T4 наполнена только `TC-TASK`."""
+def test_catalog_is_ready_for_next_stages():
+    """Каталог описывает 10 групп; на этапах T3–T4 наполнены пять групп (41 проверка)."""
     summary = catalog.catalog_summary()
 
     assert summary["groups_total"] == 10
     assert summary["checks_total"] == 69
-    assert summary["checks_implemented"] == 8
-    assert [group.key for group in catalog.groups(implemented_only=True)] == ["TC-TASK"]
+    assert summary["groups_implemented"] == 5
+    assert summary["checks_implemented"] == 41
+    assert [group.key for group in catalog.groups(implemented_only=True)] == list(
+        IMPLEMENTED_GROUPS
+    )
     assert [group.stage for group in catalog.GROUPS] == [
         "T3",
         "T3",
@@ -129,74 +151,96 @@ def test_groups_are_ready_for_next_stages():
         "T8",
         "T9",
     ]
-    task_group = catalog.group("TC-TASK")
-    assert task_group is not None
-    assert task_group.is_implemented
-    assert task_group.is_complete
+    for key in IMPLEMENTED_GROUPS:
+        group = catalog.group(key)
+        assert group is not None
+        assert group.is_implemented and group.is_complete
     pending = catalog.group("TC-DS")
     assert pending is not None
     assert not pending.is_implemented
     assert not pending.is_complete
 
 
-def test_task_group_classes_match_program():
-    """Классы проверок группы `TC-TASK`: tech 4, live 3, manual 1 (docs/02 §14)."""
-    classes: dict[str, int] = {}
-    for spec in catalog.by_group("TC-TASK"):
-        classes[str(spec.check_class)] = classes.get(str(spec.check_class), 0) + 1
-
-    assert classes == {"tech": 4, "live": 3, "manual": 1}
-    assert catalog.catalog_summary()["classes"] == classes
-
-
-# ---------------------------------------------------------------------------
-# Связность каталога с движком, консолью и сценариями
-# ---------------------------------------------------------------------------
 def test_check_ids_are_unique_and_looked_up():
     """Идентификаторы проверок уникальны и доступны через поиск."""
     ids = catalog.check_ids()
 
     assert len(ids) == len(set(ids))
-    assert ids[0] == "TC-TASK-01"
+    assert ids[0] == "TC-SYS-01"
     for spec in catalog.CHECKS:
         assert catalog.find(spec.check_id) is spec
         assert catalog.find(spec.check_id.lower()) is spec
-        assert catalog.group_of(spec.check_id) == "TC-TASK"
-        assert catalog.stage_of(spec.check_id) == "T4"
-    assert catalog.find("TC-SYS-01") is None
-    assert catalog.group_of("TC-SYS-01") == ""
-    assert catalog.stage_of("TC-SYS-01") == ""
+        assert catalog.group_of(spec.check_id) == spec.check_id.rsplit("-", 1)[0]
+    assert catalog.stage_of("TC-TASK-01") == "T4"
+    assert catalog.stage_of("TC-FILE-01") == "T3"
+    assert catalog.group_of("TC-DS-01") == ""
+    assert catalog.stage_of("TC-DS-01") == ""
     assert catalog.group("TC-DS") is not None
-    assert catalog.by_group("TC-SYS") == ()
+    assert catalog.by_group("TC-DS") == ()
 
 
+# ---------------------------------------------------------------------------
+# Связность каталога с консолью, сценариями и замечаниями
+# ---------------------------------------------------------------------------
 def test_endpoints_exist_in_console_registry():
-    """Каждый эндпоинт проверки описан в реестре консоли (единый источник)."""
-    for spec in catalog.by_group("TC-TASK"):
-        assert spec.endpoints, spec.check_id
+    """Эндпоинты проверок описаны в реестре консоли, а негативные пробы — нет."""
+    for spec in catalog.CHECKS:
         for key in spec.endpoints:
             assert ep.find(key) is not None, f"{spec.check_id}: {key}"
+        for path in spec.probe_paths:
+            assert ep.find(path) is None, (
+                f"{spec.check_id}: проба {path} не должна быть в реестре консоли — "
+                "проверка подтверждает отсутствие маршрута"
+            )
+        assert spec.endpoints or spec.probe_paths or spec.automation is None, spec.check_id
 
 
 def test_automations_are_declared():
-    """Ключи автоматических сценариев объявлены в `acceptance.checks.tasks`."""
-    automated = [spec for spec in catalog.by_group("TC-TASK") if spec.automation]
-    manual = [spec for spec in catalog.by_group("TC-TASK") if not spec.automation]
+    """Сценарии объявлены в модулях-владельцах и видны общему реестру `runner`."""
+    automated = [spec for spec in catalog.CHECKS if spec.automation]
+    manual = [spec for spec in catalog.CHECKS if not spec.automation]
 
-    assert len(automated) == 7
-    assert [spec.check_id for spec in manual] == ["TC-TASK-08"]
+    assert [spec.check_id for spec in manual] == list(MANUAL_CHECKS)
     for spec in automated:
-        assert check_tasks.scenario(spec) is not None, spec.check_id
-    assert check_tasks.scenario(catalog.find("TC-TASK-08")) is None
-    assert "tasks.external_observation" in check_tasks.AUTOMATIONS
+        assert runner.scenario(spec) is not None, spec.check_id
+    for spec in manual:
+        assert runner.scenario(spec) is None, spec.check_id
+
+    names = runner.automation_names()
+    # 38 проверок автоматизированы; 39-й сценарий (`tasks.external_observation`) —
+    # вспомогательный: он подтверждает ручную проверку TC-TASK-08 (BR-R5)
+    assert len(names) == len(automated) + 1 == 39
+    assert len(set(names)) == len(names)
+    assert "tasks.external_observation" in names
+    assert "files.round_trip" in names
+    assert "loads.missing_path" not in names
 
 
 def test_check_specs_are_filled_for_report():
-    """Описания проверок пригодны для отчёта: шаги, ожидание и трассировка заполнены."""
+    """Описания проверок пригодны для отчёта: шаги, ожидание, модуль и трассировка."""
     for spec in catalog.CHECKS:
         assert isinstance(spec, CheckSpec)
-        assert spec.steps
-        assert spec.expected
-        assert spec.requirement
-        assert spec.module == "Task service"
+        assert spec.steps, spec.check_id
+        assert spec.expected, spec.check_id
+        assert spec.requirement, spec.check_id
+        assert spec.module in notes.MODULES, spec.check_id
+        assert spec.title, spec.check_id
         assert spec.class_label
+
+
+def test_blocked_checks_have_known_defects():
+    """У проверок с ожидаемым дефектом API есть шаблон замечания (FR-T7)."""
+    blocked = [spec for spec in catalog.CHECKS if spec.blocked_by_api]
+
+    assert [spec.check_id for spec in blocked] == [
+        "TC-FILE-10",
+        "TC-REC-05",
+        "TC-LOAD-02",
+        "TC-LOAD-03",
+    ]
+    for spec in blocked:
+        note = notes.note_from_check(spec.check_id)
+        assert note is not None, spec.check_id
+        assert note.priority == "P0", spec.check_id
+        assert note.source == notes.SOURCE_AUTO
+        assert note.check_id == spec.check_id

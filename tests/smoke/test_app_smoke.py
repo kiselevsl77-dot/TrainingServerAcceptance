@@ -19,8 +19,10 @@ from streamlit.testing.v1 import AppTest
 
 from acceptance import endpoints as ep
 from acceptance import overrides as overrides_api
+from acceptance import report as report_api
 from acceptance import task_snapshot as task_snapshot_api
 from acceptance.api import Apis
+from acceptance.checks import catalog
 from acceptance.config import PultConfig
 from acceptance.exchange import build_console_client
 from acceptance.http_log import Journal, LoggingTransport
@@ -348,13 +350,67 @@ def test_logs_screen_lists_journal_records(pult):
     assert any("Только ошибки" in checkbox.label for checkbox in app.checkbox)
 
 
-def test_planned_screens_render_as_stubs(pult):
-    app, _ = pult
+def test_logs_screen_filters_by_check_label(pult_with_session):
+    """Журнал: метка проверки из журнала доступна в пикере и фильтрует записи (FR-T6, T3)."""
+    app, journal, _store = pult_with_session
+    app = _open(app, "checks")
+    options = _widget(app, "selectbox", "checks_selected").options
+    _widget(app, "selectbox", "checks_selected").select(
+        next(option for option in options if option.startswith("TC-TASK-02"))
+    )
+    app.run()
+    next(button for button in app.button if button.key == "checks_run_TC-TASK-02").click().run()
+    assert journal.for_label("TC-TASK-02")
 
-    for screen in ("report",):
-        app = _open(app, screen)
-        assert not app.exception, f"экран {screen} упал"
-        assert app.info, f"экран {screen} не показал заглушку"
+    app = _open(app, "logs")
+
+    assert not app.exception
+    labels = _widget(app, "selectbox", "logs_label_choice").options
+    assert "TC-TASK-02" in labels
+    assert _widget(app, "selectbox", "logs_task").options[0].startswith("— все задачи —")
+
+    _widget(app, "selectbox", "logs_label_choice").select("TC-TASK-02")
+    app.run()
+    assert not app.exception
+    assert not any("По заданным фильтрам записей нет" in box.value for box in app.warning)
+
+    _widget(app, "text_input", "logs_text").set_value("/api/__nothing__").run()
+    assert any("По заданным фильтрам записей нет" in box.value for box in app.warning)
+
+
+def test_report_screen_renders_kit(pult_with_session):
+    """Экран «Отчёт испытаний»: KPI готовности, «чего не хватает» и предпросмотр (FR-T8/T9)."""
+    app, _journal, _store = pult_with_session
+    app = _open(app, "report")
+
+    assert not app.exception
+    assert app.title[0].value == "Отчёт испытаний"
+    values = _metric_values(app)
+    assert values["Проверки"].startswith("0 / ")
+    assert "Успех / отказ" in values
+    assert any("Отчёт неполон" in box.label for box in app.expander)
+    texts = " ".join(markdown.value for markdown in app.markdown)
+    assert "Протокол испытаний сервера обучения" in texts  # предпросмотр отчёта сформирован
+
+
+def test_report_screen_saves_kit_to_artifacts(
+    pult_with_session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Кнопка «в артефакты» сохраняет md/json с приложениями и регистрирует их в сессии."""
+    app, _journal, store = pult_with_session
+    monkeypatch.setattr(report_api, "REPORT_DIR", tmp_path / "reports")
+    monkeypatch.setattr(report_api, "ensure_dirs", lambda: None)
+    app = _open(app, "report")
+
+    next(button for button in app.button if button.key == "report_save_kit").click().run()
+
+    assert not app.exception
+    written = sorted(path.name for path in (tmp_path / "reports").iterdir())
+    assert any(name.endswith(".md") for name in written)
+    assert any(name.endswith(".json") for name in written)
+    assert any(name.endswith("_checks.csv") for name in written)
+    kinds = [item["kind"] for item in store.session.artifacts]
+    assert any(kind.startswith("report:") for kind in kinds)
 
 
 # ---------------------------------------------------------------------------
@@ -621,14 +677,27 @@ def test_tasks_screen_watches_external_task(pult_with_session):
 # Экран «Чек-лист проверок» — группа TC-TASK (FR-T4) — этап T4
 # ---------------------------------------------------------------------------
 def test_checks_screen_shows_task_group(pult_with_session):
-    """Чек-лист: 8 проверок группы TC-TASK, шаги и ожидание в карточке проверки."""
+    """Чек-лист: сводка по каталогу (41/69), фильтр по группе TC-TASK, шаги в карточке (FR-T4)."""
     app, _journal, _store = pult_with_session
     app = _open(app, "checks")
 
     assert not app.exception
     assert app.title[0].value == "Чек-лист проверок"
     values = _metric_values(app)
-    assert values["Проверок в группе"] == "8"
+    assert values["Проверок в каталоге"] == "41 / 69"
+    assert values["В выборке"] == "41"
+    assert values["Не выполнено"] == "41"
+    assert values["Выполнено"] == "0"
+
+    options = _widget(app, "selectbox", "checks_group").options
+    _widget(app, "selectbox", "checks_group").select(
+        next(option for option in options if option.startswith("TC-TASK ·"))
+    )
+    app.run()
+
+    assert not app.exception
+    values = _metric_values(app)
+    assert values["В выборке"] == "8"
     assert values["Не выполнено"] == "8"
     assert values["Выполнено"] == "0"
 
@@ -645,6 +714,32 @@ def test_checks_screen_shows_task_group(pult_with_session):
     texts = " ".join(markdown.value for markdown in app.markdown)
     assert "GET /api/tasks/" in texts  # шаг проверки TC-TASK-02
     assert any(box.value for box in app.info)  # ожидаемый результат проверки
+
+
+def test_checks_screen_filters_by_class_and_search(pult_with_session):
+    """Чек-лист: фильтры по классу и поиску отбирают только нужные проверки (этап T3)."""
+    expected = [
+        spec.check_id
+        for group in catalog.groups(implemented_only=True)
+        for spec in group.checks
+        if str(spec.check_class) == "live"
+    ]
+    app, _journal, _store = pult_with_session
+    app = _open(app, "checks")
+
+    _widget(app, "multiselect", "checks_filter_class").select("live")
+    app.run()
+
+    assert not app.exception
+    live_rows = app.dataframe[0].value.to_dict("records")
+    assert [row["ID"] for row in live_rows] == expected
+    assert _metric_values(app)["В выборке"] == str(len(expected))
+
+    _widget(app, "text_input", "checks_filter_text").set_value("TC-LOAD-07").run()
+
+    assert not app.exception
+    assert _metric_values(app)["В выборке"] == "0"
+    assert any("По заданным фильтрам проверок нет" in box.value for box in app.info)
 
 
 def test_checks_screen_runs_scenario_and_records_result(pult_with_session):

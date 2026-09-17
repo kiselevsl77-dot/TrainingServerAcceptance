@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 
@@ -71,9 +73,25 @@ def _render_records(runtime: state.Runtime) -> None:
         st.info("Журнал пуст: с момента запуска пульта запросов к серверу не было.")
         return
 
-    col_errors, col_label, col_text, col_rows = st.columns([1, 2, 2, 1])
+    session = state.current_session()
+    available_labels = sorted({record.label for record in records if record.label})
+    task_ids = sorted(
+        {
+            str(task.get("task_id"))
+            for task in ((session.tasks if session is not None else None) or [])
+            if task.get("task_id")
+        }
+    )
+
+    col_errors, col_label, col_task, col_text, col_rows = st.columns([1, 2, 2, 2, 1])
     only_errors = col_errors.checkbox("Только ошибки", key="logs_only_errors")
-    label = col_label.text_input("Метка (id проверки)", key="logs_label")
+    label = _label_filter(col_label, available_labels)
+    task_id = col_task.selectbox(
+        "Задача (`task_id`)",
+        ["— все задачи —", *task_ids],
+        key="logs_task",
+        help="Фильтр по задаче: в записи журнала остаётся `task_id` из пути запроса.",
+    )
     needle = col_text.text_input("Поиск по пути/ошибке", key="logs_text")
     rows_limit = col_rows.number_input(
         "Строк",
@@ -87,7 +105,13 @@ def _render_records(runtime: state.Runtime) -> None:
     selected = [
         record
         for record in reversed(records)
-        if _matches(record, only_errors=only_errors, label=label, needle=needle)
+        if _matches(
+            record,
+            only_errors=only_errors,
+            label=label,
+            needle=needle,
+            task_id="" if task_id.startswith("—") else task_id,
+        )
     ][: int(rows_limit)]
 
     if not selected:
@@ -180,12 +204,31 @@ def _render_files(session: TestSession | None, runtime: state.Runtime) -> None:
     st.code("\n".join(lines) if lines else "(журнал пуст)", language="text")
 
 
+def _label_filter(column: Any, available: Sequence[str]) -> str:
+    """Фильтр по метке проверки: выбор из журнала либо ручной ввод своей метки."""
+    options = ["— все метки —", *available, "другая метка…"]
+    chosen = str(
+        column.selectbox(
+            "Метка (id проверки)",
+            options,
+            key="logs_label_choice",
+            help="Метки берутся из журнала: запросы проверок помечаются их id (`TC-…`).",
+        )
+    )
+    if chosen.startswith("—"):
+        return ""
+    if chosen.startswith("другая"):
+        return str(column.text_input("Своя метка", key="logs_label_manual"))
+    return chosen
+
+
 def _matches(
     record: HttpExchange,
     *,
     only_errors: bool,
     label: str,
     needle: str,
+    task_id: str = "",
 ) -> bool:
     """Проверяет запись журнала на соответствие фильтрам экрана."""
     if only_errors and not record.is_error:
@@ -193,6 +236,10 @@ def _matches(
 
     expected_label = label.strip()
     if expected_label and (record.label or "") != expected_label:
+        return False
+
+    expected_task = task_id.strip()
+    if expected_task and expected_task not in record.url:
         return False
 
     text = needle.strip().lower()

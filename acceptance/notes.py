@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
@@ -111,13 +112,15 @@ def new_note(
     )
 
 
-def sorted_notes(notes: list[dict[str, Any] | ApiNote]) -> list[ApiNote]:
+def sorted_notes(notes: Sequence[dict[str, Any] | ApiNote]) -> list[ApiNote]:
     """Замечания в порядке отчёта: приоритет, затем время создания."""
     restored = [note if isinstance(note, ApiNote) else ApiNote.from_dict(note) for note in notes]
     return sorted(restored, key=lambda note: (note.priority_rank, note.created_at))
 
 
-def notes_by_priority(notes: list[dict[str, Any] | ApiNote]) -> dict[str, list[ApiNote]]:
+def notes_by_priority(
+    notes: Sequence[dict[str, Any] | ApiNote],
+) -> dict[str, list[ApiNote]]:
     """Замечания, сгруппированные по приоритету (P0/P1/P2)."""
     grouped: dict[str, list[ApiNote]] = {priority: [] for priority in PRIORITIES}
     for note in sorted_notes(notes):
@@ -125,7 +128,7 @@ def notes_by_priority(notes: list[dict[str, Any] | ApiNote]) -> dict[str, list[A
     return grouped
 
 
-def has_note(notes: list[dict[str, Any] | ApiNote], title_prefix: str) -> bool:
+def has_note(notes: Sequence[dict[str, Any] | ApiNote], title_prefix: str) -> bool:
     """True, если замечание с таким началом заголовка уже зарегистрировано."""
     prefix = title_prefix.strip().lower()
     return any(
@@ -363,3 +366,51 @@ def known_defect_notes() -> list[ApiNote]:
 def prospective_requirements() -> list[dict[str, str]]:
     """Перспективные требования к API (раздел отчёта, не блокирует испытания)."""
     return [dict(item) for item in PROSPECTIVE_REQUIREMENTS]
+
+
+# ---------------------------------------------------------------------------
+# Дефекты API и проверки чек-листа (этап T3, FR-T7)
+# ---------------------------------------------------------------------------
+#: Проверка чек-листа → заголовок известного дефекта (`KNOWN_DEFECTS`).
+#: По этой связи движок формирует замечание автоматически, когда проверка получает
+#: статус «блокировано API»: испытателю не нужно искать текст замечания вручную.
+DEFECT_BY_CHECK: dict[str, str] = {
+    "TC-FILE-10": "Скачивание файлов с не-ASCII именами",
+    "TC-REC-05": "Скачивание файлов с не-ASCII именами",
+    "TC-REC-04": "Нет сущности «субдатасет» и связи «запись ↔ пара RAW+markup»",
+    "TC-FILE-05": "GET /api/data/files игнорирует limit/offset",
+    "TC-FILE-09": "Скачивание отдаёт файл целиком: нет Content-Length, Range, ETag",
+    "TC-LOAD-02": "В GET /api/loads/list отсутствует phase_connection",
+    "TC-LOAD-03": "В GET /api/loads/list отсутствует phase_connection",
+    "TC-LOAD-06": "Удаление нагрузки отсутствует, категория — свободный текст",
+}
+
+
+def defect_for(check_id: str) -> dict[str, str] | None:
+    """Известный дефект API, связанный с проверкой чек-листа (None — связи нет)."""
+    title = DEFECT_BY_CHECK.get(str(check_id).strip().upper())
+    if not title:
+        return None
+    return next(
+        (dict(defect) for defect in KNOWN_DEFECTS if title.lower() in defect["title"].lower()),
+        None,
+    )
+
+
+def note_from_check(check_id: str, *, evidence: str = "") -> ApiNote | None:
+    """Готовое замечание к API по проверке, для которой известен дефект (FR-T7)."""
+    defect = defect_for(check_id)
+    if defect is None:
+        return None
+    return new_note(
+        defect["title"],
+        module=defect["module"],
+        endpoint=defect["endpoint"],
+        priority=defect["priority"],
+        fact=defect["fact"],
+        expected=defect["expected"],
+        reproduction=defect["reproduction"],
+        check_id=str(check_id).strip().upper(),
+        evidence=evidence,
+        source=SOURCE_AUTO,
+    )

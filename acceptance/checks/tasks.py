@@ -17,21 +17,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
-import httpx
 from pydantic import ValidationError
 
-from acceptance.checks.engine import record_result as save_result
-from acceptance.checks.engine import start_check
-from acceptance.checks.registry import CheckResult, CheckSpec, CheckStatus
-from acceptance.http_log import Journal
+from acceptance.checks.registry import CheckStatus
+from acceptance.checks.runner import (
+    AutomationContext,
+    CheckOutcome,
+    PreconditionError,
+    RawProbe,
+    automate,
+    evaluate,
+    scenario,
+)
 from acceptance.session import ORIGIN_EXTERNAL, TestSession, task_history
 from acceptance.tasks_monitor import (
     TASK_COMMANDS,
-    TaskMonitor,
     current_status,
     parse_status,
     status_label,
@@ -44,8 +47,18 @@ from client.errors import (
     ValidationApiError,
 )
 from client.schemas import CeleryTask, TaskStatus, TaskType, TaskWithRuntimes
-from client.tasks import TasksApi
 from lib.period import date_time_bound, day_bounds
+
+__all__ = [
+    "AUTOMATIONS",
+    "AutomationContext",
+    "CheckOutcome",
+    "PreconditionError",
+    "RawProbe",
+    "automate",
+    "evaluate",
+    "scenario",
+]
 
 #: Задача для проверки «неизвестная задача», если оператор не задал свою (BR-R7).
 DEFAULT_UNKNOWN_TASK = "00000000-0000-4000-8000-000000000000"
@@ -53,73 +66,6 @@ DEFAULT_UNKNOWN_TASK = "00000000-0000-4000-8000-000000000000"
 #: Предел `limit` в пробе «список целиком» (пульт читает список полностью:
 #: `acceptance.ui.state.LOAD_TASK_CAP`; спецификация верхнюю границу не объявляет).
 LIST_PROBE_LIMIT = 500
-
-
-@dataclass
-class CheckOutcome:
-    """Итог автоматического сценария: статус, вердикт, доказательства."""
-
-    status: CheckStatus
-    verdict: str = ""
-    evidence: dict[str, Any] = field(default_factory=dict)
-    note: str = ""
-
-    @property
-    def is_passed(self) -> bool:
-        """True, если проверка пройдена."""
-        return self.status == CheckStatus.PASSED
-
-
-class PreconditionError(Exception):
-    """Проверку невозможно выполнить: не задано предусловие (нет задачи, нет монитора).
-
-    Отличается от «отказа» проверки: оператору нужно выбрать задачу, а не разбираться
-    с дефектом API. Такие проверки получают статус «пропущена».
-    """
-
-
-@dataclass
-class AutomationContext:
-    """Что нужно сценарию: сессия, описание проверки, API задач, монитор, параметры."""
-
-    session: TestSession
-    spec: CheckSpec
-    tasks: TasksApi
-    journal: Journal | None = None
-    monitor: TaskMonitor | None = None
-    params: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def task_id(self) -> str:
-        """Задача, с которой работает сценарий (`task_id` из параметров)."""
-        return str(self.params.get("task_id") or "").strip()
-
-    @property
-    def action(self) -> str:
-        """Команда FSM-1 для сценария идемпотентности (`pause` по умолчанию)."""
-        return str(self.params.get("action") or "pause").strip().lower()
-
-    def require_task(self) -> str:
-        """`task_id` для сценария.
-
-        Raises:
-            PreconditionError: если задача не задана — оператор не выбрал её в карточке.
-        """
-        if not self.task_id:
-            raise PreconditionError(
-                "не выбран task_id: откройте карточку задачи на экране «Задачи»"
-            )
-        return self.task_id
-
-    def require_monitor(self) -> TaskMonitor:
-        """Монитор для сценария.
-
-        Raises:
-            PreconditionError: если монитор недоступен (стенд не настроен).
-        """
-        if self.monitor is None:
-            raise PreconditionError("монитор задач недоступен: не задан адрес испытуемого сервера")
-        return self.monitor
 
 
 def observed_chain(session: TestSession, task_id: str) -> list[str]:
@@ -190,7 +136,7 @@ def chain_outcome(
 def fetch_card(context: AutomationContext, task_id: str) -> tuple[TaskWithRuntimes | None, str]:
     """Читает карточку задачи, возвращая текст ошибки вместо исключения."""
     try:
-        return context.tasks.get_task(task_id), ""
+        return context.tasks_api().get_task(task_id), ""
     except NotFoundError as exc:
         return None, f"404: {exc}"
     except ValidationError as exc:
@@ -257,7 +203,7 @@ def _date_only_probe(context: AutomationContext) -> str:
     (`lib.period.day_bounds`). Факт фиксируется, но вердикт не портит.
     """
     try:
-        context.tasks.list_tasks(start_date=date.today().isoformat())
+        context.tasks_api().list_tasks(start_date=date.today().isoformat())
     except ValidationApiError as exc:
         return f"{exc.status_code} — «чистая» дата отклонена сервером"
     except ApiError as exc:
@@ -273,7 +219,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
     facts: dict[str, Any] = {}
 
     try:
-        base = context.tasks.list_tasks()
+        base = context.tasks_api().list_tasks()
     except (ApiError, ClientError, ServerUnavailableError) as exc:
         return CheckOutcome(CheckStatus.FAILED, f"список задач не получен: {exc}", {})
 
@@ -296,7 +242,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
     present_types = sorted({str(task.type) for task in base.tasks})
     facts["types"] = present_types
     for task_type in present_types[:2]:
-        filtered = context.tasks.list_tasks(task_type=task_type)
+        filtered = context.tasks_api().list_tasks(task_type=task_type)
         wrong = [str(task.id) for task in filtered.tasks if str(task.type) != task_type]
         facts[f"filter_task_type={task_type}"] = len(filtered.tasks)
         if wrong:
@@ -305,7 +251,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
             problems.append(f"фильтр task_type={task_type} увеличил count")
 
     # статуса в элементе списка нет: проверяется только отзывчивость фильтра
-    status_page = context.tasks.list_tasks(status=str(TaskStatus.COMPLETED))
+    status_page = context.tasks_api().list_tasks(status=str(TaskStatus.COMPLETED))
     facts["filter_status=completed"] = status_page.count
     facts["status_filter_note"] = (
         "статус задачи в GET /api/tasks/ не возвращается (состав не проверить)"
@@ -314,7 +260,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
     # период создания: спецификация объявляет параметры как `format: date-time`
     today = date.today()
     start_iso, end_iso = day_bounds(today - timedelta(days=7), today)
-    period_page = context.tasks.list_tasks(start_date=start_iso, end_date=end_iso)
+    period_page = context.tasks_api().list_tasks(start_date=start_iso, end_date=end_iso)
     facts["filter_period"] = f"{start_iso}..{end_iso} → {period_page.count}"
     if period_page.count > base.count:
         problems.append("фильтр периода вернул больше задач, чем список без фильтров")
@@ -322,7 +268,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
     # границы периода: start_date включающая, end_date исключающая (замечание P2)
     yesterday_start = date_time_bound(today - timedelta(days=1))
     yesterday_end = date_time_bound(today)
-    yesterday = context.tasks.list_tasks(start_date=yesterday_start, end_date=yesterday_end)
+    yesterday = context.tasks_api().list_tasks(start_date=yesterday_start, end_date=yesterday_end)
     facts["filter_period_yesterday"] = (
         f"{yesterday_start}<=created_at<{yesterday_end} → {yesterday.count} из {base.count}"
     )
@@ -335,12 +281,12 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
         "передаётся как `YYYY-MM-DDTHH:MM:SS` (пульт — `lib.period.day_bounds`)"
     )
 
-    first_page = context.tasks.list_tasks(limit=1)
+    first_page = context.tasks_api().list_tasks(limit=1)
     facts["limit=1"] = len(first_page.tasks)
     if len(first_page.tasks) > 1:
         problems.append(f"limit=1 вернул {len(first_page.tasks)} задач — пагинация не соблюдается")
     if base.count > 1:
-        second_page = context.tasks.list_tasks(limit=1, offset=1)
+        second_page = context.tasks_api().list_tasks(limit=1, offset=1)
         ids = {str(task.id) for task in first_page.tasks}
         facts["offset=1"] = len(second_page.tasks)
         if ids and ids & {str(task.id) for task in second_page.tasks}:
@@ -349,7 +295,7 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
     # верхняя граница `limit` не объявлена спецификацией: пульт читает список целиком
     # (`acceptance.ui.state.LOAD_TASK_CAP`) и сортирует его сам — на этом держатся
     # виды «Активные | Архив | Все» и клиентская пагинация экрана «Задачи»
-    big_page = context.tasks.list_tasks(limit=LIST_PROBE_LIMIT)
+    big_page = context.tasks_api().list_tasks(limit=LIST_PROBE_LIMIT)
     facts["limit_uncapped"] = (
         f"limit={LIST_PROBE_LIMIT} → {len(big_page.tasks)} из {big_page.count}"
     )
@@ -549,7 +495,7 @@ def _unknown_task(context: AutomationContext) -> CheckOutcome:
     """Проверяет поведение сервера на неизвестный `task_id` (BR-R7)."""
     probe = str(context.params.get("unknown_task_id") or DEFAULT_UNKNOWN_TASK)
     try:
-        card = context.tasks.get_task(probe)
+        card = context.tasks_api().get_task(probe)
     except NotFoundError as exc:
         return CheckOutcome(
             CheckStatus.PASSED,
@@ -643,60 +589,3 @@ AUTOMATIONS: dict[str, Callable[[AutomationContext], CheckOutcome]] = {
     "tasks.unknown_task": _unknown_task,
     "tasks.external_observation": external_observation,
 }
-
-
-def scenario(spec: CheckSpec) -> Callable[[AutomationContext], CheckOutcome] | None:
-    """Сценарий проверки по её описанию (None — если сценарий не автоматизирован)."""
-    return AUTOMATIONS.get(str(spec.automation or ""))
-
-
-def evaluate(context: AutomationContext, *, automation: str = "") -> CheckOutcome | None:
-    """Выполняет сценарий проверки и возвращает её итог (None — если сценария нет).
-
-    Args:
-        context: сессия, описание проверки, API задач, монитор и параметры.
-        automation: явный ключ сценария — для ручных проверок, где оператор
-            подтверждает факт (`tasks.external_observation` для TC-TASK-08).
-
-    Raises:
-        Exception: ошибки программирования (опечатки в сценарии) не подавляются;
-            отказы API, обрыв связи и отклонения схемы превращаются в вердикт
-            «отказ» — проверка должна завершаться фактом, а не падением пульта.
-    """
-    function = AUTOMATIONS.get(automation or str(context.spec.automation or ""))
-    if function is None:
-        return None
-    try:
-        return function(context)
-    except PreconditionError as exc:
-        return CheckOutcome(CheckStatus.SKIPPED, str(exc), {})
-    except (ApiError, ClientError, httpx.HTTPError, ValidationError) as exc:
-        return CheckOutcome(
-            CheckStatus.FAILED,
-            f"сценарий не выполнен ({type(exc).__name__}): {exc}",
-            {"error": str(exc)},
-        )
-
-
-def automate(context: AutomationContext) -> CheckResult | None:
-    """Прогоняет автоматический сценарий через движок и сохраняет результат в сессии.
-
-    Returns:
-        Результат проверки или None, если у проверки нет автоматического сценария
-        (ручные проверки отмечает оператор через `engine.mark`).
-    """
-    if scenario(context.spec) is None:
-        return None
-
-    with start_check(context.spec, journal=context.journal, params=context.params) as run:
-        outcome = evaluate(context) or CheckOutcome(
-            CheckStatus.SKIPPED, "сценарий проверки не определён", {}
-        )
-        result = run.finish(
-            outcome.status,
-            verdict=outcome.verdict,
-            operator_note=outcome.note,
-            evidence=outcome.evidence,
-        )
-    save_result(context.session, result)
-    return result

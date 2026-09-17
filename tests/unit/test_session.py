@@ -10,6 +10,8 @@ import pytest
 from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.notes import new_note
 from acceptance.session import (
+    ENTITY_CREATED,
+    ENTITY_DELETED,
     ORIGIN_EXTERNAL,
     ORIGIN_PULT,
     SCHEMA_VERSION,
@@ -18,11 +20,13 @@ from acceptance.session import (
     STATUS_CLOSED,
     STATUS_DRAFT,
     STATUS_RUNNING,
+    TEST_ENTITIES_KEY,
     SessionInfo,
     add_artifact,
     add_console_call,
     add_note_to_session,
     add_task,
+    add_test_entity,
     close_session,
     collect_tool_version,
     console_calls_by_label,
@@ -33,7 +37,9 @@ from acceptance.session import (
     list_sessions,
     load_session,
     load_session_from_text,
+    mark_test_entity_deleted,
     new_session,
+    pending_test_entities,
     register_task_from_console,
     reopen_session,
     save_session,
@@ -49,6 +55,9 @@ from acceptance.session import (
 )
 from acceptance.session import (
     TestSession as SessionModel,
+)
+from acceptance.session import (
+    test_entities as session_test_entities,
 )
 
 
@@ -505,3 +514,41 @@ def test_schema_v3_file_is_read_with_defaults():
     assert restored.schema_version == 3
     assert restored.tasks == []
     assert session_meta(restored)["tasks_total"] == 0
+
+
+def test_test_entities_are_tracked_for_cleanup():
+    """Учёт `__TEST__`-сущностей (NFR-T4): создание, удаление, «не удалено» и схема v4."""
+    session = _session(Path("."))
+    created = add_test_entity(
+        session, entity_id="__TEST__file-1", entity_type="файл RAW", check_id="TC-FILE-12"
+    )
+
+    assert created["action"] == ENTITY_CREATED
+    assert created["id"] == "__TEST__file-1"
+    assert created["at"]
+    assert session.counters[TEST_ENTITIES_KEY] == [created]
+    assert [item["action"] for item in session_test_entities(session)] == [ENTITY_CREATED]
+    assert [item["id"] for item in pending_test_entities(session)] == ["__TEST__file-1"]
+
+    deleted = mark_test_entity_deleted(
+        session, "__TEST__file-1", check_id="TC-FILE-13", note="самоочистка"
+    )
+
+    assert deleted is not None
+    assert deleted["action"] == ENTITY_DELETED
+    assert deleted["check_id"] == "TC-FILE-13"
+    assert deleted["type"] == "файл RAW"  # тип берётся из записи о создании
+    assert pending_test_entities(session) == []
+    assert mark_test_entity_deleted(session, "__TEST__unknown") is None
+
+    events = [item["event"] for item in session.history]
+    assert "test_entity_created" in events
+    assert "test_entity_deleted" in events
+
+    restored = load_session_from_text(session_json(session))
+    assert restored.schema_version == SCHEMA_VERSION
+    assert [item["id"] for item in session_test_entities(restored)] == [
+        "__TEST__file-1",
+        "__TEST__file-1",
+    ]
+    assert pending_test_entities(restored) == []

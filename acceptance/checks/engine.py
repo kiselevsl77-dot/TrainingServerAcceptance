@@ -22,7 +22,9 @@ from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from typing import Any, Literal
 
+from acceptance import notes
 from acceptance.checks.registry import (
+    CheckClass,
     CheckResult,
     CheckSpec,
     CheckStatus,
@@ -30,7 +32,12 @@ from acceptance.checks.registry import (
 )
 from acceptance.http_log import Journal, label_context
 from acceptance.logging_setup import check_context, log_event
-from acceptance.session import TestSession, now_iso
+from acceptance.session import (
+    TestSession,
+    add_artifact,
+    add_note_to_session,
+    now_iso,
+)
 
 #: Статусы, которые оператор ставит вручную (без автоматического прогона).
 MANUAL_STATUSES: tuple[CheckStatus, ...] = (
@@ -356,3 +363,200 @@ def check_confirmation(
 def status_options() -> tuple[CheckStatus, ...]:
     """Статусы, доступные оператору для ручной отметки проверки."""
     return MANUAL_STATUSES
+
+
+# ---------------------------------------------------------------------------
+# Артефакты, замечания по дефектам и сводка чек-листа (этап T3)
+# ---------------------------------------------------------------------------
+def attach_artifact(
+    session: TestSession,
+    result: CheckResult,
+    *,
+    kind: str,
+    path: Any,
+    note: str = "",
+    size_bytes: int | None = None,
+) -> dict[str, Any]:
+    """Регистрирует выгруженный файл как доказательство проверки (артефакт сессии).
+
+    Артефакт попадает в `session.artifacts` (приложения отчёта) и в доказательства
+    результата по имени файла, поэтому по вердикту видно, чем он подтверждён.
+    """
+    record = add_artifact(
+        session,
+        kind=kind,
+        path=path,
+        size_bytes=size_bytes,
+        note=note or f"доказательство проверки {result.check_id}",
+    )
+    names = list(result.evidence.get("artifacts") or [])
+    names.append(str(record["name"]))
+    result.evidence["artifacts"] = names
+    if any(str(item.get("check_id")) == result.check_id for item in session.checks):
+        record_result(session, result)
+    return record
+
+
+def ensure_defect_note(
+    session: TestSession, spec: CheckSpec, result: CheckResult
+) -> dict[str, Any] | None:
+    """Автоматическое замечание к API по статусу «блокировано API» (FR-T7).
+
+    Замечание берётся из реестра известных дефектов (`notes.note_from_check`) и
+    создаётся только один раз: дедупликация по заголовку идёт в `add_note_to_session`.
+
+    Returns:
+        Созданное замечание (dict) или None, если замечание не требуется/уже есть.
+    """
+    if result.status != CheckStatus.BLOCKED or not spec.blocked_by_api:
+        return None
+    evidence = (
+        f"проверка {spec.check_id}; статус «блокировано API»: {result.verdict or 'без вердикта'}"
+    )
+    note = notes.note_from_check(spec.check_id, evidence=evidence)
+    if note is None:
+        return None
+    before = len(session.notes)
+    add_note_to_session(session, note)
+    if len(session.notes) == before:
+        return None
+    log_event(
+        "api_note_auto_created",
+        f"Замечание к API сформировано автоматически: {note.title}",
+        module="checks",
+        check_id=spec.check_id,
+        payload=note.to_dict(),
+    )
+    return note.to_dict()
+
+
+def _journal_range(journal_from: int | None, journal_to: int | None) -> str:
+    """Диапазон записей журнала проверки в виде строки (для таблиц и отчёта)."""
+    if journal_from is None:
+        return "—"
+    if journal_to is None or journal_to == journal_from:
+        return f"#{journal_from}"
+    return f"#{journal_from}…{journal_to}"
+
+
+def checklist_rows(
+    session: TestSession,
+    *,
+    groups: Sequence[str] | None = None,
+    statuses: Sequence[Any] | None = None,
+    classes: Sequence[Any] | None = None,
+    text: str = "",
+    only_pending: bool = False,
+) -> list[dict[str, Any]]:
+    """Строки чек-листа для экрана и отчёта (одна логика фильтрации на весь пульт).
+
+    Args:
+        session: сессия испытаний (вердикты берутся из `session.checks`).
+        groups: ключи групп (`TC-TASK`); пусто — все наполненные группы.
+        statuses: статусы (`CheckStatus` или строки) для фильтра.
+        classes: классы проверок (`CheckClass` или строки).
+        text: подстрока поиска по id, названию, требованиям и модулю.
+        only_pending: только проверки без результата («не выполнена»).
+    """
+    from acceptance.checks import catalog  # локальный импорт: каталог ссылается на реестр
+
+    implemented = catalog.groups(implemented_only=True)
+    if groups:
+        wanted = {str(key).strip().upper() for key in groups}
+        implemented = tuple(item for item in implemented if item.key in wanted)
+
+    wanted_statuses = {str(value) for value in statuses} if statuses else set()
+    wanted_classes = {str(value) for value in classes} if classes else set()
+    needle = text.strip().lower()
+
+    rows: list[dict[str, Any]] = []
+    for group in implemented:
+        for spec in group.checks:
+            result = result_of(session, spec.check_id)
+            if wanted_statuses and str(result.status) not in wanted_statuses:
+                continue
+            if wanted_classes and str(spec.check_class) not in wanted_classes:
+                continue
+            if only_pending and result.status != CheckStatus.NOT_RUN:
+                continue
+            if (
+                needle
+                and needle
+                not in " ".join((spec.check_id, spec.title, spec.requirement, spec.module)).lower()
+            ):
+                continue
+            rows.append(
+                {
+                    "check_id": spec.check_id,
+                    "group": group.key,
+                    "group_title": group.title,
+                    "module": spec.module,
+                    "title": spec.title,
+                    "requirement": spec.requirement,
+                    "check_class": str(spec.check_class),
+                    "class_label": spec.class_label,
+                    "status": str(result.status),
+                    "icon": result.icon,
+                    "verdict": result.verdict,
+                    "operator_note": result.operator_note,
+                    "evidence": dict(result.evidence),
+                    "journal_from": result.journal_from,
+                    "journal_to": result.journal_to,
+                    "journal_range": _journal_range(result.journal_from, result.journal_to),
+                    "duration_ms": result.duration_ms,
+                    "started_at": result.started_at,
+                    "ended_at": result.ended_at,
+                    "expected": spec.expected,
+                    "automation": spec.automation,
+                    "blocked_by_api": spec.blocked_by_api,
+                    "is_done": result.is_done,
+                }
+            )
+    return rows
+
+
+def overall_stats(session: TestSession) -> dict[str, Any]:
+    """Сводка чек-листа по всем наполненным группам (KPI экрана и отчёт)."""
+    from acceptance.checks import catalog
+
+    ids = [spec.check_id for spec in catalog.CHECKS]
+    summary = summarize([result_of(session, check_id) for check_id in ids])
+    summary["implemented"] = len(ids)
+    summary["program_total"] = catalog.PLANNED_CHECKS_TOTAL
+    return summary
+
+
+def run_checks(
+    session: TestSession,
+    specs: Sequence[CheckSpec],
+    *,
+    context_factory: Any,
+    only_tech: bool = True,
+) -> list[CheckResult]:
+    """Групповой прогон автоматических сценариев (кнопка «выполнить дешёвые проверки»).
+
+    Args:
+        session: сессия испытаний (результаты складываются в `session.checks`).
+        specs: проверки группы (в порядке каталога).
+        context_factory: функция `spec → AutomationContext` (её готовит экран).
+        only_tech: выполнять только класс `tech` (безопасные проверки); `live`/`heavy`
+            запускаются поодиночке с подтверждением оператора (NFR-T4, FR-T10).
+
+    Returns:
+        Результаты выполненных проверок (проверки без сценария пропускаются).
+    """
+    from acceptance.checks import runner  # локальный импорт: runner зависит от движка
+
+    results: list[CheckResult] = []
+    for spec in specs:
+        if only_tech and spec.check_class != CheckClass.TECH:
+            continue
+        if runner.scenario(spec) is None:
+            continue
+        context = context_factory(spec)
+        result = runner.automate(context)
+        if result is None:
+            continue
+        ensure_defect_note(session, spec, result)
+        results.append(result)
+    return results

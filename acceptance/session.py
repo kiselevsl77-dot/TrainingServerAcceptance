@@ -385,6 +385,106 @@ def set_markup_stats(
     return payload
 
 
+# ---------------------------------------------------------------------------
+# `__TEST__`-сущности: учёт созданного для самоочистки (NFR-T4, TC-CLEAN-01/02)
+# ---------------------------------------------------------------------------
+#: Ключ счётчика сессии со списком тестовых сущностей (`.counters["test_entities"]`).
+TEST_ENTITIES_KEY = "test_entities"
+
+#: Действия с тестовой сущностью.
+ENTITY_CREATED = "создан"
+ENTITY_DELETED = "удалён"
+
+
+def add_test_entity(
+    session: TestSession,
+    *,
+    entity_id: Any,
+    entity_type: str,
+    action: str = ENTITY_CREATED,
+    check_id: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Регистрирует `__TEST__`-сущность, созданную или удалённую проверкой.
+
+    Изменяющие проверки (`TC-FILE-11/12/13`, далее `TC-DS`, `TC-MOD`) обязаны
+    оставлять след: что создано, что удалено и кто это сделал (NFR-T4). Перечень
+    ведётся в `session.counters` (схема сессии не меняется) и попадает в отчёт
+    приложением «Перечень `__TEST__`-сущностей»; TC-CLEAN-01 в T9 проверяет, что
+    созданных и не удалённых сущностей не осталось.
+    """
+    stored = session.counters.get(TEST_ENTITIES_KEY)
+    if not isinstance(stored, list):
+        stored = []
+        session.counters[TEST_ENTITIES_KEY] = stored
+    record: dict[str, Any] = {
+        "id": str(entity_id),
+        "type": entity_type,
+        "action": action,
+        "at": now_iso(),
+        "check_id": check_id,
+        "note": note,
+    }
+    stored.append(record)
+    session.add_history(
+        "test_entity_created" if action == ENTITY_CREATED else "test_entity_deleted",
+        f"Тестовая сущность {entity_type} {entity_id}: {action}",
+        entity_id=str(entity_id),
+        entity_type=entity_type,
+        check_id=check_id,
+    )
+    return record
+
+
+def test_entities(session: TestSession) -> list[dict[str, Any]]:
+    """Все зарегистрированные `__TEST__`-сущности сессии (в порядке появления)."""
+    stored = session.counters.get(TEST_ENTITIES_KEY) or []
+    return [dict(item) for item in stored if isinstance(item, dict)]
+
+
+def mark_test_entity_deleted(
+    session: TestSession, entity_id: Any, *, check_id: str = "", note: str = ""
+) -> dict[str, Any] | None:
+    """Отмечает `__TEST__`-сущность удалённой (самоочистка после проверки).
+
+    Returns:
+        Запись об удалении или None, если такая сущность в сессии не регистрировалась.
+    """
+    entity_type = next(
+        (
+            str(item.get("type") or "")
+            for item in test_entities(session)
+            if str(item.get("id")) == str(entity_id)
+        ),
+        "",
+    )
+    if not entity_type:
+        return None
+    return add_test_entity(
+        session,
+        entity_id=entity_id,
+        entity_type=entity_type,
+        action=ENTITY_DELETED,
+        check_id=check_id,
+        note=note,
+    )
+
+
+def pending_test_entities(session: TestSession) -> list[dict[str, Any]]:
+    """`__TEST__`-сущности, которые созданы и ещё не удалены (вход TC-CLEAN-01)."""
+    test_entities(session)  # нормализует список в счётчике сессии
+    deleted = {
+        str(item.get("id"))
+        for item in test_entities(session)
+        if str(item.get("action")) == ENTITY_DELETED
+    }
+    return [
+        item
+        for item in test_entities(session)
+        if str(item.get("action")) == ENTITY_CREATED and str(item.get("id")) not in deleted
+    ]
+
+
 def _safe_size(path: Path) -> int:
     """Размер файла, если он есть (иначе 0)."""
     try:

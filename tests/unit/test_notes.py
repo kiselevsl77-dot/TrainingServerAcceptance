@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from acceptance.notes import (
+    DEFECT_BY_CHECK,
     KNOWN_DEFECTS,
     PRIORITIES,
     PROSPECTIVE_REQUIREMENTS,
+    SOURCE_AUTO,
     ApiNote,
+    defect_for,
     has_note,
     known_defect_notes,
     new_note,
+    note_from_check,
     notes_by_priority,
     prospective_requirements,
     sorted_notes,
@@ -69,6 +73,32 @@ def test_known_defect_notes_are_ready_to_use():
     assert {"P0", "P1", "P2"}.issubset({note.priority for note in notes})
     assert any("phase_connection" in note.title for note in notes)
     assert any("latin-1" in note.title for note in notes)
+
+
+def test_defect_for_matches_check_to_known_defect():
+    """Связь «проверка → известный дефект»: текст для замечания у ожидаемо блокированных (T3)."""
+    defect = defect_for("tc-load-02")
+
+    assert defect is not None
+    assert "phase_connection" in defect["title"]
+    assert defect["priority"] == "P0"
+    assert defect_for("TC-SYS-01") is None
+    assert set(DEFECT_BY_CHECK) <= {
+        defect_id for defect_id in DEFECT_BY_CHECK if defect_for(defect_id) is not None
+    }
+
+
+def test_note_from_check_is_ready_auto_note():
+    """`note_from_check` собирает замечание по проверке: источник «авто», факт и доказательства."""
+    note = note_from_check("tc-file-10", evidence="проверка TC-FILE-10: 404 latin-1")
+
+    assert note is not None
+    assert note.source == SOURCE_AUTO
+    assert note.check_id == "TC-FILE-10"
+    assert note.priority == "P0"
+    assert note.endpoint == "GET /api/data/file/{file_id}/download"
+    assert "проверка TC-FILE-10" in note.evidence
+    assert note_from_check("TC-SYS-01") is None
 
 
 def test_prospective_requirements_include_subdatasets():

@@ -18,7 +18,11 @@ FSM-1, метрики и решение о судьбе созданных ар�
 
 from __future__ import annotations
 
+import csv
+import io
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -27,16 +31,33 @@ from acceptance import endpoints as ep
 from acceptance import notes
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
-from acceptance.checks.registry import STATUS_ICONS, CheckSpec, CheckStatus
-from acceptance.session import TestSession
+from acceptance.checks.registry import CheckClass, CheckSpec, CheckStatus
+from acceptance.logging_setup import log_event
+from acceptance.paths import ARTIFACT_DIR, ensure_dirs
+from acceptance.session import TestSession, add_artifact
 from acceptance.tasks_monitor import TASK_COMMANDS, TaskMonitor
 from acceptance.ui import state
 from acceptance.ui.common import api_notes, check_run
 from acceptance.ui.common.flash import render_flash, set_flash
 from acceptance.ui.common.run_card import render_run_card
 
-#: Группы, доступные на экране (T4 — только TC-TASK; расширение групп — этап T3).
-AVAILABLE_GROUPS: tuple[str, ...] = ("TC-TASK",)
+#: Колонки выгрузки чек-листа (приложение к отчёту, совпадает с `report.py`).
+CHECK_COLUMNS: tuple[str, ...] = (
+    "check_id",
+    "group",
+    "class",
+    "module",
+    "title",
+    "requirement",
+    "status",
+    "verdict",
+    "operator_note",
+    "journal_from",
+    "journal_to",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+)
 
 #: Ручные отметки оператора: статус → подпись кнопки.
 MANUAL_MARKS: tuple[tuple[CheckStatus, str], ...] = (
@@ -52,15 +73,24 @@ KEY_TASK = "checks_task"
 KEY_ACTION = "checks_action"
 KEY_VERDICT = "checks_verdict"
 KEY_NOTE = "checks_note"
+KEY_STATUS = "checks_filter_status"
+KEY_CLASS = "checks_filter_class"
+KEY_TEXT = "checks_filter_text"
+KEY_PENDING = "checks_filter_pending"
+KEY_BULK = "checks_bulk_run"
+KEY_EXPORT = "checks_export_csv"
+KEY_ARTIFACT = "checks_save_artifact"
+KEY_FILE = "checks_file"
+KEY_LOAD = "checks_load"
 
 
 def render() -> None:
-    """Отрисовывает экран «Чек-лист проверок» (группа `TC-TASK`)."""
+    """Отрисовывает экран «Чек-лист проверок» (все наполненные группы `TC-*`)."""
     st.title("Чек-лист проверок")
     st.caption(
         "Программа испытаний: проверки `TC-<модуль>-<NN>` с трассировкой на требования, "
         "классом, ожидаемым результатом, вердиктом и диапазоном журнала обмена. "
-        "На этапе T4 доступна группа `TC-TASK` (модуль «Task service»)."
+        "Этап T3 выполняется по группам `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD` и `TC-TASK`."
     )
     render_flash()
 
@@ -68,7 +98,7 @@ def render() -> None:
     st.caption(
         f"Каталог: групп — {summary['groups_implemented']} из {summary['groups_total']}, "
         f"проверок — {summary['checks_implemented']} из {summary['checks_total']} "
-        "(остальные группы добавляются на этапах T3 и далее)."
+        "(группы `TC-DS`…`TC-CLEAN` добавляются на этапах T5–T10)."
     )
 
     session = state.current_session()
@@ -77,70 +107,309 @@ def render() -> None:
             "Сессия испытаний не выбрана: проверки выполняются, но результаты в отчёт не войдут."
         )
 
-    group_key = str(
-        st.selectbox(
-            "Группа проверок",
-            [f"{item.key} · {item.title}" for item in catalog.groups(implemented_only=True)],
-            key=KEY_GROUP,
+    filters = _render_filters(catalog.groups(implemented_only=True))
+    rows = (
+        checks_engine.checklist_rows(
+            session,
+            groups=filters["groups"],
+            statuses=filters["statuses"],
+            classes=filters["classes"],
+            text=filters["text"],
+            only_pending=filters["only_pending"],
         )
-    ).split(" · ")[0]
-    if group_key not in AVAILABLE_GROUPS:
-        st.info(f"Группа {group_key} наполняется на следующих этапах (`docs/02`).")
-        return
+        if session is not None
+        else []
+    )
 
-    _render_kpi(session, group_key)
+    _render_kpi(session, rows)
     st.divider()
-    _render_table(session, group_key)
+    _render_table(rows)
     st.divider()
-    _render_card(session, group_key)
+    _render_actions(session, filters, rows)
+    st.divider()
+    _render_card(session, _selected_row(rows))
 
 
-def _render_kpi(session: TestSession | None, group_key: str) -> None:
-    """KPI группы: всего, выполнено, успех, отказ, блокировано, не выполнено."""
-    ids = [spec.check_id for spec in catalog.by_group(group_key)]
-    stats: dict[str, Any] = (
-        checks_engine.group_stats(session, ids)
+def _render_filters(implemented: tuple[Any, ...]) -> dict[str, Any]:
+    """Фильтры чек-листа: группа, статус, класс, поиск, «только невыполненные».
+
+    Returns:
+        Разобранные значения фильтров — по ним строятся таблица, KPI и групповой запуск.
+    """
+    options = {"ALL": "Все группы (сводка по чек-листу)"}
+    options.update({item.key: f"{item.key} · {item.title}" for item in implemented})
+
+    col_group, col_status, col_class, col_text = st.columns([2, 2, 1, 2])
+    group_label = str(col_group.selectbox("Группа проверок", list(options.values()), key=KEY_GROUP))
+    group_key = next(key for key, label in options.items() if label == group_label)
+
+    selected_statuses = col_status.multiselect(
+        "Статус",
+        [str(status) for status in CheckStatus],
+        key=KEY_STATUS,
+        help="Пусто — показать проверки с любым статусом.",
+    )
+    selected_classes = col_class.multiselect(
+        "Класс",
+        [str(item) for item in CheckClass],
+        key=KEY_CLASS,
+        help="`tech` — безопасные, `live` — боевые, `heavy` — ресурсоёмкие, `manual` — ручные.",
+    )
+    text = col_text.text_input("Поиск по id / названию / требованиям", key=KEY_TEXT)
+    only_pending = st.checkbox("Показать только невыполненные проверки", key=KEY_PENDING)
+
+    return {
+        "groups": () if group_key == "ALL" else (group_key,),
+        "group_key": group_key,
+        "statuses": tuple(selected_statuses),
+        "classes": tuple(selected_classes),
+        "text": text,
+        "only_pending": only_pending,
+    }
+
+
+def _selected_row(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Выбор проверки для карточки (из текущей выборки)."""
+    if not rows:
+        return None
+    labels = {f"{row['check_id']} · {row['title']}": row for row in rows}
+    chosen = st.selectbox("Проверка для карточки", list(labels), key=KEY_CHECK)
+    return labels[str(chosen)]
+
+
+def _render_kpi(session: TestSession | None, rows: list[dict[str, Any]]) -> None:
+    """KPI чек-листа: каталог и программа, состав видимой выборки и прогресс."""
+    overall: dict[str, Any] = (
+        checks_engine.overall_stats(session)
         if session is not None
         else {
-            "total": len(ids),
-            "done": 0,
-            "passed": 0,
-            "failed": 0,
-            "blocked": 0,
-            "not_run": len(ids),
+            "implemented": len(catalog.CHECKS),
+            "program_total": catalog.PLANNED_CHECKS_TOTAL,
         }
     )
-    columns = st.columns(6)
-    columns[0].metric("Проверок в группе", stats["total"])
-    columns[1].metric("Выполнено", stats["done"])
-    columns[2].metric("Успех", stats["passed"])
-    columns[3].metric("Отказ", stats["failed"])
-    columns[4].metric("Блокировано API", stats["blocked"])
-    columns[5].metric("Не выполнено", stats["not_run"])
+    stats = _rows_stats(rows)
+
+    columns = st.columns(7)
+    columns[0].metric(
+        "Проверок в каталоге", f"{overall['implemented']} / {overall['program_total']}"
+    )
+    columns[1].metric("В выборке", stats["total"])
+    columns[2].metric("Выполнено", stats["done"])
+    columns[3].metric("Успех", stats["passed"])
+    columns[4].metric("Отказ", stats["failed"])
+    columns[5].metric("Блокировано API", stats["blocked"])
+    columns[6].metric("Не выполнено", stats["not_run"])
+
+    progress = (stats["done"] / stats["total"]) if stats["total"] else 0.0
+    st.progress(
+        min(1.0, max(0.0, progress)),
+        text=(
+            f"Готовность выборки: {stats['done']} из {stats['total']} ({progress * 100:.0f}%) · "
+            f"строк в таблице: {len(rows)}"
+        ),
+    )
 
 
-def _render_table(session: TestSession | None, group_key: str) -> None:
-    """Таблица проверок группы с текущими статусами, вердиктами и диапазоном журнала."""
-    results = checks_engine.results_map(session) if session is not None else {}
-    rows: list[dict[str, Any]] = []
-    for spec in catalog.by_group(group_key):
-        result = results.get(spec.check_id)
-        status = str(result.status) if result is not None else str(CheckStatus.NOT_RUN)
-        rows.append(
+def _rows_stats(rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    """Состав выборки по статусам: отобрано, выполнено, успех, отказ, блокировано.
+
+    Считается по строкам таблицы, то есть по всем активным фильтрам (группа, класс,
+    поиск, статус, «только невыполненные»), поэтому KPI всегда описывает то, что
+    оператор видит на экране.
+    """
+    stats = {"total": len(rows), "done": 0, "passed": 0, "failed": 0, "blocked": 0, "not_run": 0}
+    for row in rows:
+        status = str(row["status"])
+        if row["is_done"]:
+            stats["done"] += 1
+        if status == str(CheckStatus.PASSED):
+            stats["passed"] += 1
+        elif status == str(CheckStatus.FAILED):
+            stats["failed"] += 1
+        elif status == str(CheckStatus.BLOCKED):
+            stats["blocked"] += 1
+        elif status == str(CheckStatus.NOT_RUN):
+            stats["not_run"] += 1
+    return stats
+
+
+def _render_table(rows: list[dict[str, Any]]) -> None:
+    """Таблица проверок выборки: класс, статус, вердикт, диапазон журнала, время."""
+    if not rows:
+        st.info("По заданным фильтрам проверок нет.")
+        return
+    st.dataframe(
+        [
             {
-                "ID": spec.check_id,
-                "Проверка": spec.title,
-                "Требования": spec.requirement,
-                "Класс": str(spec.check_class),
-                "Статус": f"{STATUS_ICONS.get(status, '⚪')} {status}",
-                "Вердикт": (result.verdict if result is not None else "") or "—",
-                "Журнал": _journal_range(
-                    result.journal_from if result is not None else None,
-                    result.journal_to if result is not None else None,
-                ),
+                "ID": row["check_id"],
+                "Группа": row["group"],
+                "Проверка": row["title"],
+                "Требования": row["requirement"],
+                "Класс": row["check_class"],
+                "Статус": f"{row['icon']} {row['status']}",
+                "Вердикт": row["verdict"] or "—",
+                "Журнал": row["journal_range"],
+                "Завершена": row["ended_at"] or "—",
+            }
+            for row in rows
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+
+
+def _render_actions(
+    session: TestSession | None, filters: dict[str, Any], rows: list[dict[str, Any]]
+) -> None:
+    """Действия чек-листа: групповой прогон дешёвых проверок, экспорт, артефакты."""
+    st.markdown("**Действия по выборке**")
+    group_key = str(filters["group_key"])
+    specs = catalog.CHECKS if group_key == "ALL" else catalog.by_group(group_key)
+    cheap = [spec for spec in specs if spec.check_class == CheckClass.TECH and spec.automation]
+
+    col_run, col_export, col_artifact = st.columns([2, 1, 1])
+    if col_run.button(
+        f"▶ Выполнить дешёвые проверки ({len(cheap)})",
+        key=KEY_BULK,
+        type="primary",
+        help=(
+            "Выполняются только проверки класса `tech` — безопасные и без подтверждения. "
+            "Боевые (`live`) и ресурсоёмкие (`heavy`) запускаются по одной из карточки."
+        ),
+    ):
+        _run_group(session, cheap)
+
+    export_rows = checks_engine.checklist_rows(session) if session is not None else rows
+    col_export.download_button(
+        "⬇ Чек-лист (CSV)",
+        data=_checks_csv(export_rows),
+        file_name=f"checklist_{session.session_id if session else 'no-session'}.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key=KEY_EXPORT,
+    )
+
+    if session is None:
+        col_artifact.button(
+            "💾 Сохранить в артефакты",
+            disabled=True,
+            use_container_width=True,
+            key=f"{KEY_ARTIFACT}_disabled",
+            help="Нужна сессия испытаний: её артефакты попадают в отчёт.",
+        )
+        return
+    if col_artifact.button(
+        "💾 Сохранить в артефакты",
+        use_container_width=True,
+        key=KEY_ARTIFACT,
+        help="Чек-лист (CSV + MD) сохраняется в `acceptance_data/artifacts` и входит в отчёт.",
+    ):
+        _save_checklist_artifact(session, export_rows)
+
+
+def _run_group(session: TestSession | None, specs: list[CheckSpec]) -> None:
+    """Групповой прогон дешёвых проверок с итоговой сводкой (кнопка на экране)."""
+    if session is None:
+        set_flash("warning", "Сессия испытаний не выбрана: результаты некуда сохранять.")
+        st.rerun()
+    if not specs:
+        set_flash("info", "В выборке нет автоматических проверок класса `tech`.")
+        st.rerun()
+
+    runtime = state.get_runtime()
+    if runtime is None:
+        set_flash("error", "Адрес испытуемого сервера не задан: проверки не запустить.")
+        st.rerun()
+
+    monitor = state.task_monitor()
+    client = state.console_client()
+    results = checks_engine.run_checks(
+        session,
+        specs,
+        context_factory=lambda spec: check_run.build_context(
+            session=session,
+            spec=spec,
+            runtime=runtime,
+            monitor=monitor,
+            client=client,
+        ),
+    )
+    state.store_session(session)
+    tally: dict[str, int] = {}
+    for result in results:
+        tally[str(result.status)] = tally.get(str(result.status), 0) + 1
+    summary = ", ".join(f"{status} — {count}" for status, count in sorted(tally.items()))
+    set_flash(
+        "success" if results else "info",
+        f"Выполнено проверок: {len(results)}. Итоги: {summary or 'нет результатов'}.",
+    )
+    st.rerun()
+
+
+def _checks_csv(rows: list[dict[str, Any]]) -> str:
+    """Чек-лист в CSV: id, группа, класс, статус, вердикт, журнал (приложение отчёта)."""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(CHECK_COLUMNS))
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(
+            {
+                "check_id": row["check_id"],
+                "group": row["group"],
+                "class": row["check_class"],
+                "module": row["module"],
+                "title": row["title"],
+                "requirement": row["requirement"],
+                "status": row["status"],
+                "verdict": row["verdict"],
+                "operator_note": row["operator_note"],
+                "journal_from": row["journal_from"] if row["journal_from"] is not None else "",
+                "journal_to": row["journal_to"] if row["journal_to"] is not None else "",
+                "started_at": row["started_at"] or "",
+                "ended_at": row["ended_at"] or "",
+                "duration_ms": row["duration_ms"] if row["duration_ms"] is not None else "",
             }
         )
-    st.dataframe(rows, hide_index=True, use_container_width=True)
+    return buffer.getvalue()
+
+
+def _save_checklist_artifact(session: TestSession, rows: list[dict[str, Any]]) -> None:
+    """Сохраняет чек-лист (CSV + Markdown) в артефакты сессии — приложение отчёта."""
+    ensure_dirs()
+    csv_path = ARTIFACT_DIR / f"checklist_{session.session_id}.csv"
+    md_path = ARTIFACT_DIR / f"checklist_{session.session_id}.md"
+    csv_path.write_text(_checks_csv(rows), encoding="utf-8-sig")
+    md_path.write_text(
+        "# Чек-лист проверок\n\n"
+        + "\n".join(
+            f"| {row['check_id']} | {row['check_class']} | {row['status']} | "
+            f"{row['verdict'] or '—'} | {row['journal_range']} |"
+            for row in rows
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    for path in (csv_path, md_path):
+        _register_artifact(session, path, rows)
+    state.store_session(session)
+    log_event(
+        "checklist_exported",
+        f"Чек-лист сохранён в артефакты: {len(rows)} строк",
+        module="checks",
+        payload={"csv": csv_path.as_posix(), "md": md_path.as_posix()},
+    )
+    set_flash("success", f"Чек-лист сохранён в артефакты сессии: {csv_path.name}, {md_path.name}")
+    st.rerun()
+
+
+def _register_artifact(session: TestSession, path: Path, rows: list[dict[str, Any]]) -> None:
+    """Регистрирует файл чек-листа в артефактах сессии (приложение отчёта)."""
+    add_artifact(
+        session,
+        kind="checklist",
+        path=path,
+        note=f"чек-лист испытаний: {len(rows)} строк (сессия {session.session_id})",
+    )
 
 
 def _journal_range(first: int | None, last: int | None) -> str:
@@ -152,17 +421,20 @@ def _journal_range(first: int | None, last: int | None) -> str:
     return f"#{first}–#{last}"
 
 
-def _render_card(session: TestSession | None, group_key: str) -> None:
+def _render_card(session: TestSession | None, row: dict[str, Any] | None) -> None:
     """Карточка проверки: шаги, ожидание, результат, запуск и ручные отметки."""
-    options = {f"{spec.check_id} · {spec.title}": spec for spec in catalog.by_group(group_key)}
-    chosen = st.selectbox("Проверка", list(options), key=KEY_CHECK)
-    spec = options[chosen]
+    if row is None:
+        st.info("Выберите проверку в таблице — откроется её карточка.")
+        return
+    spec = catalog.find(str(row["check_id"]))
+    if spec is None:
+        st.warning(f"Проверка {row['check_id']} отсутствует в каталоге.")
+        return
 
     st.markdown(f"### `{spec.check_id}` {spec.title}")
     st.caption(
-        f"Требования: {spec.requirement} · класс: {spec.class_label} "
-        f"({'подтверждение обязательно' if spec.is_confirmation_required else 'без подтверждения'}) · "
-        f"эндпоинты: {', '.join(spec.endpoints) or '—'}"
+        f"Модуль: {spec.module} · требования: {spec.requirement} · класс: {spec.class_label} "
+        f"({'подтверждение обязательно' if spec.is_confirmation_required else 'без подтверждения'})"
     )
     col_steps, col_expected = st.columns(2)
     with col_steps:
@@ -172,11 +444,19 @@ def _render_card(session: TestSession | None, group_key: str) -> None:
     with col_expected:
         st.markdown("**Ожидаемый результат**")
         st.info(spec.expected)
+        targets = ", ".join(spec.endpoints) or "—"
+        st.caption(f"Эндпоинты: {targets}")
+        if spec.probe_paths:
+            st.caption(
+                "Негативные пробы (маршрутов нет в спецификации): " + ", ".join(spec.probe_paths)
+            )
         st.caption(
             f"Автоматический сценарий: `{spec.automation}`"
             if spec.automation
             else "Автоматического сценария нет: проверка выполняется вручную."
         )
+        if spec.blocked_by_api:
+            st.caption(f"Ожидаемо блокировано API: {spec.blocked_by_api}")
 
     if session is None:
         return
@@ -207,19 +487,28 @@ def _render_card(session: TestSession | None, group_key: str) -> None:
 
 
 def _render_run(session: TestSession, spec: CheckSpec) -> None:
-    """Запуск проверки: автоматический сценарий с параметрами задачи."""
+    """Запуск проверки: автоматический сценарий с параметрами цели (задача/файл/нагрузка)."""
     runtime = state.get_runtime()
     if runtime is None:
         st.error("Адрес испытуемого сервера не задан: запуск проверки невозможен.")
         return
 
     monitor = state.task_monitor()
-    task_id = ""
-    action = "pause"
+    params: dict[str, Any] = {}
     if spec.check_id.startswith("TC-TASK-"):
         task_id = _render_task_picker(session, monitor, spec)
+        if task_id:
+            params["task_id"] = task_id
+    if spec.check_id.startswith(("TC-FILE-", "TC-REC-")):
+        file_id = _render_file_picker(spec)
+        if file_id:
+            params["file_id"] = file_id
+    if spec.check_id.startswith("TC-LOAD-"):
+        load_id = _render_load_picker(spec)
+        if load_id:
+            params["load_id"] = load_id
     if spec.check_id == "TC-TASK-06":
-        action = str(
+        params["action"] = str(
             st.selectbox(
                 "Команда для проверки идемпотентности",
                 list(TASK_COMMANDS),
@@ -245,13 +534,60 @@ def _render_run(session: TestSession, spec: CheckSpec) -> None:
         if not ready:
             set_flash("warning", reason)
             st.rerun()
-        check_run.run_check(
+        result = check_run.run_check(
             session=session,
             monitor=monitor,
             check_id=spec.check_id,
-            params={"task_id": task_id, "action": action, "confirmation": evidence},
+            params=params,
             automation=automation,
+            runtime=runtime,
+            run_evidence=evidence,
+            rerun=False,
         )
+        if result is not None and result.status == CheckStatus.BLOCKED:
+            note = checks_engine.ensure_defect_note(session, spec, result)
+            state.store_session(session)
+            if note is not None:
+                set_flash("info", f"Замечание к API создано автоматически: {note['title']}")
+        st.rerun()
+
+
+def _render_file_picker(spec: CheckSpec) -> str:
+    """Живой список файлов для подстановки `file_id` (TC-FILE, TC-REC)."""
+    files, error = state.load_files()
+    if error:
+        st.caption(f"Список файлов недоступен: {error}")
+        return ""
+    if not files:
+        st.caption("Реестр файлов пуст: `file_id` можно не выбирать — сценарий подберёт сам.")
+        return ""
+    labels = {
+        f"{file.file_name} · {file.file_type} · {file.size} Б": str(file.id) for file in files
+    }
+    chosen = st.selectbox(
+        "Файл (file_id)",
+        ["— подобрать автоматически —", *labels],
+        key=f"{KEY_FILE}{spec.check_id}",
+    )
+    return labels.get(str(chosen), "")
+
+
+def _render_load_picker(spec: CheckSpec) -> str:
+    """Живой список нагрузок для подстановки `load_id` (TC-LOAD)."""
+    loads, error = state.load_loads()
+    if error:
+        st.caption(f"Список нагрузок недоступен: {error}")
+        return ""
+    if not loads:
+        st.caption("Реестр нагрузок пуст: `load_id` можно не выбирать — сценарий подберёт сам.")
+        return ""
+    labels = {f"{item.load_id} · {item.category}": str(item.load_id) for item in loads}
+    chosen = st.selectbox(
+        "Нагрузка (load_id)",
+        ["— подобрать автоматически —", *labels],
+        key=f"{KEY_LOAD}{spec.check_id}",
+    )
+    return labels.get(str(chosen), "")
 
 
 def _render_task_picker(session: TestSession, monitor: TaskMonitor | None, spec: CheckSpec) -> str:

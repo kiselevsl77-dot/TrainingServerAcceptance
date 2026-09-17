@@ -80,6 +80,11 @@ class CheckSpec:
     steps: tuple[str, ...] = ()
     expected: str = ""
     endpoints: tuple[str, ...] = ()
+    #: Пути негативных проб — операции, которых **нет** в реестре `acceptance.endpoints`
+    #: именно потому, что проверка подтверждает их отсутствие (`GET /api/__test_unknown__`,
+    #: `DELETE /api/loads/{load_id}`). Пробы идут «сырым» клиентом консоли
+    #: (`acceptance.exchange.execute_request`), поэтому в реестре им места нет.
+    probe_paths: tuple[str, ...] = ()
     blocked_by_api: str | None = None
     automation: str | None = None
 

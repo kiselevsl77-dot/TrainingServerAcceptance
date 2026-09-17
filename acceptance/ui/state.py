@@ -35,7 +35,7 @@ from acceptance.session import (
 from acceptance.tasks_monitor import TaskMonitor, task_card
 from client.errors import ClientError
 from client.http import ApiHttpClient
-from client.schemas import CeleryTask, FileMetadataResponse
+from client.schemas import CeleryTask, FileMetadataResponse, LoadItem
 from client.settings import TrainingServerSettings, get_settings
 
 KEY_SESSION_ID = "pult_session_id"
@@ -273,6 +273,39 @@ def load_files() -> tuple[list[FileMetadataResponse], str | None]:
 def refresh_files() -> None:
     """Сбрасывает кэш реестра файлов (кнопка «Обновить реестр»)."""
     load_files.clear()
+
+
+# ---------------------------------------------------------------------------
+# Реестр нагрузок (кэш: пикер `load_id` в чек-листе и сценарии TC-LOAD-*)
+# ---------------------------------------------------------------------------
+LOADS_CACHE_TTL = 60.0
+
+#: Верхняя граница выдачи при чтении реестра нагрузок (спецификацией не объявлена).
+LOAD_LIMIT = 1000
+
+
+@st.cache_data(ttl=LOADS_CACHE_TTL, show_spinner="Загрузка реестра нагрузок…")
+def load_loads() -> tuple[list[LoadItem], str | None]:
+    """Читает реестр нагрузок испытуемого сервера (кэш 60 с).
+
+    Returns:
+        Кортеж (нагрузки, текст ошибки). Ошибка не бросается: экран показывает её
+        подписью, а сценарий проверки возвращает статус «пропущена».
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return [], "Адрес испытуемого сервера не задан (TRAINING_SERVER_BASE_URL в .env)."
+    try:
+        return list(runtime.apis.loads.list_loads(limit=LOAD_LIMIT, offset=0).loads), None
+    except ClientError as exc:
+        return [], _error_text(exc)
+    except httpx.HTTPError as exc:
+        return [], f"Сеть недоступна: {exc}"
+
+
+def refresh_loads() -> None:
+    """Сбрасывает кэш реестра нагрузок (кнопка «Обновить»)."""
+    load_loads.clear()
 
 
 # ---------------------------------------------------------------------------

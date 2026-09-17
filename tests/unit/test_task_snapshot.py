@@ -241,7 +241,9 @@ def test_load_snapshot_tolerates_missing_and_broken_files(tmp_path: Path):
 def test_archive_summary_reports_volume_and_fresh_tasks():
     """Подпись переноса: сколько всего и сколько завершилось за последние сутки."""
     snapshot = TaskSnapshot()
-    snapshot.observe(TASK, status="completed", end_time=stamp(NOW - timedelta(minutes=10)))
+    snapshot.observe(
+        TASK, status="completed", end_time=stamp(datetime.now() - timedelta(minutes=10))
+    )
     snapshot.observe(TASK2, status="completed", end_time=stamp(datetime.now() - timedelta(days=3)))
 
     text = archive_summary([TASK, TASK2], snapshot)

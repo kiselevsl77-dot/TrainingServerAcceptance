@@ -132,11 +132,14 @@ class MultipartPayload:
     file_type: str = ""
     description: str = ""
     field: str = "file"
+    #: Принудительный MIME части (TC-FILE-12: сервер проверяет MIME, а не содержимое).
+    #: Пустая строка — тип определяется по расширению (`client.files.guess_content_type`).
+    content_type_override: str = ""
 
     @property
     def content_type(self) -> str:
         """MIME-тип части с файлом (совпадает с логикой `client.files`)."""
-        return guess_content_type(self.file_name)
+        return self.content_type_override or guess_content_type(self.file_name)
 
     def as_files(self) -> dict[str, tuple[str, bytes, str]]:
         """Части multipart-запроса в формате httpx."""
