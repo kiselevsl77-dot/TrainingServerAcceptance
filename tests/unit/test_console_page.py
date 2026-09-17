@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -223,6 +224,81 @@ def test_task_id_is_extracted_from_response():
     assert console._task_id_from(result) == ""
 
 
+def test_task_id_is_not_taken_from_entity_id_of_read_operation():
+    """`id` созданной сущности (файл, датасет) не считается задачей (этап T4).
+
+    `explicit_only=True` используется для операций, которые возвращают идентификатор
+    созданной сущности: иначе монитор задач начал бы «наблюдать» датасет.
+    """
+    result = ExchangeResult(method="POST", path="/api/datasets/")
+
+    result.body_json = {"id": "dataset-42", "title": "__TEST__ds"}
+    assert console._task_id_from(result, explicit_only=True) == ""
+    assert console._task_id_from(result) == "dataset-42"
+
+    result.body_json = {"task_id": "task-44"}
+    assert console._task_id_from(result, explicit_only=True) == "task-44"
+
+
+def test_task_picker_suggests_live_tasks(monkeypatch: pytest.MonkeyPatch):
+    """Path-параметр `task_id` получает живой список задач сервера (без копипаста)."""
+
+    class _Task:
+        """Задача из `GET /api/tasks/` (минимально нужные поля)."""
+
+        def __init__(self, task_id: str, task_type: str) -> None:
+            self.id = task_id
+            self.type = task_type
+            self.name = "probe"
+
+    tasks = [_Task("11111111-1111-4111-8111-111111111111", "celery-test")]
+    monkeypatch.setattr(console.state, "load_tasks", lambda **kwargs: (tasks, 1, None))
+
+    selected: dict[str, Any] = {}
+    monkeypatch.setattr(
+        console.st,
+        "selectbox",
+        lambda label, options, **kwargs: (
+            selected.update(label=label, options=list(options)),
+            options[0],
+        )[1],
+    )
+    monkeypatch.setattr(console.st, "columns", lambda spec: [console.st, console.st])
+    monkeypatch.setattr(console.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(console.st, "button", lambda *args, **kwargs: True)
+    monkeypatch.setattr(console.st, "rerun", lambda: None)
+    monkeypatch.setitem(console.st.session_state, "console_pp_get /api/tasks/{task_id}_task_id", "")
+
+    spec = ep.find("get /api/tasks/{task_id}")
+    assert spec is not None
+    console._task_picker(spec)
+
+    assert "Живой список задач" in str(selected["label"])
+    assert "11111111-1111-4111-8111-111111111111" in str(selected["options"][0])
+    assert (
+        console.st.session_state["console_pp_get /api/tasks/{task_id}_task_id"]
+        == "11111111-1111-4111-8111-111111111111"
+    )
+
+
+def test_task_picker_explains_unavailable_list(monkeypatch: pytest.MonkeyPatch):
+    """Недоступный список задач не мешает ручному вводу `task_id`."""
+    monkeypatch.setattr(console.state, "load_tasks", lambda **kwargs: ([], 0, "сервер недоступен"))
+    captions: list[str] = []
+    monkeypatch.setattr(
+        console.st, "caption", lambda text, *args, **kwargs: captions.append(str(text))
+    )
+    monkeypatch.setattr(
+        console.st, "selectbox", lambda *args, **kwargs: pytest.fail("список не нужен")
+    )
+
+    spec = ep.find("get /api/tasks/{task_id}")
+    assert spec is not None
+    console._task_picker(spec)
+
+    assert any("введите `task_id` вручную" in text for text in captions)
+
+
 def test_extra_query_parameters_are_parsed():
     """Свободные query-параметры разбираются построчно (`key=value`)."""
     parsed = console._parse_extra_query("limit=1\n offset = 20 \n\nбез-значения\nfile_type=RAW")
@@ -252,3 +328,24 @@ def test_call_note_describes_confirmations_and_run_card():
     assert "подтверждение изменяющей операции" in note
     assert "__TEST__x" in note
     assert json.dumps(details, ensure_ascii=False)
+
+
+def test_query_param_help_adds_format_hint():
+    """Подсказка поля параметра = описание спецификации + требуемый формат.
+
+    `start_date`/`end_date` в `GET /api/tasks/` принимаются только как дата-время:
+    строка из одной даты отвечает 422, поэтому формат виден прямо у поля ввода.
+    """
+    endpoint = ep.find("get /api/tasks/")
+    start = endpoint.param("start_date")
+    limit = endpoint.param("limit")
+    file_id = ep.find("get /api/data/files").param("id")
+
+    assert start is not None and limit is not None and file_id is not None
+    help_text = console._param_help(start)
+    assert help_text is not None
+    assert "дата-время" in help_text
+    assert "YYYY-MM-DDTHH:MM:SS" in help_text
+    assert console._param_help(limit) is None
+    # описание из спецификации и подсказка формата объединяются в одной подсказке
+    assert console._param_help(file_id) == "Filter by file ID · Формат: UUID"

@@ -78,6 +78,7 @@ class ParamSpec:
     name: str
     location: str = QUERY
     type: str = "string"
+    format: str = ""
     required: bool = False
     description: str = ""
     enum: tuple[str, ...] = ()
@@ -107,11 +108,32 @@ class ParamSpec:
     def label(self) -> str:
         """Подпись поля ввода для интерфейса."""
         marks = [self.type]
+        if self.format:
+            marks.append(self.format)
         if self.required:
             marks.append("обязательный")
         if self.enum:
             marks.append("из перечня")
         return f"{self.name} ({', '.join(marks)})"
+
+    @property
+    def format_hint(self) -> str:
+        """Подсказка формата значения (`format` из спецификации) для поля ввода.
+
+        Нужна там, где человек вводит значение руками: `GET /api/tasks/`
+        принимает `start_date`/`end_date` только как `date-time`, и строка из
+        одной даты отвечает 422 (`datetime_parsing`).
+        """
+        if self.format == "date-time":
+            return (
+                "Формат: `YYYY-MM-DDTHH:MM:SS` (дата-время; строка только с датой "
+                "стендом отклоняется — 422)"
+            )
+        if self.format == "date":
+            return "Формат: `YYYY-MM-DD`"
+        if self.format == "uuid":
+            return "Формат: UUID"
+        return ""
 
 
 @dataclass(frozen=True)
@@ -265,6 +287,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="id",
                 location=QUERY,
                 type="string",
+                format="uuid",
                 description="Filter by file ID",
             ),
             ParamSpec(
@@ -277,6 +300,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="import_date",
                 location=QUERY,
                 type="string",
+                format="date",
                 description="Filter by import date (YYYY-MM-DD)",
             ),
             ParamSpec(
@@ -302,6 +326,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="file_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -321,6 +346,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="file_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -366,6 +392,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="creation_date",
                 location=QUERY,
                 type="string",
+                format="date-time",
             ),
             ParamSpec(
                 name="description",
@@ -393,6 +420,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="dataset_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -412,6 +440,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="dataset_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -441,6 +470,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="dataset_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -460,6 +490,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="dataset_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -617,6 +648,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=QUERY,
                 type="string",
+                format="uuid",
                 description="Фильтр по ID модели",
             ),
             ParamSpec(
@@ -707,6 +739,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -725,6 +758,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -743,6 +777,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -809,6 +844,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -837,6 +873,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -887,6 +924,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="model_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -924,6 +962,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="task_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -942,6 +981,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="task_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -960,6 +1000,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="task_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),
@@ -1005,11 +1046,13 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="start_date",
                 location=QUERY,
                 type="string",
+                format="date-time",
             ),
             ParamSpec(
                 name="end_date",
                 location=QUERY,
                 type="string",
+                format="date-time",
             ),
             ParamSpec(
                 name="limit",
@@ -1040,6 +1083,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 name="task_id",
                 location=PATH,
                 type="string",
+                format="uuid",
                 required=True,
             ),
         ),

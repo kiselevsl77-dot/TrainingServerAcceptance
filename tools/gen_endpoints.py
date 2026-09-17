@@ -170,6 +170,7 @@ def build_param(raw: dict[str, Any]) -> dict[str, Any]:
         "name": str(raw.get("name", "")),
         "location": str(raw.get("in", "query")),
         "type": str(kind),
+        "format": str(schema.get("format") or ""),
         "required": bool(raw.get("required")),
         "description": _one_line(raw.get("description") or schema.get("description") or ""),
         "enum": enum,
@@ -310,6 +311,8 @@ def render_param(param: dict[str, Any], indent: str = " " * 12) -> str:
     lines.append(f"{indent}    name={py_str(param['name'])},")
     lines.append(f"{indent}    location={param['location'].upper()},")
     lines.append(f"{indent}    type={py_str(param['type'])},")
+    if param["format"]:
+        lines.append(f"{indent}    format={py_str(param['format'])},")
     if param["required"]:
         lines.append(f"{indent}    required=True,")
     if param["description"]:
@@ -406,6 +409,7 @@ def spec_fields(spec: dict[str, Any]) -> dict[str, Any]:
                 param["name"],
                 param["location"],
                 param["type"],
+                param["format"],
                 param["required"],
                 param["description"],
                 tuple(param["enum"]),
@@ -437,6 +441,7 @@ def endpoint_fields(endpoint: Any) -> dict[str, Any]:
                 param.name,
                 param.location,
                 param.type,
+                param.format,
                 param.required,
                 param.description,
                 tuple(param.enum),

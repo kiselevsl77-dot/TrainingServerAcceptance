@@ -36,6 +36,7 @@ from acceptance.session import (
     add_artifact,
     add_console_call,
     console_calls_summary,
+    register_task_from_console,
 )
 from acceptance.ui import state
 from acceptance.ui.common import api_notes
@@ -59,6 +60,9 @@ HISTORY_LIMIT = 50
 #: Порог размера скачиваемого файла, выше которого требуется подтверждение оператора
 #: (то же правило, что на экране «Записи», FR-T2).
 BINARY_CONFIRM_LIMIT = 50 * 1024 * 1024
+
+#: Сколько задач запрашивать для подстановки `task_id` (пикер path-параметра, этап T4).
+TASK_PICKER_LIMIT = 50
 
 #: Поля тела, которые считаются «именем создаваемой сущности» (контроль `__TEST__`).
 NAME_KEYS = (
@@ -215,15 +219,56 @@ def _render_operation_card(spec: EndpointSpec) -> None:
 
 
 def _render_path_inputs(spec: EndpointSpec) -> dict[str, str]:
-    """Поля path-параметров операции."""
+    """Поля path-параметров операции.
+
+    Для `task_id` дополнительно показывается **живой список задач** сервера: выбор
+    подставляет идентификатор, а поле остаётся редактируемым (внешняя задача может
+    в списке отсутствовать — TC-TASK-08).
+    """
     values: dict[str, str] = {}
     for param in spec.path_params():
+        if param.name == "task_id":
+            _task_picker(spec)
         values[param.name] = st.text_input(
             param.label,
             key=f"console_pp_{spec.key}_{param.name}",
             help=param.description or None,
         )
     return values
+
+
+def _task_picker(spec: EndpointSpec) -> None:
+    """Живой список задач для подстановки `task_id` (снимает ручной копипаст, этап T4)."""
+    tasks, total, error = state.load_tasks(limit=TASK_PICKER_LIMIT)
+    if error:
+        st.caption(f"Список задач недоступен ({error}): введите `task_id` вручную.")
+        return
+    options = {f"{task.id} · {task.type} · {task.name}": str(task.id) for task in tasks}
+    if not options:
+        st.caption("Задачи на сервере не найдены: введите `task_id` вручную.")
+        return
+
+    key = f"console_task_pick_{spec.key}"
+    col_pick, col_use = st.columns([3, 1])
+    chosen = col_pick.selectbox(
+        "Живой список задач (подстановка `task_id`)",
+        list(options),
+        key=key,
+        help=f"Всего задач у сервера: {total}. Кэш списка — 15 с.",
+    )
+    if col_use.button("⤵ Подставить", key=f"{key}_use", use_container_width=True):
+        st.session_state[f"console_pp_{spec.key}_task_id"] = options[chosen]
+        st.rerun()
+
+
+def _param_help(param: ep.ParamSpec) -> str | None:
+    """Подсказка поля параметра: описание из спецификации + требуемый формат.
+
+    Формат важен там, где значение вводится руками: `start_date`/`end_date`
+    в `GET /api/tasks/` принимаются только как дата-время (одна дата → 422).
+    """
+    parts = [text for text in (param.description, param.format_hint) if text]
+    return " · ".join(parts) or None
 
 
 def _render_query_inputs(spec: EndpointSpec) -> dict[str, Any]:
@@ -235,11 +280,11 @@ def _render_query_inputs(spec: EndpointSpec) -> dict[str, Any]:
         for param in params:
             key = f"console_q_{spec.key}_{param.name}"
             if param.is_boolean:
-                if st.checkbox(param.label, key=key, help=param.description or None):
+                if st.checkbox(param.label, key=key, help=_param_help(param)):
                     query[param.name] = "true"
             elif param.is_enum:
                 chosen = st.selectbox(
-                    param.label, ["", *param.enum], key=key, help=param.description or None
+                    param.label, ["", *param.enum], key=key, help=_param_help(param)
                 )
                 if chosen:
                     query[param.name] = chosen
@@ -248,7 +293,7 @@ def _render_query_inputs(spec: EndpointSpec) -> dict[str, Any]:
                     param.label,
                     value=param.default,
                     key=key,
-                    help=param.description or None,
+                    help=_param_help(param),
                 )
                 if raw.strip():
                     query[param.name] = raw.strip()
@@ -498,12 +543,30 @@ def _file_from_registry(path_values: dict[str, str]) -> tuple[int | None, str]:
     return None, ""
 
 
-def _task_id_from(result: ExchangeResult) -> str:
-    """Идентификатор созданной задачи из ответа сервера (для монитора задач, T4)."""
+def _response_task_id(result: ExchangeResult, spec: EndpointSpec) -> str:
+    """Идентификатор задачи из ответа операции (для монитора задач, этап T4).
+
+    Для чтения (`GET`) и для ресурсоёмких операций (`train`, `check`, `inference`,
+    `fill`, диагностика) любой `task_id`/`task`/`id` в ответе — это задача. Для
+    остальных изменяющих операций `id` означает **созданную сущность** (файл,
+    датасет, модель), поэтому учитываются только явные ключи `task_id`/`task`.
+    """
+    if spec.method.upper() == "GET" or spec.is_heavy:
+        return _task_id_from(result)
+    return _task_id_from(result, explicit_only=True)
+
+
+def _task_id_from(result: ExchangeResult, *, explicit_only: bool = False) -> str:
+    """Идентификатор созданной задачи из ответа сервера (для монитора задач, T4).
+
+    `explicit_only=True` — учитываются только явные ключи `task_id`/`task`: у операций,
+    возвращающих `id` созданной сущности (файл, датасет, модель), он не является задачей.
+    """
     payload = result.body_json
     if not isinstance(payload, dict):
         return ""
-    for key in ("task_id", "task", "id"):
+    keys = ("task_id", "task") if explicit_only else ("task_id", "task", "id")
+    for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -547,7 +610,7 @@ def _run_and_store(
             keep_content=keep_content or not spec.is_binary,
         )
 
-    task_id = _task_id_from(result) if spec.is_heavy else ""
+    task_id = _response_task_id(result, spec)
 
     log_event(
         "console_request",
@@ -581,6 +644,15 @@ def _run_and_store(
             note=_call_note(details, run_card),
             task_id=task_id,
         )
+        if task_id:
+            # задача, запущенная из консоли, сразу попадает в наблюдение монитора (FR-T3)
+            register_task_from_console(
+                session,
+                task_id=task_id,
+                label=label,
+                operation=spec.key,
+                journal_seq=result.journal_seq,
+            )
         state.store_session(session)
 
     st.session_state[KEY_RESULT] = result
@@ -700,8 +772,53 @@ def _render_result(
     st.caption(
         f"Воспроизведение запроса (для замечаний к API):\n\n```\n{result.as_curl(_base_url())}\n```"
     )
+    _render_task_block(result, spec=spec, session=session, label=label)
     with st.expander("✍ Создать замечание к API из этого ответа"):
         _note_form(result, spec=spec, label=label, session=session)
+
+
+def _render_task_block(
+    result: ExchangeResult,
+    *,
+    spec: EndpointSpec,
+    session: TestSession | None,
+    label: str,
+) -> None:
+    """Действия по задаче из ответа: наблюдение и переход в монитор (этап T4)."""
+    task_id = _response_task_id(result, spec)
+    if not task_id:
+        return
+
+    st.info(f"Задача из ответа: `{task_id}` — доступна монитору задач («⏱️ Задачи»).")
+    col_watch, col_monitor = st.columns(2)
+    if col_watch.button(
+        "🔗 Поставить на наблюдение",
+        key=f"console_watch_{spec.key}",
+        use_container_width=True,
+        help="Монитор будет опрашивать задачу и вести историю переходов FSM-1.",
+    ):
+        if session is None:
+            set_flash("warning", "Сессия не выбрана: наблюдение невозможно.")
+        else:
+            register_task_from_console(
+                session,
+                task_id=task_id,
+                label=label,
+                operation=spec.key,
+                journal_seq=result.journal_seq,
+            )
+            state.store_session(session)
+            set_flash("success", f"Задача {task_id} поставлена на наблюдение монитором.")
+        st.rerun()
+    if col_monitor.button(
+        "⏱️ Открыть в мониторе",
+        key=f"console_monitor_{spec.key}",
+        use_container_width=True,
+        help="Переход на экран «Задачи»: карточка задачи, история FSM-1, команды.",
+    ):
+        st.session_state["tasks_focus"] = task_id
+        st.session_state["pult_screen"] = "tasks"
+        st.rerun()
 
 
 def _base_url() -> str:

@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,9 +32,10 @@ from acceptance.session import (
     save_session,
     session_exists,
 )
+from acceptance.tasks_monitor import TaskMonitor, task_card
 from client.errors import ClientError
 from client.http import ApiHttpClient
-from client.schemas import FileMetadataResponse
+from client.schemas import CeleryTask, FileMetadataResponse
 from client.settings import TrainingServerSettings, get_settings
 
 KEY_SESSION_ID = "pult_session_id"
@@ -106,6 +109,23 @@ def console_client() -> httpx.Client | None:
         runtime.config.body_limit,
         runtime.config.log_bodies,
         runtime.config.journal_max,
+    )
+
+
+def task_monitor() -> TaskMonitor | None:
+    """Монитор задач поверх текущего `Runtime` (FR-8, этап T4).
+
+    Монитор не хранит состояние — наблюдение живёт в сессии (`session.tasks`),
+    поэтому его можно собирать на каждую перерисовку экрана. Интервал поллинга
+    берётся из `PULT_POLL_INTERVAL`; None, если стенд не настроен.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return None
+    return TaskMonitor(
+        runtime.apis.tasks,
+        journal=runtime.journal,
+        interval=runtime.config.poll_interval,
     )
 
 
@@ -253,6 +273,144 @@ def load_files() -> tuple[list[FileMetadataResponse], str | None]:
 def refresh_files() -> None:
     """Сбрасывает кэш реестра файлов (кнопка «Обновить реестр»)."""
     load_files.clear()
+
+
+# ---------------------------------------------------------------------------
+# Список задач испытуемого сервера (кэш: экран «Задачи» и пикер `task_id` в консоли)
+# ---------------------------------------------------------------------------
+TASKS_CACHE_TTL = 15.0
+
+
+@st.cache_data(ttl=TASKS_CACHE_TTL, show_spinner="Загрузка списка задач…")
+def load_tasks(
+    task_type: str = "",
+    status: str = "",
+    start_date: str = "",
+    end_date: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[CeleryTask], int, str | None]:
+    """Читает список задач испытуемого сервера (`GET /api/tasks/`, UC-27).
+
+    Args:
+        task_type: фильтр по типу задачи (значение перечисления `TaskType`).
+        status: фильтр по статусу (значение перечисления `TaskStatus`).
+        start_date: начало периода создания задачи (ISO-строка).
+        end_date: конец периода создания задачи (ISO-строка).
+        limit: размер страницы (спецификация: по умолчанию 100).
+        offset: смещение для серверной пагинации.
+
+    Returns:
+        Кортеж (задачи, всего задач на сервере, текст ошибки). Кэш короткий
+        (шаг испытаний), поэтому только что созданная задача видна почти сразу;
+        задача с фильтрами кэшируется отдельно по каждому набору параметров.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return [], 0, "Адрес испытуемого сервера не задан (TRAINING_SERVER_BASE_URL в .env)."
+
+    try:
+        response = runtime.apis.tasks.list_tasks(
+            task_type=task_type or None,
+            status=status or None,
+            start_date=start_date or None,
+            end_date=end_date or None,
+            limit=limit or None,
+            offset=offset or None,
+        )
+    except ClientError as exc:
+        return [], 0, _error_text(exc)
+    except httpx.HTTPError as exc:
+        return [], 0, f"Сеть недоступна: {exc}"
+    return list(response.tasks), int(response.count), None
+
+
+def refresh_tasks() -> None:
+    """Сбрасывает кэш списка задач и карточек (кнопка «Обновить список»)."""
+    load_tasks.clear()
+    clear_task_cards()
+
+
+# ---------------------------------------------------------------------------
+# Карточки строк списка задач (кэш: экран «Задачи», вкладка «Список сервера»)
+# ---------------------------------------------------------------------------
+#: Статус задачи в `GET /api/tasks/` не возвращается (в спецификации у `CeleryTask`
+#: только `type`, `name`, `description`, `id`, `created_at`), поэтому он берётся из
+#: карточки `GET /api/tasks/{id}` — один запрос на задачу (N+1). Время жизни кэша
+#: больше прежнего: таблица рисуется из снимка и опроса сессии, а карточки
+#: догружаются батчами в фоне, поэтому 30 с не «примораживают» картину.
+STATUS_CACHE_TTL = 30.0
+
+#: Число параллельных запросов карточек (замер на стенде 16.09.2026: 10 карточек —
+#: ≈ 0,7 с в 5 потоков против ≈ 7,4 с последовательно).
+STATUS_FETCH_WORKERS = 5
+
+#: Размер батча догрузки статусов: столько карточек запрашивается за один проход,
+#: после чего страница перерисовывается и берётся следующий батч.
+STATUS_BATCH = 25
+
+#: Предел задач, читаемых одним списком (`limit` сервера не ограничен, поэтому
+#: список режется на стороне пульта — защита от тысяч строк).
+LOAD_TASK_CAP = 500
+
+
+@st.cache_data(ttl=STATUS_CACHE_TTL, show_spinner="Получение статусов задач…")
+def load_task_cards(
+    task_ids: tuple[str, ...],
+) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    """Проекции карточек задач: статус, тип, название и времена последнего прогона.
+
+    Экран «Задачи»: в элементах списка статуса нет, поэтому запрашиваются карточки
+    (N+1 запрос) и берётся `runtimes[-1]` (`current_status`). Запросы идут
+    параллельно (`STATUS_FETCH_WORKERS`) и помечаются меткой проверки — она живёт в
+    `contextvars` вызывающего потока, поэтому контекст копируется в рабочие потоки.
+    Результат кэшируется на `STATUS_CACHE_TTL` секунд.
+
+    Args:
+        task_ids: идентификаторы задач одного батча (не более `STATUS_BATCH`).
+
+    Returns:
+        Кортеж (проекции карточек по `task_id`, тексты ошибок по `task_id`): задача,
+        для которой карточка не получена, попадает во второй словарь и не мешает
+        остальным.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return {}, dict.fromkeys(task_ids, "Адрес испытуемого сервера не задан")
+
+    keys = tuple(key for key in (str(item).strip() for item in task_ids) if key)
+    cards: dict[str, dict[str, Any]] = {}
+    errors: dict[str, str] = {}
+
+    def fetch(key: str) -> tuple[str, dict[str, Any] | None, str]:
+        """Запрашивает карточку задачи, возвращая проекцию или текст ошибки."""
+        try:
+            task = runtime.apis.tasks.get_task(key)
+        except ClientError as exc:
+            return key, None, _error_text(exc)
+        except httpx.HTTPError as exc:
+            return key, None, f"Сеть недоступна: {exc}"
+        return key, task_card(task), ""
+
+    limited = keys[:STATUS_BATCH]
+    contexts = [copy_context() for _ in limited]
+    with ThreadPoolExecutor(max_workers=STATUS_FETCH_WORKERS) as pool:
+        futures = [
+            pool.submit(context.run, fetch, key)
+            for context, key in zip(contexts, limited, strict=True)
+        ]
+        for future in futures:
+            key, card, error = future.result()
+            if card is None:
+                errors[key] = error or "карточка не получена"
+            else:
+                cards[key] = card
+    return cards, errors
+
+
+def clear_task_cards() -> None:
+    """Сбрасывает кэш карточек строк списка задач."""
+    load_task_cards.clear()
 
 
 def current_markup_stats() -> dict[str, dict[str, Any]]:

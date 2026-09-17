@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -34,8 +35,20 @@ TOOL_VERSION = "0.1.0"
 #:   v2 — добавлены `artifacts` (выгруженные доказательства: манифесты, запрошенные
 #:        выгрузки) и `markup_stats` (рассчитанные характеристики разметки по файлам);
 #:   v3 — добавлены `console_calls` (ручные вызовы консоли запросов: операция, метка
-#:        проверки, статус, номер записи журнала) — след действий оператора для отчёта.
-#: Файлы v1/v2 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:        проверки, статус, номер записи журнала) — след действий оператора для отчёта;
+#:   v4 — добавлены `tasks` (наблюдаемые задачи: тип, происхождение, привязка к проверке,
+#:        история переходов FSM-1, настройки поллинга по каждой задаче) — монитор задач T4.
+#: Файлы v1–v3 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+
+#: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
+ORIGIN_PULT = "пульт"
+ORIGIN_EXTERNAL = "внешняя"
+TASK_ORIGINS = (ORIGIN_PULT, ORIGIN_EXTERNAL)
+
+#: Группы статусов задач FSM-1 (для KPI монитора и отчёта).
+TASK_ACTIVE_STATUSES = ("new", "running", "pausing", "paused")
+TASK_COMPLETED_STATUSES = ("completed",)
+TASK_FAILED_STATUSES = ("failed", "interrupted", "not_found")
 
 STATUS_DRAFT = "черновик"
 STATUS_RUNNING = "идёт"
@@ -114,6 +127,7 @@ class TestSession:
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     markup_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     console_calls: list[dict[str, Any]] = field(default_factory=list)
+    tasks: list[dict[str, Any]] = field(default_factory=list)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -179,6 +193,7 @@ class TestSession:
             "artifacts": self.artifacts,
             "markup_stats": self.markup_stats,
             "console_calls": self.console_calls,
+            "tasks": self.tasks,
             "history": self.history,
         }
 
@@ -206,6 +221,7 @@ class TestSession:
                 str(key): dict(value) for key, value in (data.get("markup_stats") or {}).items()
             },
             console_calls=[dict(item) for item in (data.get("console_calls") or [])],
+            tasks=[dict(item) for item in (data.get("tasks") or [])],
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
@@ -467,6 +483,319 @@ def console_calls_summary(session: TestSession) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Схема v4: наблюдаемые задачи (монитор задач, этап T4)
+# ---------------------------------------------------------------------------
+def _task_poll(interval: float | None) -> dict[str, Any]:
+    """Настройки поллинга задачи по умолчанию (интервал из `PULT_POLL_INTERVAL`)."""
+    return {
+        "interval": float(interval) if interval else float(DEFAULT_POLL_INTERVAL),
+        "active": True,
+        "last_poll": None,
+        "polls": 0,
+    }
+
+
+def find_task(session: TestSession, task_id: str) -> dict[str, Any] | None:
+    """Наблюдаемая задача по `task_id` (None, если задача не наблюдается)."""
+    key = str(task_id).strip()
+    if not key:
+        return None
+    return next((task for task in session.tasks if str(task.get("task_id")) == key), None)
+
+
+def task_history(session: TestSession, task_id: str) -> list[dict[str, Any]]:
+    """История переходов FSM-1 наблюдаемой задачи (для карточки и отчёта)."""
+    task = find_task(session, task_id)
+    if task is None:
+        return []
+    return [dict(item) for item in (task.get("history") or [])]
+
+
+def add_task(
+    session: TestSession,
+    *,
+    task_id: str,
+    task_type: str = "",
+    name: str = "",
+    origin: str = ORIGIN_PULT,
+    check_id: str = "",
+    status: str = "",
+    interval: float | None = None,
+    journal_from: int | None = None,
+    journal_seq: int | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """Регистрирует задачу на наблюдении (монитор задач, FR-T3 / FR-8 / BR-R5).
+
+    Повторная регистрация той же задачи идемпотентна: запись обновляется, а не
+    дублируется — задачу можно взять из списка задач, из карточки, из ответа
+    `train`/`check`/`inference` или ввести `task_id` вручную (внешняя, TC-TASK-08).
+
+    Raises:
+        ValueError: если `task_id` пустой.
+    """
+    key = str(task_id).strip()
+    if not key:
+        raise ValueError("task_id обязателен для постановки задачи на наблюдение")
+
+    if find_task(session, key) is not None:
+        return (
+            update_task(
+                session,
+                key,
+                status=status or None,
+                interval=interval,
+                journal_from=journal_from,
+                journal_seq=journal_seq,
+                note=note,
+                task_type=task_type or None,
+                name=name or None,
+                check_id=check_id or None,
+                origin=origin or None,
+            )
+            or {}
+        )
+
+    now = now_iso()
+    record: dict[str, Any] = {
+        "task_id": key,
+        "type": str(task_type or ""),
+        "name": str(name or ""),
+        "origin": origin if origin in TASK_ORIGINS else ORIGIN_PULT,
+        "check_id": str(check_id or ""),
+        "status": str(status or ""),
+        "first_seen": now,
+        "last_seen": now,
+        "poll": _task_poll(interval),
+        "journal_from": journal_from,
+        "journal_seq": journal_seq,
+        "intermediate_result": None,
+        "runtimes": [],
+        "note": str(note or ""),
+        "errors": [],
+        "history": [
+            {
+                "at": now,
+                "previous": None,
+                "status": str(status or ""),
+                "journal_seq": journal_seq,
+                "note": str(note or "задача поставлена на наблюдение"),
+                "error": "",
+            }
+        ],
+    }
+    session.tasks.append(record)
+    session.add_history(
+        "task_observed",
+        f"Задача на наблюдении: {key}",
+        task_id=key,
+        origin=record["origin"],
+        check_id=record["check_id"],
+        task_type=record["type"],
+        status=record["status"],
+    )
+    return record
+
+
+def update_task(
+    session: TestSession,
+    task_id: str,
+    *,
+    status: str | None = None,
+    intermediate_result: dict[str, Any] | None = None,
+    runtimes: list[dict[str, Any]] | None = None,
+    journal_seq: int | None = None,
+    journal_from: int | None = None,
+    active: bool | None = None,
+    interval: float | None = None,
+    polled: bool = False,
+    note: str = "",
+    error: str = "",
+    task_type: str | None = None,
+    name: str | None = None,
+    check_id: str | None = None,
+    origin: str | None = None,
+) -> dict[str, Any] | None:
+    """Обновляет наблюдение за задачей и фиксирует переход FSM-1 в истории.
+
+    Вызывается монитором после каждого опроса `GET /api/tasks/{task_id}`: переход
+    статуса дописывается в `history[]` задачи и в историю сессии
+    (`task_status_changed`), поэтому цепочка FSM-1 воспроизводима по отчёту.
+    """
+    record = find_task(session, task_id)
+    if record is None:
+        return None
+
+    previous = str(record.get("status") or "")
+    now = now_iso()
+    applied = str(status) if status is not None else previous
+    changed = status is not None and applied != previous
+
+    if task_type:
+        record["type"] = str(task_type)
+    if name:
+        record["name"] = str(name)
+    if check_id:
+        record["check_id"] = str(check_id)
+    if origin in TASK_ORIGINS:
+        record["origin"] = str(origin)
+    if interval:
+        record.setdefault("poll", _task_poll(interval))["interval"] = float(interval)
+    if active is not None:
+        record.setdefault("poll", _task_poll(None))["active"] = bool(active)
+    if intermediate_result is not None:
+        record["intermediate_result"] = dict(intermediate_result)
+    if runtimes is not None:
+        record["runtimes"] = [dict(item) for item in runtimes]
+    if journal_from is not None and record.get("journal_from") is None:
+        record["journal_from"] = int(journal_from)
+    if journal_seq is not None:
+        record["journal_seq"] = int(journal_seq)
+        if record.get("journal_from") is None:
+            record["journal_from"] = int(journal_seq)
+
+    record["status"] = applied
+    record["last_seen"] = now
+    if polled:
+        poll = record.setdefault("poll", _task_poll(None))
+        poll["polls"] = int(poll.get("polls") or 0) + 1
+        poll["last_poll"] = now
+    if note:
+        record["note"] = str(note)
+    if error:
+        record.setdefault("errors", []).append({"at": now, "error": str(error)})
+
+    if changed or note or error:
+        record.setdefault("history", []).append(
+            {
+                "at": now,
+                "previous": previous if changed else applied,
+                "status": applied,
+                "journal_seq": journal_seq,
+                "note": str(note or error or "статус задачи опрошен"),
+                "error": str(error or ""),
+            }
+        )
+
+    if changed:
+        session.add_history(
+            "task_status_changed",
+            f"Задача {record['task_id']}: {previous or '—'} → {applied}",
+            task_id=record["task_id"],
+            previous=previous,
+            status=applied,
+            journal_seq=journal_seq,
+            check_id=record.get("check_id"),
+        )
+    elif error:
+        session.add_history(
+            "task_poll_error",
+            f"Задача {record['task_id']}: опрос не выполнен ({error})",
+            task_id=record["task_id"],
+            error=str(error),
+            journal_seq=journal_seq,
+        )
+    return record
+
+
+def set_task_check(session: TestSession, task_id: str, check_id: str) -> dict[str, Any] | None:
+    """Привязывает наблюдаемую задачу к проверке чек-листа (карточка задачи)."""
+    record = find_task(session, task_id)
+    if record is None:
+        return None
+    record["check_id"] = str(check_id or "")
+    session.add_history(
+        "task_attached",
+        f"Задача {record['task_id']} привязана к проверке {record['check_id'] or '—'}",
+        task_id=record["task_id"],
+        check_id=record["check_id"],
+    )
+    return record
+
+
+def register_task_from_console(
+    session: TestSession,
+    *,
+    task_id: str,
+    label: str = "",
+    operation: str = "",
+    journal_seq: int | None = None,
+    task_type: str = "",
+    name: str = "",
+) -> dict[str, Any]:
+    """Ставит на наблюдение задачу, созданную ручным вызовом консоли (FR-T3 → T4).
+
+    Требование ТЗ: задача, запущенная из консоли, наблюдаётся монитором наравне
+    с задачами, созданными с экрана «Задачи».
+    """
+    return add_task(
+        session,
+        task_id=task_id,
+        task_type=task_type,
+        name=name,
+        origin=ORIGIN_PULT,
+        check_id=label,
+        journal_from=journal_seq,
+        journal_seq=journal_seq,
+        note=f"задача создана из консоли: {operation or label or 'вызов'}",
+    )
+
+
+def console_task_ids(session: TestSession) -> list[dict[str, Any]]:
+    """Задачи из ответов консоли (`task_id`) — для авто-подхвата монитором.
+
+    Нужны и как обходной путь для операций, которые не отдают `task_id`
+    (`POST /api/datasets/fill/{id}`, P1): связанная задача ищется в списке задач
+    (`acceptance.tasks_monitor.find_recent`).
+    """
+    seen: set[str] = set()
+    found: list[dict[str, Any]] = []
+    for call in session.console_calls:
+        task_id = str(call.get("task_id") or "").strip()
+        if not task_id or task_id in seen:
+            continue
+        seen.add(task_id)
+        found.append(
+            {
+                "task_id": task_id,
+                "label": str(call.get("label") or ""),
+                "operation": str(call.get("operation") or ""),
+                "journal_seq": call.get("journal_seq"),
+                "at": call.get("at"),
+            }
+        )
+    return found
+
+
+def tasks_summary(session: TestSession) -> dict[str, Any]:
+    """Сводка наблюдаемых задач: всего, активных, завершённых, прерванных, внешних."""
+    tasks = [dict(item) for item in session.tasks]
+    by_status: dict[str, int] = {}
+    by_origin: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for task in tasks:
+        status = str(task.get("status") or "неизвестен")
+        by_status[status] = by_status.get(status, 0) + 1
+        origin = str(task.get("origin") or ORIGIN_PULT)
+        by_origin[origin] = by_origin.get(origin, 0) + 1
+        task_type = str(task.get("type") or "не определён")
+        by_type[task_type] = by_type.get(task_type, 0) + 1
+
+    return {
+        "total": len(tasks),
+        "active": sum(1 for task in tasks if task.get("status") in TASK_ACTIVE_STATUSES),
+        "completed": sum(1 for task in tasks if task.get("status") in TASK_COMPLETED_STATUSES),
+        "failed": sum(1 for task in tasks if task.get("status") in TASK_FAILED_STATUSES),
+        "external": sum(1 for task in tasks if task.get("origin") == ORIGIN_EXTERNAL),
+        "watching": sum(1 for task in tasks if (task.get("poll") or {}).get("active")),
+        "polls": sum(int((task.get("poll") or {}).get("polls") or 0) for task in tasks),
+        "by_status": by_status,
+        "by_origin": by_origin,
+        "by_type": by_type,
+    }
+
+
 def add_note_to_session(session: TestSession, note: Any) -> TestSession:
     """Добавляет замечание к API в сессию (без дублей по заголовку)."""
     payload = note if isinstance(note, dict) else note.to_dict()
@@ -552,6 +881,7 @@ def session_meta(session: TestSession) -> dict[str, Any]:
         "duration_seconds": session.duration_seconds,
         "checks_total": len(session.checks),
         "notes_total": len(session.notes),
+        "tasks_total": len(session.tasks),
         "path": session_path(session.session_id).as_posix(),
     }
 

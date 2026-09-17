@@ -70,11 +70,17 @@ def test_templates_cover_known_defects():
     templates = api_notes.note_templates()
     titles = api_notes.template_titles()
 
-    assert len(templates) == 11
+    assert len(templates) == 14
     assert len(set(titles)) == len(titles)
     assert all(note.source == SOURCE_AUTO for note in templates)
     assert all(note.fact and note.expected and note.reproduction for note in templates)
-    assert {note.module for note in templates} >= {"File Import", "Loads", "Datasets", "ML models"}
+    assert {note.module for note in templates} >= {
+        "File Import",
+        "Loads",
+        "Datasets",
+        "ML models",
+        "Task service",
+    }
 
 
 def test_find_template_by_partial_title_and_unknown_title():

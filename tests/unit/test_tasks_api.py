@@ -7,11 +7,14 @@ query-параметр тестовой задачи, команды управ�
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 import httpx
 import pytest
 
 from client.errors import NotFoundError
 from client.tasks import TasksApi
+from lib.period import day_bounds
 
 
 def test_run_test_task_sends_duration_as_query(client_factory):
@@ -109,3 +112,48 @@ def test_get_task_propagates_404(client_factory):
 
     with pytest.raises(NotFoundError):
         TasksApi(client_factory(handler)).get_task("missing")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (date(2026, 9, 9), "2026-09-09T00:00:00"),
+        (datetime(2026, 9, 9, 12, 30, 15), "2026-09-09T12:30:15"),
+        ("2026-09-09T01:02:03", "2026-09-09T01:02:03"),
+        ("", None),
+    ],
+)
+def test_filters_are_always_date_time(client_factory, value, expected):
+    """Стенд требует `format: date-time`: «чистая» дата превращается в начало суток.
+
+    Строка `2026-09-09` в `start_date`/`end_date` отвечает 422 (`datetime_parsing`),
+    поэтому клиент не пропускает такой формат наружу (проверено на живом сервере).
+    """
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"tasks": [], "count": 0})
+
+    TasksApi(client_factory(handler)).list_tasks(start_date=value, limit=25)
+
+    params = httpx.QueryParams(seen["query"])
+    assert params.get("start_date") == expected
+    assert ("start_date" in params) is (expected is not None)
+
+
+def test_period_bounds_are_sent_as_next_day(client_factory):
+    """Период суток: `start_date` — начало дня, `end_date` — начало следующих суток."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["query"] = request.url.query.decode()
+        return httpx.Response(200, json={"tasks": [], "count": 0})
+
+    start, end = day_bounds(date(2026, 9, 9), date(2026, 9, 16))
+    TasksApi(client_factory(handler)).list_tasks(start_date=start, end_date=end, limit=25)
+
+    params = httpx.QueryParams(seen["query"])
+    assert params.get("start_date") == "2026-09-09T00:00:00"
+    assert params.get("end_date") == "2026-09-17T00:00:00"
+    assert params.get("limit") == "25"

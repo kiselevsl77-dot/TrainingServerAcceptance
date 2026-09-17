@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.notes import new_note
 from acceptance.session import (
+    ORIGIN_EXTERNAL,
+    ORIGIN_PULT,
     SCHEMA_VERSION,
     SNAP_END,
     SNAP_START,
@@ -18,22 +22,30 @@ from acceptance.session import (
     add_artifact,
     add_console_call,
     add_note_to_session,
+    add_task,
     close_session,
     collect_tool_version,
     console_calls_by_label,
     console_calls_summary,
+    console_task_ids,
     delete_session,
+    find_task,
     list_sessions,
     load_session,
     load_session_from_text,
     new_session,
+    register_task_from_console,
     reopen_session,
     save_session,
     session_json,
     session_meta,
     set_markup_stats,
     set_snapshot,
+    set_task_check,
     start_session,
+    task_history,
+    tasks_summary,
+    update_task,
 )
 from acceptance.session import (
     TestSession as SessionModel,
@@ -241,9 +253,9 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_three():
-    assert SCHEMA_VERSION == 3
-    assert _session(Path(".")).to_dict()["schema_version"] == 3
+def test_current_schema_version_is_four():
+    assert SCHEMA_VERSION == 4
+    assert _session(Path(".")).to_dict()["schema_version"] == 4
 
 
 # ---------------------------------------------------------------------------
@@ -344,3 +356,152 @@ def test_schema_v2_file_is_read_with_defaults():
 
     assert restored.schema_version == 2
     assert restored.console_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Схема v4: наблюдаемые задачи — монитор задач (этап T4)
+# ---------------------------------------------------------------------------
+def test_task_registration_updates_and_round_trips(tmp_path: Path):
+    """Задача ставится на наблюдение, переходы FSM-1 попадают в историю и в файл."""
+    session = _session(tmp_path)
+    add_task(
+        session,
+        task_id="task-1",
+        task_type="celery-test",
+        name="probe",
+        check_id="TC-TASK-04",
+        journal_seq=3,
+    )
+    update_task(session, "task-1", status="running", polled=True, journal_seq=4)
+    update_task(session, "task-1", status="paused", polled=True, journal_seq=6)
+    update_task(session, "task-1", error="ReadTimeout: сервер недоступен")
+    save_session(session, tmp_path)
+    restored = load_session(session.session_id, tmp_path)
+
+    task = find_task(restored, "task-1")
+    assert task is not None
+    assert task["origin"] == ORIGIN_PULT
+    assert task["status"] == "paused"
+    assert task["check_id"] == "TC-TASK-04"
+    assert task["journal_from"] == 4  # первая запись журнала наблюдения за задачей
+    assert task["journal_seq"] == 6
+    assert task["poll"]["polls"] == 2
+    assert task["poll"]["last_poll"]
+    assert task["errors"][-1]["error"].startswith("ReadTimeout")
+
+    history = task_history(restored, "task-1")
+    assert [(item["previous"], item["status"]) for item in history[:3]] == [
+        (None, ""),
+        ("", "running"),
+        ("running", "paused"),
+    ]
+    events = [item["event"] for item in restored.history]
+    assert "task_observed" in events
+    assert events.count("task_status_changed") == 2
+    assert "task_poll_error" in events
+
+
+def test_task_registration_is_idempotent():
+    """Повторная постановка на наблюдение обновляет запись, а не дублирует её."""
+    session = _session(Path("."))
+    add_task(session, task_id="task-2", task_type="training")
+    add_task(session, task_id="task-2", name="learning", check_id="TC-TR-01")
+
+    assert len(session.tasks) == 1
+    task = find_task(session, "task-2")
+    assert task is not None
+    assert task["name"] == "learning"
+    assert task["check_id"] == "TC-TR-01"
+    assert task["type"] == "training"
+
+
+def test_add_task_requires_identifier():
+    """Пустой `task_id` — ошибка вызывающего кода, а не «задача без имени»."""
+    with pytest.raises(ValueError):
+        add_task(_session(Path(".")), task_id="  ")
+
+
+def test_task_statuses_and_check_attachment():
+    """Привязка задачи к проверке и смена поллинга фиксируются в истории сессии."""
+    session = _session(Path("."))
+    add_task(session, task_id="task-3", origin=ORIGIN_EXTERNAL)
+    set_task_check(session, "task-3", "TC-TASK-08")
+    update_task(session, "task-3", active=False, interval=5.0)
+
+    task = find_task(session, "task-3")
+    assert task is not None
+    assert task["origin"] == ORIGIN_EXTERNAL
+    assert task["check_id"] == "TC-TASK-08"
+    assert task["poll"]["active"] is False
+    assert task["poll"]["interval"] == 5.0
+    assert [item["event"] for item in session.history].count("task_attached") == 1
+
+
+def test_tasks_summary_counts_statuses_and_origins():
+    """KPI монитора: наблюдаемых, активных, завершённых, прерванных, внешних."""
+    session = _session(Path("."))
+    add_task(session, task_id="a", task_type="celery-test")
+    update_task(session, "a", status="running")
+    add_task(session, task_id="b", task_type="training")
+    update_task(session, "b", status="completed")
+    add_task(session, task_id="c", origin=ORIGIN_EXTERNAL)
+    update_task(session, "c", status="not_found")
+    update_task(session, "c", active=False)
+
+    summary = tasks_summary(session)
+
+    assert summary["total"] == 3
+    assert summary["active"] == 1
+    assert summary["completed"] == 1
+    assert summary["failed"] == 1
+    assert summary["external"] == 1
+    assert summary["watching"] == 2
+    assert summary["by_origin"][ORIGIN_EXTERNAL] == 1
+    assert summary["by_status"]["running"] == 1
+
+
+def test_console_task_ids_and_registration_from_console():
+    """Задачи из ответов консоли подхватываются монитором (FR-T3 → T4)."""
+    session = _session(Path("."))
+    for task_id, label in (("task-10", "TC-TR-01"), ("task-10", "TC-TR-01"), ("", "TC-DS-05")):
+        add_console_call(
+            session,
+            label=label,
+            method="POST",
+            path="/api/ml_models/models/m-1/train",
+            status=202,
+            journal_seq=5,
+            operation="post /api/ml_models/models/{model_id}/train",
+            safety="heavy",
+            task_id=task_id,
+        )
+
+    found = console_task_ids(session)
+
+    assert [item["task_id"] for item in found] == ["task-10"]
+    assert found[0]["label"] == "TC-TR-01"
+
+    register_task_from_console(
+        session,
+        task_id="task-11",
+        label="TC-DS-05",
+        operation="post /api/datasets/fill/{dataset_id}",
+    )
+    task = find_task(session, "task-11")
+    assert task is not None
+    assert task["origin"] == ORIGIN_PULT
+    assert task["check_id"] == "TC-DS-05"
+    assert "консоли" in task["note"]
+
+
+def test_schema_v3_file_is_read_with_defaults():
+    """Файл сессии этапа T2 (schema v3) читается без ошибок, задачи пусты."""
+    payload = _session(Path(".")).to_dict()
+    payload["schema_version"] = 3
+    payload.pop("tasks", None)
+
+    restored = SessionModel.from_dict(payload)
+
+    assert restored.schema_version == 3
+    assert restored.tasks == []
+    assert session_meta(restored)["tasks_total"] == 0

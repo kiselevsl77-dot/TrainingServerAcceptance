@@ -226,3 +226,22 @@ def test_registry_is_serializable_and_has_legend():
     assert payload.count('"path"') == len(ep.ENDPOINTS)
     assert ep.safety_legend()[0]["safety"] == str(ep.Safety.READ)
     assert len(ep.safety_legend()) == len(ep.SAFETY_ORDER)
+
+
+def test_parameter_format_comes_from_specification():
+    """Формат параметра из спецификации виден оператору в консоли (этап T4).
+
+    Стенд принимает `start_date`/`end_date` только как дату-время: строка из одной
+    даты отвечает 422, поэтому подпись поля и подсказка обязаны называть формат.
+    """
+    endpoint = ep.find("get /api/tasks/")
+    start = endpoint.param("start_date")
+    limit = endpoint.param("limit")
+
+    assert start is not None and limit is not None
+    assert start.format == "date-time"
+    assert "date-time" in start.label
+    assert "YYYY-MM-DDTHH:MM:SS" in start.format_hint
+    assert limit.format == ""
+    assert limit.format_hint == ""
+    assert limit.label == "limit (integer)"

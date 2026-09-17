@@ -14,15 +14,19 @@ import streamlit as st
 from lib.pagination import DEFAULT_PER_PAGE, PER_PAGE_OPTIONS, Page
 
 
-def render_pagination(state_key: str, page: Page[Any]) -> None:
+def render_pagination(state_key: str, page: Page[Any], *, show_size: bool = True) -> None:
     """Отрисовывает кнопки «назад/вперёд», подпись и выбор размера страницы.
 
     Args:
         state_key: ключ `session_state` с номером текущей страницы; рядом
             хранится размер страницы (`{state_key}_size`).
         page: текущая страница (`lib.pagination.Page`).
+        show_size: рисовать ли селектор размера страницы. `False` — если у экрана
+            уже есть свой селектор (иначе оператор видит два поля «на странице»,
+            из которых второе ни на что не влияет).
     """
-    col_prev, col_info, col_next, col_size = st.columns([1, 3, 1, 1])
+    columns = st.columns([1, 3, 1, 1]) if show_size else st.columns([1, 3, 1])
+    col_prev, col_info, col_next = columns[0], columns[1], columns[2]
     per_page = st.session_state.get(f"{state_key}_size", DEFAULT_PER_PAGE)
 
     if col_prev.button(
@@ -45,7 +49,9 @@ def render_pagination(state_key: str, page: Page[Any]) -> None:
         st.session_state[state_key] = page.page + 1
         st.rerun()
 
-    col_size.selectbox(
+    if not show_size:
+        return
+    columns[3].selectbox(
         "На странице",
         PER_PAGE_OPTIONS,
         index=PER_PAGE_OPTIONS.index(per_page) if per_page in PER_PAGE_OPTIONS else 1,

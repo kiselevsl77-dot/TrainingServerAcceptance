@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 from uuid import UUID
 
@@ -28,13 +28,21 @@ from client.schemas import TaskListResponse, TaskType, TaskWithRuntimes
 
 
 def _iso(value: date | datetime | str | None) -> str | None:
-    """Приводит дату/время к строке ISO (для query-параметров)."""
+    """Приводит дату/время к строке ISO для query-параметров.
+
+    Стенд разбирает фильтры как `datetime` (`format: date-time` в спецификации):
+    строка из одной даты (`2026-09-09`) отклоняется статусом 422
+    (`datetime_parsing`), поэтому «чистая» дата превращается в начало суток.
+    Верхнюю границу клиент не расширяет: `end_date` на сервере исключающая
+    (`created_at < end_date`), поэтому конец периода задаёт вызывающий код —
+    `lib.period.day_bounds`.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, date):
-        return value.isoformat()
+        return datetime.combine(value, time.min).isoformat()
     return value
 
 
@@ -69,7 +77,12 @@ class TasksApi:
         limit: int | None = None,
         offset: int | None = None,
     ) -> TaskListResponse:
-        """GET /api/tasks/ — список задач с фильтрами и пагинацией (UC-27)."""
+        """GET /api/tasks/ — список задач с фильтрами и пагинацией (UC-27).
+
+        Границы периода сервер принимает только как дату-время (одна дата → 422),
+        `start_date` — включающая, `end_date` — исключающая: конец периода
+        считается началом следующих суток (`lib.period.day_bounds`).
+        """
         params: dict[str, Any] = {
             "task_type": str(task_type) if task_type is not None else None,
             "status": status,

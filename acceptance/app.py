@@ -34,6 +34,7 @@ from acceptance.ui.pages import (  # noqa: E402
     report,
     session,
     stand,
+    tasks,
 )
 
 st.set_page_config(page_title="Пульт испытаний · сервер обучения", page_icon="🧪", layout="wide")
@@ -43,6 +44,7 @@ SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
     "stand": ("🖥️ Стенд", stand.render),
     "session": ("🧪 Сессия испытаний", session.render),
     "records": ("🧩 Записи", records.render),
+    "tasks": ("⏱️ Задачи", tasks.render),
     "checks": ("✅ Чек-лист проверок", checks.render),
     "console": ("📡 Консоль запросов", console.render),
     "notes": ("✍️ Замечания к API", notes.render),
@@ -52,7 +54,7 @@ SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
 
 GROUPS: list[tuple[str, list[str]]] = [
     ("", ["stand", "session"]),
-    ("Испытания", ["records", "checks", "console"]),
+    ("Испытания", ["records", "tasks", "checks", "console"]),
     ("Результаты", ["notes", "logs", "report"]),
 ]
 
@@ -107,7 +109,7 @@ def _render_sidebar() -> None:
                 st.rerun()
 
     st.sidebar.divider()
-    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T2")
+    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T4")
 
 
 artifacts = state.ensure_logging(state.log_level(), state.current_session_id())

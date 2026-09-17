@@ -130,6 +130,15 @@ class Journal:
             self._seq += 1
             return self._seq
 
+    def peek_next_seq(self) -> int:
+        """Номер, который получит следующий обмен (без его расходования).
+
+        Нужен проверкам: перед запуском фиксируется `journal_from` — с какого
+        номера начинается диапазон записей проверки.
+        """
+        with self._lock:
+            return self._seq + 1
+
     def add(self, exchange: HttpExchange) -> HttpExchange:
         """Добавляет запись в журнал."""
         with self._lock:
