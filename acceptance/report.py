@@ -31,6 +31,11 @@ from typing import Any
 
 from acceptance import notes as notes_api
 from acceptance.checks import engine as checks_engine
+from acceptance.dataset_composition import (
+    composition_rows,
+    composition_store,
+    overlap_report,
+)
 from acceptance.paths import REPORT_DIR, ensure_dirs
 from acceptance.session import TestSession, now_iso, pending_test_entities, test_entities
 
@@ -68,6 +73,7 @@ SECTION_TITLES: tuple[str, ...] = (
     "Сводка проверок",
     "Детализация проверок",
     "Наблюдение за задачами",
+    "Датасеты и состав",
     "Артефакты и тестовые сущности",
     "Замечания к API",
     "Перспективные требования",
@@ -301,7 +307,7 @@ def _program_section(session: TestSession) -> str:
     lines.append(
         "Программа проверок: `docs/02. Чек-лист испытаний.md` — "
         f"{checks_engine.overall_stats(session)['implemented']} проверок каталога пульта "
-        f"из {checks_engine.overall_stats(session)['program_total']} (остальные — этапы T5–T10)."
+        f"из {checks_engine.overall_stats(session)['program_total']} (остальные — этапы T6–T10)."
     )
     return _section(2, SECTION_TITLES[1], lines)
 
@@ -441,8 +447,54 @@ def _tasks_section(session: TestSession) -> str:
     return _section(6, SECTION_TITLES[5], lines)
 
 
+def _datasets_section(session: TestSession) -> str:
+    """Раздел 7: датасеты и учёт состава (`acceptance.dataset_composition`, замечание P1)."""
+    compositions = composition_store(session)
+    if not compositions:
+        return _section(
+            7,
+            SECTION_TITLES[6],
+            [
+                "Состав датасетов в этой сессии не фиксировался.",
+                "",
+                "Учёт состава ведёт `acceptance.dataset_composition`: он включается, когда на "
+                "стенде выполнялись проверки `TC-DS-01…07` или наполнение с экрана «Датасеты».",
+            ],
+        )
+    overlap = overlap_report(compositions)
+    rows = composition_rows(compositions)
+    lines = [
+        _md_table(
+            rows,
+            ("dataset_id", "name", "source", "files", "raw", "markup", "size", "task_id"),
+        ),
+        "",
+        "**Источник состава (P1):** серверного состава и агрегатов в API нет, поэтому состав "
+        "ведётся локально: `local` — факт наполнения пультом, `heuristic` — предположение по "
+        "реестру файлов (требует подтверждения), `server` — состав от сервера (когда появится "
+        "операция состава), `unknown` — данных нет.",
+        "",
+        "**Косвенные признаки дублей (вывод вероятностный):**",
+        f"* записей состава: {overlap['totals']['compositions']}; датасетов: "
+        f"{overlap['totals']['datasets']}; файлов в составах: "
+        f"{overlap['totals']['files_in_compositions']}",
+    ]
+    lines.extend(f"* {hypothesis}" for hypothesis in overlap["hypotheses"])
+    cross = overlap["cross_dataset"]
+    if cross:
+        lines.append("")
+        lines.append("**Файлы, входящие в несколько датасетов:**")
+        lines.append(_md_table(cross[:10], ("file_id", "file_name", "datasets")))
+    repeats = overlap["repeat_uploads"]
+    if repeats:
+        lines.append("")
+        lines.append("**Повторные загрузки «имя + размер» с разными `id`:**")
+        lines.append(_md_table(repeats[:10], ("file_name", "size", "file_ids", "datasets")))
+    return _section(7, SECTION_TITLES[6], lines)
+
+
 def _artifacts_section(session: TestSession) -> str:
-    """Раздел 7: артефакты испытаний и учёт `__TEST__`-сущностей (NFR-T4, FR-T10)."""
+    """Раздел 8: артефакты испытаний и учёт `__TEST__`-сущностей (NFR-T4, FR-T10)."""
     artifacts = list(session.artifacts or [])
     entities = test_entities(session)
     pending = pending_test_entities(session)
@@ -470,11 +522,11 @@ def _artifacts_section(session: TestSession) -> str:
         lines.append("> ⚠️ Не удалены: " + ", ".join(str(item.get("id")) for item in pending) + ".")
     else:
         lines.append("Самоочистка выполнена: созданных и не удалённых сущностей нет.")
-    return _section(7, SECTION_TITLES[6], lines)
+    return _section(8, SECTION_TITLES[7], lines)
 
 
 def _notes_section(session: TestSession) -> str:
-    """Раздел 8: замечания к API по приоритетам P0/P1/P2 (FR-T7)."""
+    """Раздел 9: замечания к API по приоритетам P0/P1/P2 (FR-T7)."""
     grouped = notes_api.notes_by_priority(session.notes)
     lines: list[str] = []
     for priority in notes_api.PRIORITIES:
@@ -501,11 +553,11 @@ def _notes_section(session: TestSession) -> str:
             if note.evidence:
                 lines.append(f"  * доказательства: {note.evidence}")
         lines.append("")
-    return _section(8, SECTION_TITLES[7], lines)
+    return _section(9, SECTION_TITLES[8], lines)
 
 
 def _prospective_section() -> str:
-    """Раздел 9: перспективные требования к API (бэклог, не блокирует приёмку)."""
+    """Раздел 10: перспективные требования к API (бэклог, не блокирует приёмку)."""
     requirements = notes_api.prospective_requirements()
     lines = [
         _md_table(
@@ -521,11 +573,11 @@ def _prospective_section() -> str:
             ("priority", "module", "title", "detail"),
         )
     ]
-    return _section(9, SECTION_TITLES[8], lines)
+    return _section(10, SECTION_TITLES[9], lines)
 
 
 def _conclusion_section(session: TestSession, ready: Mapping[str, Any]) -> str:
-    """Раздел 10: выводы, итоговое решение сессии и подписи."""
+    """Раздел 11: выводы, итоговое решение сессии и подписи."""
     stats = ready["checks"]
     recommendation = "не определён"
     if stats["not_run"] == 0:
@@ -560,11 +612,11 @@ def _conclusion_section(session: TestSession, ready: Mapping[str, Any]) -> str:
         lines.append("**Предупреждения о полноте отчёта:**")
         for warning in ready["warnings"]:
             lines.append(f"* {warning}")
-    return _section(10, SECTION_TITLES[9], lines)
+    return _section(11, SECTION_TITLES[10], lines)
 
 
 def _annexes_section(annexes: Mapping[str, str]) -> str:
-    """Раздел 11: приложения комплекта отчёта (файлы, которые сохраняются рядом)."""
+    """Раздел 12: приложения комплекта отчёта (файлы, которые сохраняются рядом)."""
     rows = [
         {
             "annex": name,
@@ -573,7 +625,7 @@ def _annexes_section(annexes: Mapping[str, str]) -> str:
         }
         for name, content in annexes.items()
     ]
-    return _section(11, SECTION_TITLES[10], [_md_table(rows, ("annex", "lines", "size_bytes"))])
+    return _section(12, SECTION_TITLES[11], [_md_table(rows, ("annex", "lines", "size_bytes"))])
 
 
 def _group_summary(session: TestSession) -> list[dict[str, Any]]:
@@ -765,6 +817,7 @@ def build(
         _summary_section(session, groups),
         _details_section(session),
         _tasks_section(session),
+        _datasets_section(session),
         _artifacts_section(session),
         _notes_section(session),
         _prospective_section(),
@@ -796,6 +849,10 @@ def build(
         "groups": groups,
         "snapshots": comparison,
         "tasks": list(session.tasks or []),
+        "datasets": {
+            "compositions": [item.to_dict() for item in composition_store(session)],
+            "overlap": overlap_report(composition_store(session)),
+        },
         "console_calls": list(session.console_calls or []),
         "notes": [note.to_dict() for note in notes_api.sorted_notes(session.notes)],
         "prospective_requirements": notes_api.prospective_requirements(),

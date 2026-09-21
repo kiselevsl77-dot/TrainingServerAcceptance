@@ -1,0 +1,3442 @@
+{
+  "report_version": 1,
+  "generated_at": "2026-09-18T14:27:57",
+  "meta": {
+    "Сессия": "20260918-140006-b6ed",
+    "Стенд": "https://energomera.ai-center.online",
+    "Сборка сервера": "dev@83319ae",
+    "Оператор": "—",
+    "Объект испытаний": "dev@83319ae"
+  },
+  "session": {
+    "session_id": "20260918-140006-b6ed",
+    "status": "завершена",
+    "base_url": "https://energomera.ai-center.online",
+    "schema_version": 4,
+    "started_at": "2026-09-18T14:00:06",
+    "ended_at": "2026-09-18T14:26:30",
+    "duration_seconds": 1584.0,
+    "server_version": {
+      "branch": "dev",
+      "revision": "83319ae",
+      "commit": "83319aece31d48a6baca5d537bc1685516286679",
+      "message": "Merge branch 'docker-copy-scripts' into 'dev'",
+      "author": "Шайхиев Дмитрий Олегович",
+      "email": "d.shaikhiev@spbu.ru",
+      "build_date": "2026-09-17T15:08:59+00:00"
+    },
+    "server_build": "dev@83319ae",
+    "tool_version": {
+      "tool": "Пульт испытаний сервера обучения",
+      "tool_version": "0.1.0",
+      "git_commit": "2803235c4f3e9e803bcd9cf8b1e175abd634ad76",
+      "python": "3.12.5",
+      "platform": "Windows 10",
+      "root": "D:/VSC Python projects/TrainingServerAcceptance",
+      "collected_at": "2026-09-18T14:00:06"
+    },
+    "info": {
+      "title": "Испытания в рамках разработки пульта",
+      "program_doc": "",
+      "object_of_test": "dev@83319ae",
+      "customer": "",
+      "lab": "",
+      "operator_fio": "",
+      "operator_position": "",
+      "commission": "",
+      "goal": "Проверка функционала по состоянию на 18 сент. 14:00",
+      "scope": "",
+      "conditions": "",
+      "limitations": "",
+      "criteria": "",
+      "conclusion": "не определён",
+      "notes": "",
+      "signatures": ""
+    },
+    "logs": {
+      "app_log": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/logs/app.log",
+      "session_log": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/logs/session_20260918-140006-b6ed.jsonl"
+    }
+  },
+  "readiness": {
+    "checks": {
+      "total": 41,
+      "done": 30,
+      "counts": {
+        "не выполнена": 9,
+        "успех": 28,
+        "отказ": 1,
+        "блокировано API": 1,
+        "пропущена": 2,
+        "выполнена вручную": 0,
+        "прервана": 0
+      },
+      "failed": 1,
+      "blocked": 1,
+      "passed": 28,
+      "not_run": 9,
+      "implemented": 41,
+      "program_total": 69
+    },
+    "notes": {
+      "total": 1,
+      "p0": 1,
+      "p1": 0,
+      "p2": 0,
+      "auto": 1
+    },
+    "tasks": {
+      "observed": 3
+    },
+    "artifacts": {
+      "total": 6,
+      "kinds": {
+        "report:report_md": 1,
+        "report:report_json": 1,
+        "report:checks.csv": 1,
+        "report:notes.csv": 1,
+        "report:test_entities.csv": 1,
+        "report:journal.jsonl": 1
+      }
+    },
+    "test_entities": {
+      "total": 0,
+      "pending": 0
+    },
+    "session": {
+      "filled": true,
+      "status": "завершена",
+      "duration_seconds": 1584.0,
+      "build": "dev@83319ae"
+    },
+    "warnings": [
+      "не выполнено проверок: 9 из 41 — итог может быть «не определён»",
+      "проверок с отказом: 1 — требуется разбор причин"
+    ],
+    "ready": false
+  },
+  "checks": [
+    {
+      "check_id": "TC-SYS-01",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Доступность сервиса",
+      "requirement": "FR-1, UC-01, BR-R8",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "GET /health отвечает 200: сервис помечен доступным",
+      "operator_note": "",
+      "evidence": {
+        "endpoint": "get /health",
+        "status": 200
+      },
+      "journal_from": 152,
+      "journal_to": 152,
+      "journal_range": "#152",
+      "duration_ms": 62.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "HTTP 200, сервис помечен доступным",
+      "automation": "system.health",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-SYS-02",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Версия сборки и её состав",
+      "requirement": "FR-1, BR-R8",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "сборка dev@83319ae; заполнено полей: 4",
+      "operator_note": "",
+      "evidence": {
+        "endpoint": "get /version",
+        "fields_present": [
+          "branch",
+          "revision",
+          "commit",
+          "build_date"
+        ],
+        "fields_missing": [],
+        "build": "dev@83319ae",
+        "response": {
+          "branch": "dev",
+          "revision": "83319ae",
+          "commit": "83319aece31d48a6baca5d537bc1685516286679",
+          "message": "Merge branch 'docker-copy-scripts' into 'dev'",
+          "author": "Шайхиев Дмитрий Олегович",
+          "email": "d.shaikhiev@spbu.ru",
+          "build_date": "2026-09-17T15:08:59+00:00"
+        }
+      },
+      "journal_from": 153,
+      "journal_to": 153,
+      "journal_range": "#153",
+      "duration_ms": 16.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "HTTP 200; в ответе есть `branch`, `revision`, `commit`, `build_date` (или зафиксировано, чего нет); сборка сохранена в сессии",
+      "automation": "system.version",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-SYS-03",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Поведение на неизвестном пути",
+      "requirement": "NFR-2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "отказ",
+      "icon": "❌",
+      "verdict": "неизвестный путь отвечает 405 вместо 404",
+      "operator_note": "",
+      "evidence": {
+        "path": "/api/__test_unknown__",
+        "status": 405,
+        "detail": "Method Not Allowed",
+        "detail_kind": "str",
+        "body": "{\"detail\":\"Method Not Allowed\"}",
+        "error": "Method Not Allowed"
+      },
+      "journal_from": 154,
+      "journal_to": 154,
+      "journal_range": "#154",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "HTTP 404 (не 5xx), ошибка разобрана как `{\"detail\": …}`",
+      "automation": "system.unknown_path",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-SYS-04",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Неизвестная задача",
+      "requirement": "BR-R7, UC-27",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "неизвестная задача: 404 — пульт различает «не найдена» и «сервер недоступен» (Task not found)",
+      "operator_note": "",
+      "evidence": {
+        "task_id": "00000000-0000-4000-8000-000000000000",
+        "variant": "404",
+        "error": "Task not found"
+      },
+      "journal_from": 155,
+      "journal_to": 155,
+      "journal_range": "#155",
+      "duration_ms": 47.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "статус `not_found` либо 404 — вариант зафиксирован и понятен UI",
+      "automation": "system.unknown_task",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-SYS-05",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Единый формат ошибок",
+      "requirement": "NFR-2, BR-R2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "формат ошибок валидации согласован: /api/data/files → 422/HTTPValidationError.detail[], /api/datasets/not-a-uuid → 422/HTTPValidationError.detail[]",
+      "operator_note": "",
+      "evidence": {
+        "probes": [
+          {
+            "path": "/api/data/files",
+            "query": {
+              "id": "not-a-uuid"
+            },
+            "status": 422,
+            "detail_kind": "HTTPValidationError.detail[]",
+            "detail_size": 1,
+            "detail_example": "{'type': 'uuid_parsing', 'loc': ['query', 'id'], 'msg': 'Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1', 'input':",
+            "error": "{'type': 'uuid_parsing', 'loc': ['query', 'id'], 'msg': 'Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1', 'input': 'not-a-uuid', 'ctx': {'error': 'invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1'}, 'url': 'https://errors.pydantic.dev/2.4/v/uuid_parsing'}"
+          },
+          {
+            "path": "/api/datasets/not-a-uuid",
+            "query": {},
+            "status": 422,
+            "detail_kind": "HTTPValidationError.detail[]",
+            "detail_size": 1,
+            "detail_example": "{'type': 'uuid_parsing', 'loc': ['path', 'dataset_id'], 'msg': 'Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1', '",
+            "error": "{'type': 'uuid_parsing', 'loc': ['path', 'dataset_id'], 'msg': 'Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1', 'input': 'not-a-uuid', 'ctx': {'error': 'invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1'}, 'url': 'https://errors.pydantic.dev/2.4/v/uuid_parsing'}"
+          }
+        ],
+        "detail_kinds": [
+          "HTTPValidationError.detail[]"
+        ]
+      },
+      "journal_from": 156,
+      "journal_to": 157,
+      "journal_range": "#156…157",
+      "duration_ms": 78.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "согласованный формат ошибки валидации (`HTTPValidationError.detail[]` либо строка); расхождения фиксируются как замечание",
+      "automation": "system.error_format",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-SYS-06",
+      "group": "TC-SYS",
+      "group_title": "TC-SYS — модуль «Система»",
+      "module": "Система",
+      "title": "Различимость сборок",
+      "requirement": "BR-R8",
+      "check_class": "manual",
+      "class_label": "ручная",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "оператор подтверждает, что `revision`/`build_date` позволяют отличить сборки",
+      "automation": null,
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-FILE-01",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Реестр файлов получен полностью",
+      "requirement": "UC-03, FR-2, BR-F1",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "реестр получен: файлов 266, count совпадает, обязательные поля на месте",
+      "operator_note": "",
+      "evidence": {
+        "count": 266,
+        "returned": 266,
+        "fields": [
+          "id",
+          "file_name",
+          "size",
+          "s3_path",
+          "import_date",
+          "file_type"
+        ]
+      },
+      "journal_from": 158,
+      "journal_to": 158,
+      "journal_range": "#158",
+      "duration_ms": 94.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "HTTP 200; `count` = числу элементов `files`",
+      "automation": "files.list_registry",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-02",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Фильтр `file_name` — подстрока",
+      "requirement": "UC-03, NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "фильтр file_name: «ер.raw» → 10 из 266 файлов, все имена содержат подстроку",
+      "operator_note": "",
+      "evidence": {
+        "needle": "ер.raw",
+        "status": 200,
+        "found": 10,
+        "of_total": 266,
+        "names": [
+          "3Дпринтер.raw.csv",
+          "Блендер.raw.csv",
+          "Массажер.raw.csv",
+          "Принтер.raw.csv",
+          "Тостер.raw.csv"
+        ]
+      },
+      "journal_from": 159,
+      "journal_to": 160,
+      "journal_range": "#159…160",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "выдача — подмножество, все имена содержат подстроку",
+      "automation": "files.name_filter",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-03",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Фильтр `file_type` — точный и регистрозависимый",
+      "requirement": "UC-03, NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "фильтр file_type=H5 → 6 файлов",
+      "operator_note": "",
+      "evidence": {
+        "types": [
+          "H5",
+          "LOADS",
+          "RAW",
+          "REPORT_ZIP"
+        ],
+        "file_type=H5": 6,
+        "file_type=h5": 0,
+        "case_sensitive": "регистр влияет: строчное значение не даёт выдачи"
+      },
+      "journal_from": 161,
+      "journal_to": 163,
+      "journal_range": "#161…163",
+      "duration_ms": 141.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "`RAW` даёт непустую выдачу, `raw` — пустую; расхождение фиксируется замечанием",
+      "automation": "files.type_filter",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-04",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Фильтр `import_date` — только дата",
+      "requirement": "UC-03, BR-R2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "фильтр import_date=2026-09-18: 1 из 266 файлов, все — этой даты",
+      "operator_note": "",
+      "evidence": {
+        "date": "2026-09-18",
+        "dates_in_registry": 5,
+        "found": 1,
+        "of_total": 266,
+        "note": "параметр принимает только дату `YYYY-MM-DD`: фильтр по времени недоступен"
+      },
+      "journal_from": 164,
+      "journal_to": 165,
+      "journal_range": "#164…165",
+      "duration_ms": 125.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:47",
+      "expected": "фильтрация по календарной дате; невозможность фильтра по времени зафиксирована",
+      "automation": "files.import_date_filter",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-05",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Пагинация `limit`/`offset`",
+      "requirement": "NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "limit=5 → 266 из 266 файлов (клиентская пагинация (параметры limit/offset игнорируются — замечание к API P2))",
+      "operator_note": "",
+      "evidence": {
+        "query": {
+          "limit": "5",
+          "offset": "0"
+        },
+        "status": 200,
+        "full_size": 266,
+        "page_size": 266,
+        "error": null,
+        "mode": "клиентская пагинация (параметры limit/offset игнорируются — замечание к API P2)"
+      },
+      "journal_from": 166,
+      "journal_to": 167,
+      "journal_range": "#166…167",
+      "duration_ms": 156.0,
+      "started_at": "2026-09-18T14:23:47",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "если параметры игнорируются — замечание к API; UI использует клиентскую пагинацию",
+      "automation": "files.pagination",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-06",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Объём реестра и суммарный размер",
+      "requirement": "UC-03",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "файлов 266, суммарный размер 39 ГБ, типы: {'RAW': 129, 'LOADS': 129, 'H5': 6, 'REPORT_ZIP': 2}",
+      "operator_note": "",
+      "evidence": {
+        "files": 266,
+        "total_bytes": 41713546201,
+        "total_label": "39 ГБ",
+        "by_type": {
+          "RAW": 129,
+          "LOADS": 129,
+          "H5": 6,
+          "REPORT_ZIP": 2
+        },
+        "snapshot_files": 41713546201,
+        "snapshot_count": 266,
+        "endpoint": "get /api/data/files"
+      },
+      "journal_from": 168,
+      "journal_to": 168,
+      "journal_range": "#168",
+      "duration_ms": 63.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "счётчики, суммарный размер и распределение по типам попадают в снимок стенда",
+      "automation": "files.volume",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-07",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Дубли имён файлов",
+      "requirement": "замечание №1, BR-R2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "дубли имён: «Antminer_S19.markup.csv» — 2 версии, различаются id, size, import_date, s3_path · полей `checksum`/`updated_at` в схеме нет (замечание к API)",
+      "operator_note": "",
+      "evidence": {
+        "duplicated_names": [
+          "3Дпринтер.markup.csv",
+          "3Дпринтер.raw.csv",
+          "3Дпринтер_подготовка.markup.csv",
+          "3Дпринтер_подготовка.raw.csv",
+          "Antminer_S19.markup.csv"
+        ],
+        "duplicated_total": 118,
+        "schema_fields": [
+          "id",
+          "file_name",
+          "size",
+          "s3_path",
+          "import_date",
+          "file_type"
+        ],
+        "checksum_field": false,
+        "updated_at_field": false,
+        "name": "Antminer_S19.markup.csv",
+        "versions": 2,
+        "distinct": {
+          "id": 2,
+          "size": 2,
+          "import_date": 2,
+          "s3_path": 2
+        }
+      },
+      "journal_from": 169,
+      "journal_to": 169,
+      "journal_range": "#169",
+      "duration_ms": 62.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "для одноимённых файлов найдено ≥ 2 записи, различающиеся `id`/`size`/`import_date`/`s3_path`; отсутствие `checksum`/`updated_at` зафиксировано",
+      "automation": "files.duplicates",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-08",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Скачивание файла (ASCII-имя)",
+      "requirement": "UC-04, BR-F1",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "файл «Wi-Fi.markup.csv» скачан: 3.2 КБ, размер совпал с реестром",
+      "operator_note": "",
+      "evidence": {
+        "file_id": "8e5386f7-36b0-4581-8b12-1569d3da97dd",
+        "file_name": "Wi-Fi.markup.csv",
+        "size_registry": 3288,
+        "size_downloaded": 3288,
+        "error": null
+      },
+      "journal_from": 170,
+      "journal_to": 171,
+      "journal_range": "#170…171",
+      "duration_ms": 125.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "HTTP 200, `application/octet-stream`, имя в `Content-Disposition`, размер совпадает с `size` реестра",
+      "automation": "files.download_ascii",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-09",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Заголовки скачивания",
+      "requirement": "замечание к API №2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "заголовки скачивания: нет `content-length`, `accept-ranges`, `etag`",
+      "operator_note": "",
+      "evidence": {
+        "file_id": "8e5386f7-36b0-4581-8b12-1569d3da97dd",
+        "file_name": "Wi-Fi.markup.csv",
+        "status": 200,
+        "content_type": "application/octet-stream",
+        "size_bytes": 3288,
+        "size_registry": 3288,
+        "content_disposition_name": "Wi-Fi.markup.csv",
+        "present": [],
+        "missing": [
+          "content-length",
+          "accept-ranges",
+          "etag"
+        ],
+        "content_length": null
+      },
+      "journal_from": 172,
+      "journal_to": 173,
+      "journal_range": "#172…173",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "проверяется отсутствие `Content-Length`/`Accept-Ranges`/`ETag`; результат — замечание к API",
+      "automation": "files.download_headers",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-10",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Скачивание файла с не-ASCII именем",
+      "requirement": "замечание к API (P0)",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "блокировано API",
+      "icon": "🚫",
+      "verdict": "скачивание не-ASCII имени не работает: 404 latin-1 — замечание к API (P0), записи с такими именами недоступны пульту",
+      "operator_note": "",
+      "evidence": {
+        "file_id": "1e5ae0c5-4326-4c44-bdb2-7380a3e3b850",
+        "file_name": "ПК.markup.csv",
+        "status": 404,
+        "detail": "'latin-1' codec can't encode characters in position 21-22: ordinal not in range(256)",
+        "size_registry": 3262,
+        "error": "'latin-1' codec can't encode characters in position 21-22: ordinal not in range(256)"
+      },
+      "journal_from": 174,
+      "journal_to": 175,
+      "journal_range": "#174…175",
+      "duration_ms": 469.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "**ожидаемо блокировано**: `404 latin-1`; замечание формируется автоматически",
+      "automation": "files.download_non_ascii",
+      "blocked_by_api": "скачивание не-ASCII имён (404 latin-1)",
+      "is_done": true
+    },
+    {
+      "check_id": "TC-FILE-11",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Загрузка CSV без обязательных колонок",
+      "requirement": "UC-02, BR-F1",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "HTTP 400 со строкой `detail`; текст показывается оператору",
+      "automation": "files.upload_invalid_csv",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-FILE-12",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Загрузка с MIME `application/octet-stream`",
+      "requirement": "замечание к API №5",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "HTTP 400 «Only CSV files are allowed»: фиксируется, что проверяется MIME-тип части, а не содержимое",
+      "automation": "files.upload_wrong_mime",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-FILE-13",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Round-trip `upload → list → download → delete`",
+      "requirement": "UC-02…UC-05",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "файл `__TEST__*.csv` создан, найден в реестре, скачан (байты совпадают), удалён; следов в реестре не осталось",
+      "automation": "files.round_trip",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-FILE-14",
+      "group": "TC-FILE",
+      "group_title": "TC-FILE — модуль «File Import»",
+      "module": "File Import",
+      "title": "Удаление несуществующего файла",
+      "requirement": "UC-05, NFR-2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "удаление несуществующего файла: 404 «File with id 08c08fa9-5e99-4bb4-8db2-ff57f8dc6eb1 not found» — код согласован",
+      "operator_note": "",
+      "evidence": {
+        "file_id": "08c08fa95e994bb48db2ff57f8dc6eb1",
+        "status": 404,
+        "detail": "File with id 08c08fa9-5e99-4bb4-8db2-ff57f8dc6eb1 not found",
+        "error": "File with id 08c08fa9-5e99-4bb4-8db2-ff57f8dc6eb1 not found",
+        "note": "batch-удаления пары RAW+markup в API нет: уборка — два отдельных запроса"
+      },
+      "journal_from": 176,
+      "journal_to": 176,
+      "journal_range": "#176",
+      "duration_ms": 47.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:48",
+      "expected": "HTTP 404 (или иной согласованный код) — фиксируется; batch-удаления пары нет",
+      "automation": "files.delete_missing",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-REC-01",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Объединение RAW+markup в записи",
+      "requirement": "замечание №1 к макету",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "записей 129 из 266 файлов (правило «имя + время импорта», покрытие разметкой 100.0%)",
+      "operator_note": "",
+      "evidence": {
+        "rule": "имя + время импорта",
+        "window_seconds": 3600.0,
+        "stats": {
+          "files": 266,
+          "records": 129,
+          "confirmed": 129,
+          "manual": 0,
+          "weak": 0,
+          "without_markup": 0,
+          "attached_markup": 129,
+          "duplicates": 128,
+          "duplicate_bases": 61,
+          "unpaired_markup": 0,
+          "other": 8,
+          "excluded": 0,
+          "coverage_percent": 100.0,
+          "raw_bytes": 41544589031,
+          "markup_bytes": 167311346,
+          "total_bytes": 41711900377
+        },
+        "records": 129,
+        "requires_attention": 128,
+        "sample": [
+          {
+            "record_id": "bb1c62140a6e",
+            "base_name": "3Дпринтер",
+            "rule": "имя + время импорта",
+            "confidence": "подтверждено",
+            "delta": "markup позже на 0.23 с"
+          },
+          {
+            "record_id": "53759cca0f24",
+            "base_name": "3Дпринтер",
+            "rule": "имя + время импорта",
+            "confidence": "подтверждено",
+            "delta": "markup позже на 0.17 с"
+          },
+          {
+            "record_id": "df228a7249fd",
+            "base_name": "3Дпринтер_подготовка",
+            "rule": "имя + время импорта",
+            "confidence": "подтверждено",
+            "delta": "markup позже на 0.15 с"
+          },
+          {
+            "record_id": "3e12d46159d7",
+            "base_name": "3Дпринтер_подготовка",
+            "rule": "имя + время импорта",
+            "confidence": "подтверждено",
+            "delta": "markup позже на 0.16 с"
+          },
+          {
+            "record_id": "e78a6e14680a",
+            "base_name": "Antminer_S19",
+            "rule": "имя + время импорта",
+            "confidence": "подтверждено",
+            "delta": "markup позже на 0.98 с"
+          }
+        ]
+      },
+      "journal_from": 177,
+      "journal_to": 177,
+      "journal_range": "#177",
+      "duration_ms": 78.0,
+      "started_at": "2026-09-18T14:23:48",
+      "ended_at": "2026-09-18T14:23:49",
+      "expected": "записи сформированы по явному правилу (имя + время импорта); правило и уверенность показаны в таблице и карточке; число записей зафиксировано в отчёте",
+      "automation": "records.pairing",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-REC-02",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Обработка дублей при сопоставлении",
+      "requirement": "замечание №1, п. 3.1 ТЗ",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "манифест полон (266 файлов, 137 строк), баз с дублями 61",
+      "operator_note": "",
+      "evidence": {
+        "manifest_rows": 137,
+        "manifest_ids": 266,
+        "files_in_registry": 266,
+        "complete": true,
+        "duplicate_bases": [
+          "3Дпринтер",
+          "3Дпринтер_подготовка",
+          "Antminer_S19",
+          "Antminer_S19i",
+          "Avalon_1240",
+          "Miner_3Ph",
+          "skfu_three_phase_test_160000",
+          "skfu_three_phase_test_40000",
+          "Wi-Fi",
+          "БегДорожка"
+        ],
+        "duplicate_total": 61,
+        "versions": {
+          "3Дпринтер": [
+            {
+              "record_id": "bb1c62140a6e",
+              "raw_id": "cb98aaca-23c4-40f6-92fb-88cb4de1483b",
+              "raw_size": 24566291,
+              "markup_id": "07c321d7-139a-488a-abe2-1bb2aa4c023e",
+              "import_date": "2026-09-09 13:52:55.791912",
+              "s3_path": "RAW/2026/09/09/3Дпринтер.raw.csv"
+            },
+            {
+              "record_id": "53759cca0f24",
+              "raw_id": "ca376f27-245a-40d4-aca4-a909ba2a1190",
+              "raw_size": 1282054,
+              "markup_id": "b9eb8b0a-c226-4346-9b08-9df6cad36556",
+              "import_date": "2026-09-09 14:42:03.211235",
+              "s3_path": "RAW/2026/09/09/3Дпринтер.raw_1.csv"
+            }
+          ],
+          "3Дпринтер_подготовка": [
+            {
+              "record_id": "df228a7249fd",
+              "raw_id": "5c6d47ae-2b01-44af-84fb-3745c5d176ec",
+              "raw_size": 24566291,
+              "markup_id": "12f4f785-ee74-478a-9913-7805b2b90aec",
+              "import_date": "2026-09-09 13:52:57.167170",
+              "s3_path": "RAW/2026/09/09/3Дпринтер_подготовка.raw.csv"
+            },
+            {
+              "record_id": "3e12d46159d7",
+              "raw_id": "961e35e0-d808-4822-b5d8-73641823c7fc",
+              "raw_size": 1282054,
+              "markup_id": "74b65429-6c1f-49c4-a88c-ecf3eef2a598",
+              "import_date": "2026-09-09 14:42:03.764066",
+              "s3_path": "RAW/2026/09/09/3Дпринтер_подготовка.raw_1.csv"
+            }
+          ],
+          "Antminer_S19": [
+            {
+              "record_id": "e78a6e14680a",
+              "raw_id": "ead5b240-bd97-4ffa-9fe8-9c4870f4dd07",
+              "raw_size": 2107657231,
+              "markup_id": "224dd764-5faa-4b85-8cdf-47967f664e41",
+              "import_date": "2026-09-09 13:53:56.319271",
+              "s3_path": "RAW/2026/09/09/Antminer_S19.raw.csv"
+            },
+            {
+              "record_id": "97392f0f2a2b",
+              "raw_id": "07bbd1fa-a939-4191-b4f1-907160f75e11",
+              "raw_size": 110929639,
+              "markup_id": "530787c8-7b86-4a5a-9e33-80b1c3b1be29",
+              "import_date": "2026-09-09 14:42:07.606890",
+              "s3_path": "RAW/2026/09/09/Antminer_S19.raw_1.csv"
+            }
+          ]
+        }
+      },
+      "journal_from": 178,
+      "journal_to": 178,
+      "journal_range": "#178",
+      "duration_ms": 63.0,
+      "started_at": "2026-09-18T14:23:49",
+      "ended_at": "2026-09-18T14:23:49",
+      "expected": "видны все версии записи (`id`/`size`/`import_date`/`s3_path`); контроль полноты манифеста пройден; результат — манифест CSV/JSON",
+      "automation": "records.duplicates_manifest",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-REC-03",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Ручная перепривязка пары",
+      "requirement": "п. 3.1 ТЗ",
+      "check_class": "manual",
+      "class_label": "ручная",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "оператор привязывает markup к RAW при дублях и свободную разметку к записи без разметки; решение зафиксировано в `records_overrides.json`, журнале и истории сессии (с ФИО и комментарием)",
+      "automation": null,
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-REC-04",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Несопоставленные файлы",
+      "requirement": "п. 3.1 ТЗ",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "несопоставленные выделены: RAW без разметки 0, разметка без RAW 0; прочих файлов 8 — все в манифесте",
+      "operator_note": "",
+      "evidence": {
+        "raw_without_markup": 0,
+        "markup_without_raw": 0,
+        "other_files": 8,
+        "other_not_in_manifest": [],
+        "other_in_records": [],
+        "examples": {
+          "raw_without_markup": [],
+          "markup_without_raw": [],
+          "other": [
+            "30e5707f-65ff-4aec-b1ec-d926e58bdac7.h5",
+            "model-36940f3b-2891-496f-9e30-070cf90e36a4-20260915-082625.zip",
+            "model-fc3f7245-5f5c-4db1-b0ff-e1a35fe2fd18-20260915-084118.zip"
+          ]
+        }
+      },
+      "journal_from": 179,
+      "journal_to": 179,
+      "journal_range": "#179",
+      "duration_ms": 93.0,
+      "started_at": "2026-09-18T14:23:49",
+      "ended_at": "2026-09-18T14:23:49",
+      "expected": "записи без разметки и разметка без RAW выделены в отдельные разделы с пояснением; прочие файлы (`H5`, `REPORT_ZIP`, `.onnx`) не попадают в записи, но есть в манифесте",
+      "automation": "records.unpaired",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-REC-05",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Записи и чанки разметки",
+      "requirement": "замечания №3/№4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "разметка разобрана по 3 файл(ам): записей 129675, чанков 129675 · недоступно (не-ASCII) 3 файл(ов)",
+      "operator_note": "",
+      "evidence": {
+        "markup_files_total": 129,
+        "parsed": [
+          {
+            "file_id": "224dd764-5faa-4b85-8cdf-47967f664e41",
+            "file_name": "Antminer_S19.markup.csv",
+            "size": 5666062,
+            "records": 42750,
+            "chunks": 42750
+          },
+          {
+            "file_id": "18c6cfe5-f6b4-4f08-bbac-6f46c03966e8",
+            "file_name": "Antminer_S19i.markup.csv",
+            "size": 5675666,
+            "records": 42750,
+            "chunks": 42750
+          },
+          {
+            "file_id": "b2cc93bd-c1e5-460d-a38a-0099f5d16834",
+            "file_name": "Avalon_1240.markup.csv",
+            "size": 5771255,
+            "records": 44175,
+            "chunks": 44175
+          }
+        ],
+        "blocked": [
+          {
+            "file_id": "07c321d7-139a-488a-abe2-1bb2aa4c023e",
+            "file_name": "3Дпринтер.markup.csv",
+            "status": 404,
+            "reason": "не-ASCII имя (дефект latin-1)"
+          },
+          {
+            "file_id": "12f4f785-ee74-478a-9913-7805b2b90aec",
+            "file_name": "3Дпринтер_подготовка.markup.csv",
+            "status": 404,
+            "reason": "не-ASCII имя (дефект latin-1)"
+          },
+          {
+            "file_id": "2923440b-0835-4f95-b2d5-9d19af866f6b",
+            "file_name": "БегДорожка.markup.csv",
+            "status": 404,
+            "reason": "не-ASCII имя (дефект latin-1)"
+          }
+        ],
+        "session_stats": 3,
+        "estimate_note": "записи и чанки — клиентская оценка: серверных агрегатов в API нет"
+      },
+      "journal_from": 180,
+      "journal_to": 186,
+      "journal_range": "#180…186",
+      "duration_ms": 9797.0,
+      "started_at": "2026-09-18T14:23:49",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "для доступных markup-файлов посчитаны записи и уникальные `chunkID`; результат помечен как клиентская оценка и сохранён в сессии; для не-ASCII имён — статус «заблокировано API» + замечание",
+      "automation": "records.markup_stats",
+      "blocked_by_api": "разбор разметки невозможен для не-ASCII имён (404 latin-1)",
+      "is_done": true
+    },
+    {
+      "check_id": "TC-REC-06",
+      "group": "TC-REC",
+      "group_title": "TC-REC — записи (RAW + markup)",
+      "module": "Записи и разметка",
+      "title": "Сравнение дублей одной записи",
+      "requirement": "замечание №1",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "версии «3Дпринтер» сопоставлены (2), актуальная — 53759cca0f24 (последняя по `import_date`)",
+      "operator_note": "",
+      "evidence": {
+        "base_name": "3Дпринтер",
+        "versions": [
+          {
+            "record_id": "bb1c62140a6e",
+            "raw_name": "3Дпринтер.raw.csv",
+            "raw_size": 24566291,
+            "markup_id": "07c321d7-139a-488a-abe2-1bb2aa4c023e",
+            "markup_size": 68401,
+            "import_date": "2026-09-09 13:52:55.791912",
+            "delta_seconds": 0.233589,
+            "records": null,
+            "chunks": null,
+            "manual": false,
+            "excluded": false
+          },
+          {
+            "record_id": "53759cca0f24",
+            "raw_name": "3Дпринтер.raw.csv",
+            "raw_size": 1282054,
+            "markup_id": "b9eb8b0a-c226-4346-9b08-9df6cad36556",
+            "markup_size": 3600,
+            "import_date": "2026-09-09 14:42:03.211235",
+            "delta_seconds": 0.165667,
+            "records": null,
+            "chunks": null,
+            "manual": false,
+            "excluded": false
+          }
+        ],
+        "raw_size_variants": 2,
+        "actual_version": "53759cca0f24",
+        "actual_source": "последняя по `import_date`"
+      },
+      "journal_from": 187,
+      "journal_to": 187,
+      "journal_range": "#187",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "для одноимённых версий сопоставлены размеры RAW/markup, Δ импорта и структурные характеристики; расхождения включены в отчёт; актуальная версия отмечена",
+      "automation": "records.duplicate_versions",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-01",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Реестр нагрузок получен",
+      "requirement": "UC-06, BR-F2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "реестр нагрузок получен: 62 из 62, срез limit/offset различает страницы",
+      "operator_note": "",
+      "evidence": {
+        "result_size": 62,
+        "returned": 62,
+        "limit": 1000,
+        "offset": 0,
+        "fields": [
+          "load_id",
+          "category",
+          "description"
+        ],
+        "page_first": 1,
+        "page_second": 1,
+        "offset_works": true
+      },
+      "journal_from": 188,
+      "journal_to": 190,
+      "journal_range": "#188…190",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "HTTP 200; `result_size` соответствует числу нагрузок; срез `limit`/`offset` работает",
+      "automation": "loads.registry",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-02",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Состав полей реестра и контракт",
+      "requirement": "FR-3, контракт 17.09.2026",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "состав полей реестра: load_id, category, description; `phase_connection` в контракте 17.09.2026 нет — расхождение снято",
+      "operator_note": "",
+      "evidence": {
+        "fields": [
+          "load_id",
+          "category",
+          "description"
+        ],
+        "required": [
+          "load_id",
+          "category"
+        ],
+        "missing": [],
+        "phase_connection": false,
+        "contract": "17.09.2026: требование фазы снято (`phase_connection` нет, `ph_n` убран)",
+        "sample": {
+          "load_id": "__OTHER__",
+          "category": "system",
+          "description": "Все остальное"
+        }
+      },
+      "journal_from": 191,
+      "journal_to": 191,
+      "journal_range": "#191",
+      "duration_ms": 47.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "состав полей зафиксирован: обязательные `load_id` и `category` есть; `phase_connection` в контракте отсутствует (требование фазы снято)",
+      "automation": "loads.fields",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-03",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Неизвестный параметр `ph_n`",
+      "requirement": "FR-3, контракт 17.09.2026",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "неизвестный параметр `ph_n` игнорируется: выдача та же, что без фильтра (параметра нет в контракте 17.09.2026) — зафиксировано",
+      "operator_note": "",
+      "evidence": {
+        "query": {
+          "ph_n": "Ph_A"
+        },
+        "status": 200,
+        "full_size": 62,
+        "filtered_size": 62,
+        "contract": "параметр `ph_n` в контракте 17.09.2026 отсутствует",
+        "error": null
+      },
+      "journal_from": 192,
+      "journal_to": 193,
+      "journal_range": "#192…193",
+      "duration_ms": 63.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "параметр отсутствует в контракте: сервер либо игнорирует его (200 и полная выдача), либо отклоняет запрос (400/422); 5xx — отказ",
+      "automation": "loads.unknown_param",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-04",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Точность фильтров `load_id`/`category`",
+      "requirement": "UC-06, NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "точные фильтры: load_id → 1, category → 1",
+      "operator_note": "",
+      "evidence": {
+        "load_id": "__OTHER__",
+        "category": "system",
+        "load_id_filter": 1,
+        "category_filter": 1,
+        "case_sensitive": {}
+      },
+      "journal_from": 194,
+      "journal_to": 196,
+      "journal_range": "#194…196",
+      "duration_ms": 109.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "фильтры работают только при точном (регистрозависимом) совпадении — зафиксировано",
+      "automation": "loads.exact_filters",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-05",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Поиск по описанию",
+      "requirement": "UC-06, NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "поиск по описанию: «остальное» → 1 из 62 нагрузок",
+      "operator_note": "",
+      "evidence": {
+        "token": "остальное",
+        "found": 1,
+        "of_total": 62,
+        "examples": [
+          "Все остальное"
+        ]
+      },
+      "journal_from": 197,
+      "journal_to": 198,
+      "journal_range": "#197…198",
+      "duration_ms": 62.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "поиск по подстроке работает",
+      "automation": "loads.description_search",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-06",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Качество данных реестра",
+      "requirement": "замечание №2",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "справочник категорий: регистровые дубли категорий: Малая нагрузка/малая нагрузка (замечание о справочнике категорий)",
+      "operator_note": "",
+      "evidence": {
+        "categories_total": 8,
+        "categories": [
+          "miner",
+          "non-miner",
+          "system",
+          "Выключение майнера",
+          "Малая нагрузка",
+          "Номинальная нагрузка",
+          "малая нагрузка",
+          "отключение майнера"
+        ],
+        "case_duplicates": [
+          [
+            "Малая нагрузка",
+            "малая нагрузка"
+          ]
+        ],
+        "other_category": [],
+        "loads": 62
+      },
+      "journal_from": 199,
+      "journal_to": 199,
+      "journal_range": "#199",
+      "duration_ms": 31.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "выявлены регистровые дубли категорий и служебная `__OTHER__`; результат — замечание о справочнике категорий",
+      "automation": "loads.categories",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-LOAD-07",
+      "group": "TC-LOAD",
+      "group_title": "TC-LOAD — модуль «Loads»",
+      "module": "Loads",
+      "title": "Отсутствие удаления нагрузки",
+      "requirement": "замечание к API",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "удаления нагрузки нет: 405 — нагрузку через API убрать нельзя (замечание к API P2)",
+      "operator_note": "",
+      "evidence": {
+        "load_id": "__OTHER__",
+        "status": 405,
+        "detail": "{\"detail\":\"Method Not Allowed\"}",
+        "was_in_registry": true,
+        "note": "удаления нагрузок в API нет: ошибочную нагрузку убрать нельзя (замечание P2)",
+        "error": "Method Not Allowed"
+      },
+      "journal_from": 200,
+      "journal_to": 201,
+      "journal_range": "#200…201",
+      "duration_ms": 63.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "маршрут отсутствует (404/405) → замечание к API (P2); `create_load` выполняется только на `__TEST__`-нагрузке",
+      "automation": "loads.missing_delete",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-TASK-01",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Запуск диагностической задачи",
+      "requirement": "UC-26, FR-8",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "задача типа celery-test создана; факт фиксируется в журнале и в сессии",
+      "automation": "tasks.run_test_task",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-TASK-02",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Список задач, фильтры и пагинация",
+      "requirement": "UC-27, NFR-4",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "tasks + count получены: задач 14, возвращено 14; фильтры (тип, статус, период) и пагинация отвечают",
+      "operator_note": "",
+      "evidence": {
+        "count": 14,
+        "returned": 14,
+        "list_fields": [
+          "type",
+          "name",
+          "description",
+          "id",
+          "created_at"
+        ],
+        "status_in_list": "статуса в элементе списка нет: он приходит только в карточке `runtimes[-1].status` (проверка статуса списка — N запросов на N задач)",
+        "types": [
+          "celery-test",
+          "dataset-fill",
+          "model-testing",
+          "training"
+        ],
+        "filter_task_type=celery-test": 1,
+        "filter_task_type=dataset-fill": 6,
+        "filter_status=completed": 10,
+        "status_filter_note": "статус задачи в GET /api/tasks/ не возвращается (состав не проверить)",
+        "filter_period": "2026-09-11T00:00:00..2026-09-19T00:00:00 → 8",
+        "filter_period_yesterday": "2026-09-17T00:00:00<=created_at<2026-09-18T00:00:00 → 0 из 14",
+        "date_only_probe": "422 — «чистая» дата отклонена сервером",
+        "date_only_note": "«чистая» дата не принимается (`format: date-time` в спецификации): период передаётся как `YYYY-MM-DDTHH:MM:SS` (пульт — `lib.period.day_bounds`)",
+        "limit=1": 1,
+        "offset=1": 1,
+        "limit_uncapped": "limit=500 → 14 из 14",
+        "list_unsorted": "порядок ответа не отсортирован по `created_at`: пульт сортирует список сам («создана ↓», `created_at` + `id`)",
+        "list_sort_note": "сортировка и пагинация списка выполняются в пульте: серверные `limit`/`offset` используются только для проверки пагинации",
+        "archive_is_local": "архив задач ведёт пульт (`acceptance_data/task_snapshot.json`): в API нет ни признака архива, ни параметра перехода в архив — правила «завершена ≥ суток назад» и переноса завершённых выполняются на стороне пульта"
+      },
+      "journal_from": 202,
+      "journal_to": 211,
+      "journal_range": "#202…211",
+      "duration_ms": 312.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "`tasks` + `count`; работают фильтры `task_type`/`status`/`start_date`/`end_date`, `limit` (по умолчанию 100)/`offset`",
+      "automation": "tasks.list_tasks",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-TASK-03",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Карточка задачи с прогонами",
+      "requirement": "UC-27, BR-F7",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "пропущена",
+      "icon": "⏭️",
+      "verdict": "не выбран task_id: откройте карточку задачи на экране «Задачи»",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": 212,
+      "journal_to": null,
+      "journal_range": "#212",
+      "duration_ms": 0.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "приходит `TaskWithRuntimes` с `runtimes[]` (`status`, `start_time`, `end_time`, `result`, `intermediate_result`, `celery_task_id`)",
+      "automation": "tasks.task_card",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-TASK-04",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Переходы FSM-1 без расхода ресурсов",
+      "requirement": "FSM-1, UC-28, BR-F7",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "`running → pausing → paused → running`; каждый переход виден в журнале поллинга и в истории задачи",
+      "automation": "tasks.fsm_transitions",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-TASK-05",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Прерывание задачи",
+      "requirement": "FSM-1, UC-28",
+      "check_class": "live",
+      "class_label": "боевая (реальные данные)",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "задача переходит в `interrupted` из `running`/`pausing`/`paused`",
+      "automation": "tasks.interrupt",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-TASK-06",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Идемпотентность команд и запрет из терминального состояния",
+      "requirement": "BR-R3",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "пропущена",
+      "icon": "⏭️",
+      "verdict": "не выбран task_id: откройте карточку задачи на экране «Задачи»",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": 212,
+      "journal_to": null,
+      "journal_range": "#212",
+      "duration_ms": 0.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:23:59",
+      "expected": "повтор не создаёт побочных эффектов; команда из терминального состояния → `409`/no-op — вариант фиксируется",
+      "automation": "tasks.idempotency",
+      "blocked_by_api": null,
+      "is_done": false
+    },
+    {
+      "check_id": "TC-TASK-07",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Неизвестная задача",
+      "requirement": "BR-R7",
+      "check_class": "tech",
+      "class_label": "техническая (безопасная)",
+      "status": "успех",
+      "icon": "✅",
+      "verdict": "сервер ответил 404 на неизвестный task_id: Task not found",
+      "operator_note": "",
+      "evidence": {
+        "variant": "404",
+        "task_id": "00000000-0000-4000-8000-000000000000"
+      },
+      "journal_from": 212,
+      "journal_to": 212,
+      "journal_range": "#212",
+      "duration_ms": 47.0,
+      "started_at": "2026-09-18T14:23:59",
+      "ended_at": "2026-09-18T14:24:00",
+      "expected": "`not_found` (или 404) — UI корректно очищает карточку",
+      "automation": "tasks.unknown_task",
+      "blocked_by_api": null,
+      "is_done": true
+    },
+    {
+      "check_id": "TC-TASK-08",
+      "group": "TC-TASK",
+      "group_title": "TC-TASK — модуль «Task service»",
+      "module": "Task service",
+      "title": "Наблюдение за внешней задачей",
+      "requirement": "BR-R5",
+      "check_class": "manual",
+      "class_label": "ручная",
+      "status": "не выполнена",
+      "icon": "⚪",
+      "verdict": "",
+      "operator_note": "",
+      "evidence": {},
+      "journal_from": null,
+      "journal_to": null,
+      "journal_range": "—",
+      "duration_ms": null,
+      "started_at": null,
+      "ended_at": null,
+      "expected": "оператор вводит `task_id` задачи, запущенной вне пульта, и получает её статусы; задача помечена как «внешняя»",
+      "automation": null,
+      "blocked_by_api": null,
+      "is_done": false
+    }
+  ],
+  "groups": [
+    {
+      "group": "TC-SYS",
+      "title": "TC-SYS — модуль «Система»",
+      "stage": "T3",
+      "total": 6,
+      "done": 5,
+      "passed": 4,
+      "failed": 1,
+      "blocked": 0,
+      "not_run": 1
+    },
+    {
+      "group": "TC-FILE",
+      "title": "TC-FILE — модуль «File Import»",
+      "stage": "T3",
+      "total": 14,
+      "done": 11,
+      "passed": 10,
+      "failed": 0,
+      "blocked": 1,
+      "not_run": 3
+    },
+    {
+      "group": "TC-REC",
+      "title": "TC-REC — записи (RAW + markup)",
+      "stage": "T3",
+      "total": 6,
+      "done": 5,
+      "passed": 5,
+      "failed": 0,
+      "blocked": 0,
+      "not_run": 1
+    },
+    {
+      "group": "TC-LOAD",
+      "title": "TC-LOAD — модуль «Loads»",
+      "stage": "T3",
+      "total": 7,
+      "done": 7,
+      "passed": 7,
+      "failed": 0,
+      "blocked": 0,
+      "not_run": 0
+    },
+    {
+      "group": "TC-TASK",
+      "title": "TC-TASK — модуль «Task service»",
+      "stage": "T4",
+      "total": 8,
+      "done": 2,
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0,
+      "not_run": 4
+    }
+  ],
+  "snapshots": {
+    "at_start": "2026-09-18T14:00:18",
+    "at_end": "2026-09-18T14:26:15",
+    "build_start": "83319ae",
+    "build_end": "83319ae",
+    "rows": [
+      {
+        "metric": "datasets",
+        "start": 6,
+        "end": 6,
+        "delta": 0
+      },
+      {
+        "metric": "files",
+        "start": 266,
+        "end": 266,
+        "delta": 0
+      },
+      {
+        "metric": "loads",
+        "start": 62,
+        "end": 62,
+        "delta": 0
+      },
+      {
+        "metric": "models",
+        "start": 6,
+        "end": 6,
+        "delta": 0
+      },
+      {
+        "metric": "tasks",
+        "start": 13,
+        "end": 14,
+        "delta": 1
+      }
+    ],
+    "start_errors": {},
+    "end_errors": {},
+    "records_start": {
+      "files": 266,
+      "records": 129,
+      "confirmed": 129,
+      "manual": 0,
+      "weak": 0,
+      "without_markup": 0,
+      "attached_markup": 129,
+      "duplicates": 128,
+      "duplicate_bases": 61,
+      "unpaired_markup": 0,
+      "other": 8,
+      "excluded": 0,
+      "coverage_percent": 100.0,
+      "raw_bytes": 41544589031,
+      "markup_bytes": 167311346,
+      "total_bytes": 41711900377,
+      "attention": 128,
+      "manifest_rows": 137
+    },
+    "records_end": {
+      "files": 266,
+      "records": 129,
+      "confirmed": 129,
+      "manual": 0,
+      "weak": 0,
+      "without_markup": 0,
+      "attached_markup": 129,
+      "duplicates": 128,
+      "duplicate_bases": 61,
+      "unpaired_markup": 0,
+      "other": 8,
+      "excluded": 0,
+      "coverage_percent": 100.0,
+      "raw_bytes": 41544589031,
+      "markup_bytes": 167311346,
+      "total_bytes": 41711900377,
+      "attention": 128,
+      "manifest_rows": 137
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "2094a709-e174-4958-8b67-949a10ca1edd",
+      "type": "training",
+      "name": "train_model_b9dda842-b5e6-4578-91bd-309bd6eebcef_057c4cc9",
+      "origin": "пульт",
+      "check_id": "",
+      "status": "interrupted",
+      "first_seen": "2026-09-18T14:05:49",
+      "last_seen": "2026-09-18T14:23:13",
+      "poll": {
+        "interval": 2.0,
+        "active": false,
+        "last_poll": "2026-09-18T14:23:13",
+        "polls": 9
+      },
+      "journal_from": 93,
+      "journal_seq": 150,
+      "intermediate_result": null,
+      "runtimes": [
+        {
+          "status": "interrupted",
+          "status_label": "Прервана",
+          "celery_task_id": "82b153d7-2060-4d9d-935c-0a682f051f2d-358e0760-af39-40e3-9cf4-923f08b1ab73",
+          "start_time": "2026-09-18T09:18:53.004553",
+          "end_time": "2026-09-18T10:27:21.615089",
+          "parameters": {
+            "model_id": "b9dda842-b5e6-4578-91bd-309bd6eebcef",
+            "dataset_id": "06b5d3f3-eedb-450f-afc8-2ef33f6b7cf9",
+            "batch_size": 64,
+            "epochs": 1,
+            "learning_rate": 0.0001,
+            "trained_model_name": "stft-prev2026-pruned-step1-ft1",
+            "augmentation_noise_percentage": null,
+            "augmentation_num_samples": null,
+            "preprocessing_converter": "stft",
+            "quantization": null
+          },
+          "result": {
+            "status": "interrupted",
+            "message": "Task was interrupted by system signal"
+          },
+          "intermediate_result": null,
+          "runtime_id": "82b153d7-2060-4d9d-935c-0a682f051f2d"
+        }
+      ],
+      "note": "терминальный статус — наблюдение остановлено",
+      "errors": [],
+      "history": [
+        {
+          "at": "2026-09-18T14:05:49",
+          "previous": null,
+          "status": "",
+          "journal_seq": null,
+          "note": "задача поставлена на наблюдение",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:05:49",
+          "previous": "",
+          "status": "interrupted",
+          "journal_seq": 93,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:05:49",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 94,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:06:12",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 99,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:06:13",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 102,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:06:48",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 107,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:21:40",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 132,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:21:55",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 136,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:22:22",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 143,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:23:13",
+          "previous": "interrupted",
+          "status": "interrupted",
+          "journal_seq": 150,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        }
+      ]
+    },
+    {
+      "task_id": "5cf4566f-cef2-4cae-ad8c-0cf1852f886a",
+      "type": "training",
+      "name": "train_model_b9dda842-b5e6-4578-91bd-309bd6eebcef_1c8cec60",
+      "origin": "пульт",
+      "check_id": "",
+      "status": "interrupted",
+      "first_seen": "2026-09-18T14:06:13",
+      "last_seen": "2026-09-18T14:06:13",
+      "poll": {
+        "interval": 2.0,
+        "active": false,
+        "last_poll": "2026-09-18T14:06:13",
+        "polls": 1
+      },
+      "journal_from": 101,
+      "journal_seq": 101,
+      "intermediate_result": null,
+      "runtimes": [
+        {
+          "status": "interrupted",
+          "status_label": "Прервана",
+          "celery_task_id": "e76888af-b4ec-4f10-99a6-903898948e8c-2891f310-ad00-40cf-925a-3ce313eb01a9",
+          "start_time": "2026-09-18T09:18:30.662282",
+          "end_time": "2026-09-18T10:20:13.396605",
+          "parameters": {
+            "model_id": "b9dda842-b5e6-4578-91bd-309bd6eebcef",
+            "dataset_id": "06b5d3f3-eedb-450f-afc8-2ef33f6b7cf9",
+            "batch_size": 64,
+            "epochs": 1,
+            "learning_rate": 0.0001,
+            "trained_model_name": "stft-prev2026-pruned-step1-ft1",
+            "augmentation_noise_percentage": null,
+            "augmentation_num_samples": null,
+            "preprocessing_converter": "stft",
+            "quantization": null
+          },
+          "result": {
+            "status": "interrupted",
+            "message": "Task was interrupted by system signal"
+          },
+          "intermediate_result": null,
+          "runtime_id": "e76888af-b4ec-4f10-99a6-903898948e8c"
+        }
+      ],
+      "note": "терминальный статус — наблюдение остановлено",
+      "errors": [],
+      "history": [
+        {
+          "at": "2026-09-18T14:06:13",
+          "previous": null,
+          "status": "",
+          "journal_seq": null,
+          "note": "задача поставлена на наблюдение",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:06:13",
+          "previous": "",
+          "status": "interrupted",
+          "journal_seq": 101,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        }
+      ]
+    },
+    {
+      "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+      "type": "celery-test",
+      "name": "test_task_100s_f7e1bae6",
+      "origin": "пульт",
+      "check_id": "TC-CONSOLE",
+      "status": "completed",
+      "first_seen": "2026-09-18T14:21:21",
+      "last_seen": "2026-09-18T14:23:13",
+      "poll": {
+        "interval": 2.0,
+        "active": false,
+        "last_poll": "2026-09-18T14:23:13",
+        "polls": 4
+      },
+      "journal_from": 126,
+      "journal_seq": 145,
+      "intermediate_result": {
+        "total_slept": 100.0,
+        "progress": 100.0,
+        "message": "Processed 100.0 of 100 seconds"
+      },
+      "runtimes": [
+        {
+          "status": "completed",
+          "status_label": "Завершена",
+          "celery_task_id": "c1fa2e4a-334b-41eb-95d2-e5b048aef9c1-4b0b11a9-2f30-4ec5-862b-0bed8b9e025b",
+          "start_time": "2026-09-18T11:21:21.347416",
+          "end_time": "2026-09-18T11:23:03.425097",
+          "parameters": {
+            "seconds": 100
+          },
+          "result": {
+            "status": "completed",
+            "slept": 100.0
+          },
+          "intermediate_result": {
+            "total_slept": 100.0,
+            "progress": 100.0,
+            "message": "Processed 100.0 of 100 seconds"
+          },
+          "runtime_id": "c1fa2e4a-334b-41eb-95d2-e5b048aef9c1"
+        }
+      ],
+      "note": "терминальный статус — наблюдение остановлено",
+      "errors": [],
+      "history": [
+        {
+          "at": "2026-09-18T14:21:21",
+          "previous": null,
+          "status": "",
+          "journal_seq": 126,
+          "note": "задача создана из консоли: post /api/tasks/test",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:21:39",
+          "previous": "",
+          "status": "running",
+          "journal_seq": 127,
+          "note": "статус задачи опрошен",
+          "error": ""
+        },
+        {
+          "at": "2026-09-18T14:23:13",
+          "previous": "running",
+          "status": "completed",
+          "journal_seq": 145,
+          "note": "терминальный статус — наблюдение остановлено",
+          "error": ""
+        }
+      ]
+    }
+  ],
+  "console_calls": [
+    {
+      "at": "2026-09-18T14:13:03",
+      "label": "TC-CONSOLE",
+      "operation": "post /api/data/file",
+      "safety": "write",
+      "method": "POST",
+      "path": "/api/data/file",
+      "status": 422,
+      "duration_ms": 98.6,
+      "journal_seq": 120,
+      "task_id": "",
+      "request_body": "<multipart: __TEST__.txt, 6 байт>",
+      "error": "{'type': 'missing', 'loc': ['body', 'file_type'], 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.4/v/missing'}",
+      "note": "подтверждения: подтверждение изменяющей операции; создаваемые сущности: __TEST__.txt"
+    },
+    {
+      "at": "2026-09-18T14:16:09",
+      "label": "TC-CONSOLE",
+      "operation": "post /api/data/file",
+      "safety": "write",
+      "method": "POST",
+      "path": "/api/data/file",
+      "status": 201,
+      "duration_ms": 603.9,
+      "journal_seq": 121,
+      "task_id": "",
+      "request_body": "<multipart: __TEST__background.raw.csv, 197309 байт, поля: file_type=RAW, description=test raw file>",
+      "error": "",
+      "note": "подтверждения: подтверждение изменяющей операции; создаваемые сущности: __TEST__background.raw.csv"
+    },
+    {
+      "at": "2026-09-18T14:16:47",
+      "label": "TC-CONSOLE",
+      "operation": "get /api/data/files",
+      "safety": "read",
+      "method": "GET",
+      "path": "/api/data/files",
+      "status": 200,
+      "duration_ms": 167.4,
+      "journal_seq": 122,
+      "task_id": "",
+      "request_body": "",
+      "error": "",
+      "note": ""
+    },
+    {
+      "at": "2026-09-18T14:18:15",
+      "label": "TC-CONSOLE",
+      "operation": "delete /api/{file_id}",
+      "safety": "destructive",
+      "method": "DELETE",
+      "path": "/api/6098ffed-2e0d-4aad-93d5-c7642562af72",
+      "status": 200,
+      "duration_ms": 275.9,
+      "journal_seq": 124,
+      "task_id": "",
+      "request_body": "",
+      "error": "",
+      "note": "подтверждения: подтверждение удаления, слово DELETE; создаваемые сущности: __TEST__background.raw.csv"
+    },
+    {
+      "at": "2026-09-18T14:21:21",
+      "label": "TC-CONSOLE",
+      "operation": "post /api/tasks/test",
+      "safety": "write",
+      "method": "POST",
+      "path": "/api/tasks/test",
+      "status": 200,
+      "duration_ms": 225.4,
+      "journal_seq": 126,
+      "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+      "request_body": "",
+      "error": "",
+      "note": "подтверждения: подтверждение изменяющей операции"
+    }
+  ],
+  "notes": [
+    {
+      "note_id": "5964e1c3",
+      "created_at": "2026-09-18T14:03:27",
+      "title": "Скачивание файлов с не-ASCII именами не работает (latin-1)",
+      "module": "File Import",
+      "endpoint": "GET /api/data/file/{file_id}/download",
+      "priority": "P0",
+      "fact": "Ответ 404 с detail \"'latin-1' codec can't encode characters…\"; заголовок Content-Disposition формируется без filename*=UTF-8''.",
+      "expected": "Скачивание файла с любым допустимым именем (RFC 6266, filename*), HTTP 200.",
+      "reproduction": "Скачать markup-файл субдатасета с не-ASCII именем (например, 3Дпринтер.markup.csv).",
+      "check_id": "TC-FILE-10",
+      "evidence": "проверка TC-FILE-10; статус «блокировано API»: скачивание не-ASCII имени не работает: 404 latin-1 — замечание к API (P0), записи с такими именами недоступны пульту",
+      "source": "авто"
+    }
+  ],
+  "prospective_requirements": [
+    {
+      "title": "Субдатасет как сущность первого класса",
+      "module": "Записи и разметка",
+      "priority": "P1",
+      "detail": "POST/GET /api/subdatasets и /api/subdatasets/{id}/files; агрегаты (число записей и чанков); признак группировки (дата измерений, назначение). Альтернатива — поля пары в файле (record_id/pair_id/role) и группирующий признак."
+    },
+    {
+      "title": "Агрегаты и структурные характеристики",
+      "module": "Datasets",
+      "priority": "P1",
+      "detail": "GET /api/datasets/{id}/summary (состав, записи, чанки, нагрузки) и серверные характеристики субдатасета вместо клиентского разбора markup-файла."
+    },
+    {
+      "title": "Связи load ↔ субдатасет ↔ датасет",
+      "module": "Loads",
+      "priority": "P1",
+      "detail": "Позволяют отказаться от эвристического «набора нагрузок» (по markup-файлу или по имени субдатасета) и от ручного сравнения с реестром (замечание №2 к макету)."
+    },
+    {
+      "title": "Справочники и единый контракт",
+      "module": "Прочее",
+      "priority": "P1",
+      "detail": "Справочники фаз (Ph_n), категорий, file_type, DatasetType; единый формат ошибок; описание формата markup-файла; updated_at и checksum для изменяемых сущностей."
+    },
+    {
+      "title": "Эксплуатационные улучшения",
+      "module": "Прочее",
+      "priority": "P2",
+      "detail": "presigned URL/Range для больших файлов, batch-операции, сортировка, ETag, securitySchemes/X-Api-Version, примеры в спецификации."
+    }
+  ],
+  "artifacts": [
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:report_md",
+      "name": "report_20260918-140006-b6ed.md",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed.md",
+      "size_bytes": 43950,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:report_json",
+      "name": "report_20260918-140006-b6ed.json",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed.json",
+      "size_bytes": 120054,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:checks.csv",
+      "name": "report_20260918-140006-b6ed_checks.csv",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_checks.csv",
+      "size_bytes": 11268,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:notes.csv",
+      "name": "report_20260918-140006-b6ed_notes.csv",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_notes.csv",
+      "size_bytes": 985,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:test_entities.csv",
+      "name": "report_20260918-140006-b6ed_test_entities.csv",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_test_entities.csv",
+      "size_bytes": 37,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "kind": "report:journal.jsonl",
+      "name": "report_20260918-140006-b6ed_journal.jsonl",
+      "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_journal.jsonl",
+      "size_bytes": 415933,
+      "note": "комплект отчётности сессии 20260918-140006-b6ed"
+    }
+  ],
+  "test_entities": [],
+  "markup_stats": {
+    "224dd764-5faa-4b85-8cdf-47967f664e41": {
+      "records": 42750,
+      "chunks": 42750,
+      "status": "рассчитано (клиентская оценка)",
+      "note": "проверка TC-REC-05: разбор markup-файла пультом",
+      "at": "2026-09-18T14:23:51"
+    },
+    "18c6cfe5-f6b4-4f08-bbac-6f46c03966e8": {
+      "records": 42750,
+      "chunks": 42750,
+      "status": "рассчитано (клиентская оценка)",
+      "note": "проверка TC-REC-05: разбор markup-файла пультом",
+      "at": "2026-09-18T14:23:55"
+    },
+    "b2cc93bd-c1e5-460d-a38a-0099f5d16834": {
+      "records": 44175,
+      "chunks": 44175,
+      "status": "рассчитано (клиентская оценка)",
+      "note": "проверка TC-REC-05: разбор markup-файла пультом",
+      "at": "2026-09-18T14:23:58"
+    }
+  },
+  "history": [
+    {
+      "at": "2026-09-18T14:00:06",
+      "event": "session_created",
+      "message": "Сессия создана",
+      "payload": {
+        "base_url": "https://energomera.ai-center.online",
+        "server_build": "dev@83319ae"
+      }
+    },
+    {
+      "at": "2026-09-18T14:00:06",
+      "event": "session_started",
+      "message": "Сессия начата",
+      "payload": {
+        "server_build": "dev@83319ae"
+      }
+    },
+    {
+      "at": "2026-09-18T14:00:19",
+      "event": "stand_snapshot",
+      "message": "Снимок стенда (start)",
+      "payload": {
+        "phase": "start"
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-01: успех",
+      "payload": {
+        "check_id": "TC-SYS-01",
+        "status": "успех",
+        "journal_from": 27,
+        "journal_to": 27
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-02: успех",
+      "payload": {
+        "check_id": "TC-SYS-02",
+        "status": "успех",
+        "journal_from": 28,
+        "journal_to": 28
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-03: отказ",
+      "payload": {
+        "check_id": "TC-SYS-03",
+        "status": "отказ",
+        "journal_from": 29,
+        "journal_to": 29
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-04: успех",
+      "payload": {
+        "check_id": "TC-SYS-04",
+        "status": "успех",
+        "journal_from": 30,
+        "journal_to": 30
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-05: успех",
+      "payload": {
+        "check_id": "TC-SYS-05",
+        "status": "успех",
+        "journal_from": 31,
+        "journal_to": 32
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-01: успех",
+      "payload": {
+        "check_id": "TC-FILE-01",
+        "status": "успех",
+        "journal_from": 33,
+        "journal_to": 33
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:25",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-02: успех",
+      "payload": {
+        "check_id": "TC-FILE-02",
+        "status": "успех",
+        "journal_from": 34,
+        "journal_to": 35
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:26",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-03: успех",
+      "payload": {
+        "check_id": "TC-FILE-03",
+        "status": "успех",
+        "journal_from": 36,
+        "journal_to": 38
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:26",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-04: успех",
+      "payload": {
+        "check_id": "TC-FILE-04",
+        "status": "успех",
+        "journal_from": 39,
+        "journal_to": 40
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:26",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-05: успех",
+      "payload": {
+        "check_id": "TC-FILE-05",
+        "status": "успех",
+        "journal_from": 41,
+        "journal_to": 42
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:26",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-06: успех",
+      "payload": {
+        "check_id": "TC-FILE-06",
+        "status": "успех",
+        "journal_from": 43,
+        "journal_to": 43
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:26",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-07: успех",
+      "payload": {
+        "check_id": "TC-FILE-07",
+        "status": "успех",
+        "journal_from": 44,
+        "journal_to": 44
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-08: успех",
+      "payload": {
+        "check_id": "TC-FILE-08",
+        "status": "успех",
+        "journal_from": 45,
+        "journal_to": 46
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-09: успех",
+      "payload": {
+        "check_id": "TC-FILE-09",
+        "status": "успех",
+        "journal_from": 47,
+        "journal_to": 48
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-10: блокировано API",
+      "payload": {
+        "check_id": "TC-FILE-10",
+        "status": "блокировано API",
+        "journal_from": 49,
+        "journal_to": 50
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "api_note",
+      "message": "Замечание к API: Скачивание файлов с не-ASCII именами не работает (latin-1)",
+      "payload": {
+        "priority": "P0",
+        "module": "File Import",
+        "source": "авто"
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-14: успех",
+      "payload": {
+        "check_id": "TC-FILE-14",
+        "status": "успех",
+        "journal_from": 51,
+        "journal_to": 51
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-01: успех",
+      "payload": {
+        "check_id": "TC-REC-01",
+        "status": "успех",
+        "journal_from": 52,
+        "journal_to": 52
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-02: успех",
+      "payload": {
+        "check_id": "TC-REC-02",
+        "status": "успех",
+        "journal_from": 53,
+        "journal_to": 53
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:27",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-04: успех",
+      "payload": {
+        "check_id": "TC-REC-04",
+        "status": "успех",
+        "journal_from": 54,
+        "journal_to": 54
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:34",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 42750, чанки = 42750",
+      "payload": {
+        "file_id": "224dd764-5faa-4b85-8cdf-47967f664e41",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:41",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 42750, чанки = 42750",
+      "payload": {
+        "file_id": "18c6cfe5-f6b4-4f08-bbac-6f46c03966e8",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:47",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 44175, чанки = 44175",
+      "payload": {
+        "file_id": "b2cc93bd-c1e5-460d-a38a-0099f5d16834",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-05: успех",
+      "payload": {
+        "check_id": "TC-REC-05",
+        "status": "успех",
+        "journal_from": 55,
+        "journal_to": 61
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-06: успех",
+      "payload": {
+        "check_id": "TC-REC-06",
+        "status": "успех",
+        "journal_from": 62,
+        "journal_to": 62
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-01: успех",
+      "payload": {
+        "check_id": "TC-LOAD-01",
+        "status": "успех",
+        "journal_from": 63,
+        "journal_to": 65
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-02: успех",
+      "payload": {
+        "check_id": "TC-LOAD-02",
+        "status": "успех",
+        "journal_from": 66,
+        "journal_to": 66
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-03: успех",
+      "payload": {
+        "check_id": "TC-LOAD-03",
+        "status": "успех",
+        "journal_from": 67,
+        "journal_to": 68
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-04: успех",
+      "payload": {
+        "check_id": "TC-LOAD-04",
+        "status": "успех",
+        "journal_from": 69,
+        "journal_to": 71
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-05: успех",
+      "payload": {
+        "check_id": "TC-LOAD-05",
+        "status": "успех",
+        "journal_from": 72,
+        "journal_to": 73
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-06: успех",
+      "payload": {
+        "check_id": "TC-LOAD-06",
+        "status": "успех",
+        "journal_from": 74,
+        "journal_to": 74
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-07: успех",
+      "payload": {
+        "check_id": "TC-LOAD-07",
+        "status": "успех",
+        "journal_from": 75,
+        "journal_to": 76
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-02: успех",
+      "payload": {
+        "check_id": "TC-TASK-02",
+        "status": "успех",
+        "journal_from": 77,
+        "journal_to": 86
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-03: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-03",
+        "status": "пропущена",
+        "journal_from": 87,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-06: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-06",
+        "status": "пропущена",
+        "journal_from": 87,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:03:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-07: успех",
+      "payload": {
+        "check_id": "TC-TASK-07",
+        "status": "успех",
+        "journal_from": 87,
+        "journal_to": 87
+      }
+    },
+    {
+      "at": "2026-09-18T14:05:49",
+      "event": "task_observed",
+      "message": "Задача на наблюдении: 2094a709-e174-4958-8b67-949a10ca1edd",
+      "payload": {
+        "task_id": "2094a709-e174-4958-8b67-949a10ca1edd",
+        "origin": "пульт",
+        "check_id": "",
+        "task_type": "training",
+        "status": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:05:49",
+      "event": "task_status_changed",
+      "message": "Задача 2094a709-e174-4958-8b67-949a10ca1edd: — → interrupted",
+      "payload": {
+        "task_id": "2094a709-e174-4958-8b67-949a10ca1edd",
+        "previous": "",
+        "status": "interrupted",
+        "journal_seq": 93,
+        "check_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:06:13",
+      "event": "task_observed",
+      "message": "Задача на наблюдении: 5cf4566f-cef2-4cae-ad8c-0cf1852f886a",
+      "payload": {
+        "task_id": "5cf4566f-cef2-4cae-ad8c-0cf1852f886a",
+        "origin": "пульт",
+        "check_id": "",
+        "task_type": "training",
+        "status": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:06:13",
+      "event": "task_status_changed",
+      "message": "Задача 5cf4566f-cef2-4cae-ad8c-0cf1852f886a: — → interrupted",
+      "payload": {
+        "task_id": "5cf4566f-cef2-4cae-ad8c-0cf1852f886a",
+        "previous": "",
+        "status": "interrupted",
+        "journal_seq": 101,
+        "check_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:07:33",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-02: успех",
+      "payload": {
+        "check_id": "TC-TASK-02",
+        "status": "успех",
+        "journal_from": 109,
+        "journal_to": 118
+      }
+    },
+    {
+      "at": "2026-09-18T14:07:33",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-03: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-03",
+        "status": "пропущена",
+        "journal_from": 119,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:07:33",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-06: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-06",
+        "status": "пропущена",
+        "journal_from": 119,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:07:33",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-07: успех",
+      "payload": {
+        "check_id": "TC-TASK-07",
+        "status": "успех",
+        "journal_from": 119,
+        "journal_to": 119
+      }
+    },
+    {
+      "at": "2026-09-18T14:13:03",
+      "event": "console_call",
+      "message": "Консоль: POST /api/data/file → 422",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "post /api/data/file",
+        "safety": "write",
+        "journal_seq": 120,
+        "task_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:13:34",
+      "event": "console_attachment",
+      "message": "Обмен приложен к проверке TC-CONSOLE",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "endpoint": "post /api/data/file",
+        "method": "POST",
+        "path": "/api/data/file",
+        "status": 422,
+        "duration_ms": 98.6,
+        "journal_seq": 120
+      }
+    },
+    {
+      "at": "2026-09-18T14:16:09",
+      "event": "console_call",
+      "message": "Консоль: POST /api/data/file → 201",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "post /api/data/file",
+        "safety": "write",
+        "journal_seq": 121,
+        "task_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:16:19",
+      "event": "console_attachment",
+      "message": "Обмен приложен к проверке TC-CONSOLE",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "endpoint": "post /api/data/file",
+        "method": "POST",
+        "path": "/api/data/file",
+        "status": 201,
+        "duration_ms": 603.9,
+        "journal_seq": 121
+      }
+    },
+    {
+      "at": "2026-09-18T14:16:47",
+      "event": "console_call",
+      "message": "Консоль: GET /api/data/files → 200",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "get /api/data/files",
+        "safety": "read",
+        "journal_seq": 122,
+        "task_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:18:15",
+      "event": "console_call",
+      "message": "Консоль: DELETE /api/6098ffed-2e0d-4aad-93d5-c7642562af72 → 200",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "delete /api/{file_id}",
+        "safety": "destructive",
+        "journal_seq": 124,
+        "task_id": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:18:25",
+      "event": "console_attachment",
+      "message": "Обмен приложен к проверке TC-CONSOLE",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "endpoint": "delete /api/{file_id}",
+        "method": "DELETE",
+        "path": "/api/6098ffed-2e0d-4aad-93d5-c7642562af72",
+        "status": 200,
+        "duration_ms": 275.9,
+        "journal_seq": 124
+      }
+    },
+    {
+      "at": "2026-09-18T14:21:21",
+      "event": "console_call",
+      "message": "Консоль: POST /api/tasks/test → 200",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "post /api/tasks/test",
+        "safety": "write",
+        "journal_seq": 126,
+        "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d"
+      }
+    },
+    {
+      "at": "2026-09-18T14:21:21",
+      "event": "console_task_started",
+      "message": "Задача создана из консоли: 76ba7c14-44f0-4f27-83f7-89529e670c5d",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "operation": "post /api/tasks/test",
+        "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+        "journal_seq": 126
+      }
+    },
+    {
+      "at": "2026-09-18T14:21:21",
+      "event": "task_observed",
+      "message": "Задача на наблюдении: 76ba7c14-44f0-4f27-83f7-89529e670c5d",
+      "payload": {
+        "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+        "origin": "пульт",
+        "check_id": "TC-CONSOLE",
+        "task_type": "",
+        "status": ""
+      }
+    },
+    {
+      "at": "2026-09-18T14:21:27",
+      "event": "console_attachment",
+      "message": "Обмен приложен к проверке TC-CONSOLE",
+      "payload": {
+        "label": "TC-CONSOLE",
+        "endpoint": "post /api/tasks/test",
+        "method": "POST",
+        "path": "/api/tasks/test",
+        "status": 200,
+        "duration_ms": 225.4,
+        "journal_seq": 126
+      }
+    },
+    {
+      "at": "2026-09-18T14:21:39",
+      "event": "task_status_changed",
+      "message": "Задача 76ba7c14-44f0-4f27-83f7-89529e670c5d: — → running",
+      "payload": {
+        "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+        "previous": "",
+        "status": "running",
+        "journal_seq": 127,
+        "check_id": "TC-CONSOLE"
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:13",
+      "event": "task_status_changed",
+      "message": "Задача 76ba7c14-44f0-4f27-83f7-89529e670c5d: running → completed",
+      "payload": {
+        "task_id": "76ba7c14-44f0-4f27-83f7-89529e670c5d",
+        "previous": "running",
+        "status": "completed",
+        "journal_seq": 145,
+        "check_id": "TC-CONSOLE"
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-01: успех",
+      "payload": {
+        "check_id": "TC-SYS-01",
+        "status": "успех",
+        "journal_from": 152,
+        "journal_to": 152
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-02: успех",
+      "payload": {
+        "check_id": "TC-SYS-02",
+        "status": "успех",
+        "journal_from": 153,
+        "journal_to": 153
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-03: отказ",
+      "payload": {
+        "check_id": "TC-SYS-03",
+        "status": "отказ",
+        "journal_from": 154,
+        "journal_to": 154
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-04: успех",
+      "payload": {
+        "check_id": "TC-SYS-04",
+        "status": "успех",
+        "journal_from": 155,
+        "journal_to": 155
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-SYS-05: успех",
+      "payload": {
+        "check_id": "TC-SYS-05",
+        "status": "успех",
+        "journal_from": 156,
+        "journal_to": 157
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-01: успех",
+      "payload": {
+        "check_id": "TC-FILE-01",
+        "status": "успех",
+        "journal_from": 158,
+        "journal_to": 158
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-02: успех",
+      "payload": {
+        "check_id": "TC-FILE-02",
+        "status": "успех",
+        "journal_from": 159,
+        "journal_to": 160
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-03: успех",
+      "payload": {
+        "check_id": "TC-FILE-03",
+        "status": "успех",
+        "journal_from": 161,
+        "journal_to": 163
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:47",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-04: успех",
+      "payload": {
+        "check_id": "TC-FILE-04",
+        "status": "успех",
+        "journal_from": 164,
+        "journal_to": 165
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-05: успех",
+      "payload": {
+        "check_id": "TC-FILE-05",
+        "status": "успех",
+        "journal_from": 166,
+        "journal_to": 167
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-06: успех",
+      "payload": {
+        "check_id": "TC-FILE-06",
+        "status": "успех",
+        "journal_from": 168,
+        "journal_to": 168
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-07: успех",
+      "payload": {
+        "check_id": "TC-FILE-07",
+        "status": "успех",
+        "journal_from": 169,
+        "journal_to": 169
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-08: успех",
+      "payload": {
+        "check_id": "TC-FILE-08",
+        "status": "успех",
+        "journal_from": 170,
+        "journal_to": 171
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-09: успех",
+      "payload": {
+        "check_id": "TC-FILE-09",
+        "status": "успех",
+        "journal_from": 172,
+        "journal_to": 173
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-10: блокировано API",
+      "payload": {
+        "check_id": "TC-FILE-10",
+        "status": "блокировано API",
+        "journal_from": 174,
+        "journal_to": 175
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:48",
+      "event": "check_recorded",
+      "message": "Проверка TC-FILE-14: успех",
+      "payload": {
+        "check_id": "TC-FILE-14",
+        "status": "успех",
+        "journal_from": 176,
+        "journal_to": 176
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-01: успех",
+      "payload": {
+        "check_id": "TC-REC-01",
+        "status": "успех",
+        "journal_from": 177,
+        "journal_to": 177
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-02: успех",
+      "payload": {
+        "check_id": "TC-REC-02",
+        "status": "успех",
+        "journal_from": 178,
+        "journal_to": 178
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:49",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-04: успех",
+      "payload": {
+        "check_id": "TC-REC-04",
+        "status": "успех",
+        "journal_from": 179,
+        "journal_to": 179
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:51",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 42750, чанки = 42750",
+      "payload": {
+        "file_id": "224dd764-5faa-4b85-8cdf-47967f664e41",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:55",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 42750, чанки = 42750",
+      "payload": {
+        "file_id": "18c6cfe5-f6b4-4f08-bbac-6f46c03966e8",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:58",
+      "event": "markup_stats",
+      "message": "Разбор разметки: записи = 44175, чанки = 44175",
+      "payload": {
+        "file_id": "b2cc93bd-c1e5-460d-a38a-0099f5d16834",
+        "status": "рассчитано (клиентская оценка)"
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-05: успех",
+      "payload": {
+        "check_id": "TC-REC-05",
+        "status": "успех",
+        "journal_from": 180,
+        "journal_to": 186
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-REC-06: успех",
+      "payload": {
+        "check_id": "TC-REC-06",
+        "status": "успех",
+        "journal_from": 187,
+        "journal_to": 187
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-01: успех",
+      "payload": {
+        "check_id": "TC-LOAD-01",
+        "status": "успех",
+        "journal_from": 188,
+        "journal_to": 190
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-02: успех",
+      "payload": {
+        "check_id": "TC-LOAD-02",
+        "status": "успех",
+        "journal_from": 191,
+        "journal_to": 191
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-03: успех",
+      "payload": {
+        "check_id": "TC-LOAD-03",
+        "status": "успех",
+        "journal_from": 192,
+        "journal_to": 193
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-04: успех",
+      "payload": {
+        "check_id": "TC-LOAD-04",
+        "status": "успех",
+        "journal_from": 194,
+        "journal_to": 196
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-05: успех",
+      "payload": {
+        "check_id": "TC-LOAD-05",
+        "status": "успех",
+        "journal_from": 197,
+        "journal_to": 198
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-06: успех",
+      "payload": {
+        "check_id": "TC-LOAD-06",
+        "status": "успех",
+        "journal_from": 199,
+        "journal_to": 199
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-LOAD-07: успех",
+      "payload": {
+        "check_id": "TC-LOAD-07",
+        "status": "успех",
+        "journal_from": 200,
+        "journal_to": 201
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-02: успех",
+      "payload": {
+        "check_id": "TC-TASK-02",
+        "status": "успех",
+        "journal_from": 202,
+        "journal_to": 211
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-03: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-03",
+        "status": "пропущена",
+        "journal_from": 212,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:23:59",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-06: пропущена",
+      "payload": {
+        "check_id": "TC-TASK-06",
+        "status": "пропущена",
+        "journal_from": 212,
+        "journal_to": null
+      }
+    },
+    {
+      "at": "2026-09-18T14:24:00",
+      "event": "check_recorded",
+      "message": "Проверка TC-TASK-07: успех",
+      "payload": {
+        "check_id": "TC-TASK-07",
+        "status": "успех",
+        "journal_from": 212,
+        "journal_to": 212
+      }
+    },
+    {
+      "at": "2026-09-18T14:26:16",
+      "event": "stand_snapshot",
+      "message": "Снимок стенда (end)",
+      "payload": {
+        "phase": "end"
+      }
+    },
+    {
+      "at": "2026-09-18T14:26:30",
+      "event": "session_closed",
+      "message": "Сессия завершена",
+      "payload": {
+        "conclusion": "не определён",
+        "duration_seconds": 1584.0
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed.md",
+      "payload": {
+        "kind": "report:report_md",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed.md"
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed.json",
+      "payload": {
+        "kind": "report:report_json",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed.json"
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed_checks.csv",
+      "payload": {
+        "kind": "report:checks.csv",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_checks.csv"
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed_notes.csv",
+      "payload": {
+        "kind": "report:notes.csv",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_notes.csv"
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed_test_entities.csv",
+      "payload": {
+        "kind": "report:test_entities.csv",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_test_entities.csv"
+      }
+    },
+    {
+      "at": "2026-09-18T14:27:43",
+      "event": "artifact_saved",
+      "message": "Артефакт: report_20260918-140006-b6ed_journal.jsonl",
+      "payload": {
+        "kind": "report:journal.jsonl",
+        "path": "D:/VSC Python projects/TrainingServerAcceptance/acceptance_data/reports/report_20260918-140006-b6ed_journal.jsonl"
+      }
+    }
+  ],
+  "journal_labels": {
+    "TC-TASK-02": 51,
+    "TC-SYS-01": 2,
+    "TC-SYS-02": 2,
+    "TC-SYS-03": 2,
+    "TC-SYS-04": 2,
+    "TC-SYS-05": 4,
+    "TC-FILE-01": 2,
+    "TC-FILE-02": 4,
+    "TC-FILE-03": 6,
+    "TC-FILE-04": 4,
+    "TC-FILE-05": 4,
+    "TC-FILE-06": 2,
+    "TC-FILE-07": 2,
+    "TC-FILE-08": 4,
+    "TC-FILE-09": 4,
+    "TC-FILE-10": 4,
+    "TC-FILE-14": 2,
+    "TC-REC-01": 2,
+    "TC-REC-02": 2,
+    "TC-REC-04": 2,
+    "TC-REC-05": 14,
+    "TC-REC-06": 2,
+    "TC-LOAD-01": 6,
+    "TC-LOAD-02": 2,
+    "TC-LOAD-03": 4,
+    "TC-LOAD-04": 6,
+    "TC-LOAD-05": 4,
+    "TC-LOAD-06": 2,
+    "TC-LOAD-07": 4,
+    "TC-TASK-07": 3,
+    "TC-TASK": 10,
+    "TC-CONSOLE": 9
+  },
+  "annexes": [
+    "checks.csv",
+    "journal.jsonl",
+    "notes.csv",
+    "test_entities.csv"
+  ],
+  "warnings": [
+    "не выполнено проверок: 9 из 41 — итог может быть «не определён»",
+    "проверок с отказом: 1 — требуется разбор причин"
+  ]
+}

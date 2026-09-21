@@ -1,0 +1,3163 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "Energomera",
+		"version": "0.1.0"
+	},
+	"paths": {
+		"/health": {
+			"get": {
+				"tags": [
+					"Система"
+				],
+				"summary": "Проверка работоспособности сервиса",
+				"description": "Возвращает статус работы сервиса",
+				"operationId": "health_check_health_get",
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/version": {
+			"get": {
+				"tags": [
+					"Система"
+				],
+				"summary": "Информация о текущей сборке",
+				"description": "Возвращает информацию о запущенной версии",
+				"operationId": "version_version_get",
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/data/file": {
+			"post": {
+				"tags": [
+					"File Import"
+				],
+				"summary": "Upload Data File",
+				"operationId": "upload_data_file_api_data_file_post",
+				"requestBody": {
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"$ref": "#/components/schemas/Body_upload_data_file_api_data_file_post"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FileMetadataResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/data/files": {
+			"get": {
+				"tags": [
+					"File Import"
+				],
+				"summary": "Get Files List",
+				"operationId": "get_files_list_api_data_files_get",
+				"parameters": [
+					{
+						"name": "id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "uuid"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Filter by file ID",
+							"title": "Id"
+						},
+						"description": "Filter by file ID"
+					},
+					{
+						"name": "file_name",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Filter by file name",
+							"title": "File Name"
+						},
+						"description": "Filter by file name"
+					},
+					{
+						"name": "import_date",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "date"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Filter by import date (YYYY-MM-DD)",
+							"title": "Import Date"
+						},
+						"description": "Filter by import date (YYYY-MM-DD)"
+					},
+					{
+						"name": "file_type",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Filter by file type (RAW, LOADS, ONNX)",
+							"title": "File Type"
+						},
+						"description": "Filter by file type (RAW, LOADS, ONNX)"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FileMetadataListResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/{file_id}": {
+			"delete": {
+				"tags": [
+					"File Import"
+				],
+				"summary": "Удалить файл",
+				"description": "Удаляет файл из S3 хранилища и его метаданные из базы данных",
+				"operationId": "delete_file_api__file_id__delete",
+				"parameters": [
+					{
+						"name": "file_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "File Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/data/file/{file_id}/download": {
+			"get": {
+				"tags": [
+					"File Import"
+				],
+				"summary": "Download File",
+				"description": "Скачивает файл по его ID.\n- **file_id**: UUID идентификатор файла",
+				"operationId": "download_file_api_data_file__file_id__download_get",
+				"parameters": [
+					{
+						"name": "file_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "File Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/datasets/": {
+			"post": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "Create Dataset",
+				"description": "Создание нового датасета",
+				"operationId": "create_dataset_api_datasets__post",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/DatasetCreate"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DatasetResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "List Datasets",
+				"description": "Получение списка датасетов с фильтрацией",
+				"operationId": "list_datasets_api_datasets__get",
+				"parameters": [
+					{
+						"name": "name",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Name"
+						}
+					},
+					{
+						"name": "creation_date",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "date-time"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Creation Date"
+						}
+					},
+					{
+						"name": "description",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Description"
+						}
+					},
+					{
+						"name": "type",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"$ref": "#/components/schemas/DatasetType"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Type"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DatasetListResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/datasets/{dataset_id}": {
+			"get": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "Get Dataset",
+				"description": "Получение датасета по ID",
+				"operationId": "get_dataset_api_datasets__dataset_id__get",
+				"parameters": [
+					{
+						"name": "dataset_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Dataset Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DatasetResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "Update Dataset",
+				"description": "Обновление датасета",
+				"operationId": "update_dataset_api_datasets__dataset_id__put",
+				"parameters": [
+					{
+						"name": "dataset_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Dataset Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/DatasetUpdate"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DatasetResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "Delete Dataset",
+				"description": "Удаление датасета",
+				"operationId": "delete_dataset_api_datasets__dataset_id__delete",
+				"parameters": [
+					{
+						"name": "dataset_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Dataset Id"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Successful Response"
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/datasets/fill/{dataset_id}": {
+			"post": {
+				"tags": [
+					"Datasets"
+				],
+				"summary": "Fill Dataset Async",
+				"description": "Запускает асинхронное заполнение датасета через Celery.\nТип трансформации определяется типом датасета из БД.",
+				"operationId": "fill_dataset_async_api_datasets_fill__dataset_id__post",
+				"parameters": [
+					{
+						"name": "dataset_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Dataset Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/DatasetFillRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/loads/list": {
+			"get": {
+				"tags": [
+					"Loads"
+				],
+				"summary": "List Loads",
+				"operationId": "list_loads_api_loads_list_get",
+				"parameters": [
+					{
+						"name": "category",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Category"
+						}
+					},
+					{
+						"name": "ph_n",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Ph N"
+						}
+					},
+					{
+						"name": "load_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Load Id"
+						}
+					},
+					{
+						"name": "description_search",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Description Search"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "integer"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Limit"
+						}
+					},
+					{
+						"name": "offset",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "integer"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Offset"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/loads": {
+			"post": {
+				"tags": [
+					"Loads"
+				],
+				"summary": "Create Load",
+				"operationId": "create_load_api_loads_post",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/LoadDevice"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/loads/{load_id}": {
+			"put": {
+				"tags": [
+					"Loads"
+				],
+				"summary": "Update Load",
+				"operationId": "update_load_api_loads__load_id__put",
+				"parameters": [
+					{
+						"name": "load_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Load Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateLoadRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Create Model",
+				"description": "Создает новую модель с заданной архитектурой",
+				"operationId": "create_model_api_ml_models_models_post",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"allOf": [
+									{
+										"$ref": "#/components/schemas/ModelCreateRequest"
+									}
+								],
+								"description": "Данные для создания модели",
+								"title": "Request"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelMetadata"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Get Models",
+				"operationId": "get_models_api_ml_models_models_get",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "uuid"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по ID модели",
+							"title": "Model Id"
+						},
+						"description": "Фильтр по ID модели"
+					},
+					{
+						"name": "architecture",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по архитектуре",
+							"title": "Architecture"
+						},
+						"description": "Фильтр по архитектуре"
+					},
+					{
+						"name": "version",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по версии",
+							"title": "Version"
+						},
+						"description": "Фильтр по версии"
+					},
+					{
+						"name": "name",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по названию",
+							"title": "Name"
+						},
+						"description": "Фильтр по названию"
+					},
+					{
+						"name": "phase_type",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по типу фазы",
+							"title": "Phase Type"
+						},
+						"description": "Фильтр по типу фазы"
+					},
+					{
+						"name": "output_size",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "integer"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по количеству выходов",
+							"title": "Output Size"
+						},
+						"description": "Фильтр по количеству выходов"
+					},
+					{
+						"name": "device_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по ID устройства",
+							"title": "Device Id"
+						},
+						"description": "Фильтр по ID устройства"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelListResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/upload": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Upload Model",
+				"description": "Загружает готовую модель (например, после сжатия) и создаёт её метаданные.\n- **file**: файл модели (.h5)\n- **metadata**: JSON-строка с полями, соответствующими ModelFileUploadRequest (без поля version)",
+				"operationId": "upload_model_api_ml_models_models_upload_post",
+				"requestBody": {
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"$ref": "#/components/schemas/Body_upload_model_api_ml_models_models_upload_post"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelMetadata"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/architectures": {
+			"get": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Get Supported Architectures",
+				"description": "Получить список поддерживаемых архитектур с информацией.\nЕсли указан параметр architecture - возвращает информацию только об этой архитектуре.",
+				"operationId": "get_supported_architectures_api_ml_models_architectures_get",
+				"parameters": [
+					{
+						"name": "architecture",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Фильтр по конкретной архитектуре",
+							"title": "Architecture"
+						},
+						"description": "Фильтр по конкретной архитектуре"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/ModelArchitectureInfo"
+									},
+									"title": "Response Get Supported Architectures Api Ml Models Architectures Get"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/{model_id}": {
+			"delete": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Delete Model",
+				"description": "Удаляет модель, её связи сигналов и связанный файл модели.",
+				"operationId": "delete_model_api_ml_models_models__model_id__delete",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Successful Response"
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Get Model By Id",
+				"description": "Получить метаданные модели по идентификатору вместе с информацией о сигналах.",
+				"operationId": "get_model_by_id_api_ml_models_models__model_id__get",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelMetadata"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/{model_id}/train": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Train Model",
+				"description": "Запускает обучение модели с поддержкой аугментации данных",
+				"operationId": "train_model_api_ml_models_models__model_id__train_post",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"allOf": [
+									{
+										"$ref": "#/components/schemas/ModelTrainingRequest"
+									}
+								],
+								"description": "Параметры обучения модели",
+								"title": "Training Request"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelTrainingResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/{model_id}/check": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Check Model",
+				"description": "Запускает проверку модели на тестовом датасете",
+				"operationId": "check_model_api_ml_models__model_id__check_post",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Model Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ModelCheckRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelCheckResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/{model_id}/inference": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Inference",
+				"description": "Запускает инференс модели на датасете (асинхронно через TaskService/Celery).",
+				"operationId": "inference_api_ml_models_models__model_id__inference_post",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InferenceStartRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InferenceStartResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/{model_id}/inference/single": {
+			"post": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Inference Single",
+				"description": "Синхронный предикт одного сэмпла из 6 сигналов (Base64 как в raw_data CSV).",
+				"operationId": "inference_single_api_ml_models_models__model_id__inference_single_post",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InferenceSingleRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InferenceSingleResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/models/{model_id}/download_onnx": {
+			"get": {
+				"tags": [
+					"ML models"
+				],
+				"summary": "Download Model Onnx",
+				"description": "Скачивание модели в ONNX формате",
+				"operationId": "download_model_onnx_api_ml_models_models__model_id__download_onnx_get",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/test": {
+			"post": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "Run Test Task",
+				"description": "Запуск тестовой задачи Celery\n- **duration**: время выполнения задачи в секундах",
+				"operationId": "run_test_task_api_tasks_test_post",
+				"parameters": [
+					{
+						"name": "duration",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"title": "Duration"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									},
+									"title": "Response Run Test Task Api Tasks Test Post"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/{task_id}/pause": {
+			"post": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "Pause Task",
+				"operationId": "pause_task_api_tasks__task_id__pause_post",
+				"parameters": [
+					{
+						"name": "task_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Task Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/{task_id}/interrupt": {
+			"post": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "Interrupt Task",
+				"operationId": "interrupt_task_api_tasks__task_id__interrupt_post",
+				"parameters": [
+					{
+						"name": "task_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Task Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/{task_id}/resume": {
+			"post": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "Resume Task",
+				"operationId": "resume_task_api_tasks__task_id__resume_post",
+				"parameters": [
+					{
+						"name": "task_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Task Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/": {
+			"get": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "List Tasks",
+				"operationId": "list_tasks_api_tasks__get",
+				"parameters": [
+					{
+						"name": "task_type",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"$ref": "#/components/schemas/TaskType"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Task Type"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"$ref": "#/components/schemas/TaskStatus"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Status"
+						}
+					},
+					{
+						"name": "start_date",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "date-time"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "Start Date"
+						}
+					},
+					{
+						"name": "end_date",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "date-time"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"title": "End Date"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"maximum": 1000,
+							"minimum": 1,
+							"default": 100,
+							"title": "Limit"
+						}
+					},
+					{
+						"name": "offset",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 0,
+							"default": 0,
+							"title": "Offset"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TaskListResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/tasks/{task_id}": {
+			"get": {
+				"tags": [
+					"Task service"
+				],
+				"summary": "Get Task Details",
+				"operationId": "get_task_details_api_tasks__task_id__get",
+				"parameters": [
+					{
+						"name": "task_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Task Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/TaskWithRuntimes"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"schemas": {
+			"Body_upload_data_file_api_data_file_post": {
+				"properties": {
+					"file": {
+						"type": "string",
+						"format": "binary",
+						"title": "File"
+					},
+					"file_type": {
+						"type": "string",
+						"title": "File Type"
+					},
+					"description": {
+						"type": "string",
+						"title": "Description"
+					}
+				},
+				"type": "object",
+				"required": [
+					"file",
+					"file_type"
+				],
+				"title": "Body_upload_data_file_api_data_file_post"
+			},
+			"Body_upload_model_api_ml_models_models_upload_post": {
+				"properties": {
+					"file": {
+						"type": "string",
+						"format": "binary",
+						"title": "File",
+						"description": "Файл модели в формате .h5"
+					},
+					"metadata": {
+						"type": "string",
+						"title": "Metadata",
+						"description": "Метаданные модели в формате JSON (ModelFileUploadRequest)"
+					}
+				},
+				"type": "object",
+				"required": [
+					"file",
+					"metadata"
+				],
+				"title": "Body_upload_model_api_ml_models_models_upload_post"
+			},
+			"CeleryTask": {
+				"properties": {
+					"type": {
+						"$ref": "#/components/schemas/TaskType"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At"
+					}
+				},
+				"type": "object",
+				"required": [
+					"type",
+					"name",
+					"id",
+					"created_at"
+				],
+				"title": "CeleryTask"
+			},
+			"CeleryTaskRuntime": {
+				"properties": {
+					"task_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Task Id"
+					},
+					"status": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/TaskStatus"
+							}
+						],
+						"default": "new"
+					},
+					"celery_task_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Celery Task Id"
+					},
+					"parameters": {
+						"type": "object",
+						"title": "Parameters"
+					},
+					"start_time": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date-time"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Start Time"
+					},
+					"end_time": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "date-time"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "End Time"
+					},
+					"result": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Result"
+					},
+					"intermediate_result": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Intermediate Result"
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					}
+				},
+				"type": "object",
+				"required": [
+					"task_id",
+					"parameters",
+					"id"
+				],
+				"title": "CeleryTaskRuntime"
+			},
+			"DatasetCreate": {
+				"properties": {
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"type": {
+						"$ref": "#/components/schemas/DatasetType"
+					}
+				},
+				"type": "object",
+				"required": [
+					"name",
+					"type"
+				],
+				"title": "DatasetCreate"
+			},
+			"DatasetFillRequest": {
+				"properties": {
+					"raw_file_ids": {
+						"items": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"type": "array",
+						"title": "Raw File Ids"
+					},
+					"markup_file_ids": {
+						"items": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"type": "array",
+						"title": "Markup File Ids",
+						"default": []
+					}
+				},
+				"type": "object",
+				"required": [
+					"raw_file_ids"
+				],
+				"title": "DatasetFillRequest"
+			},
+			"DatasetListResponse": {
+				"properties": {
+					"datasets": {
+						"items": {
+							"$ref": "#/components/schemas/DatasetResponse"
+						},
+						"type": "array",
+						"title": "Datasets"
+					},
+					"count": {
+						"type": "integer",
+						"title": "Count"
+					}
+				},
+				"type": "object",
+				"required": [
+					"datasets",
+					"count"
+				],
+				"title": "DatasetListResponse"
+			},
+			"DatasetResponse": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"creation_date": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Creation Date"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"type": {
+						"$ref": "#/components/schemas/DatasetType"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"creation_date",
+					"name",
+					"type"
+				],
+				"title": "DatasetResponse"
+			},
+			"DatasetType": {
+				"type": "string",
+				"const": "direct_fill",
+				"title": "DatasetType"
+			},
+			"DatasetUpdate": {
+				"properties": {
+					"name": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Name"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					}
+				},
+				"type": "object",
+				"title": "DatasetUpdate"
+			},
+			"FileMetadataListResponse": {
+				"properties": {
+					"files": {
+						"items": {
+							"$ref": "#/components/schemas/FileMetadataResponse"
+						},
+						"type": "array",
+						"title": "Files"
+					},
+					"count": {
+						"type": "integer",
+						"title": "Count"
+					}
+				},
+				"type": "object",
+				"required": [
+					"files",
+					"count"
+				],
+				"title": "FileMetadataListResponse"
+			},
+			"FileMetadataResponse": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"file_name": {
+						"type": "string",
+						"title": "File Name"
+					},
+					"size": {
+						"type": "integer",
+						"title": "Size"
+					},
+					"s3_path": {
+						"type": "string",
+						"title": "S3 Path"
+					},
+					"import_date": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Import Date"
+					},
+					"file_type": {
+						"type": "string",
+						"title": "File Type"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"file_name",
+					"size",
+					"s3_path",
+					"import_date",
+					"file_type"
+				],
+				"title": "FileMetadataResponse"
+			},
+			"HTTPValidationError": {
+				"properties": {
+					"detail": {
+						"items": {
+							"$ref": "#/components/schemas/ValidationError"
+						},
+						"type": "array",
+						"title": "Detail"
+					}
+				},
+				"type": "object",
+				"title": "HTTPValidationError"
+			},
+			"InferenceClass": {
+				"properties": {
+					"signal_num": {
+						"type": "integer",
+						"title": "Signal Num"
+					},
+					"device_ids": {
+						"items": {
+							"type": "string"
+						},
+						"type": "array",
+						"title": "Device Ids"
+					},
+					"confidence": {
+						"type": "number",
+						"title": "Confidence"
+					},
+					"detected": {
+						"type": "boolean",
+						"title": "Detected"
+					}
+				},
+				"type": "object",
+				"required": [
+					"signal_num",
+					"device_ids",
+					"confidence",
+					"detected"
+				],
+				"title": "InferenceClass"
+			},
+			"InferenceSingleRequest": {
+				"properties": {
+					"U_A_signal": {
+						"type": "string",
+						"title": "U A Signal"
+					},
+					"U_B_signal": {
+						"type": "string",
+						"title": "U B Signal"
+					},
+					"U_C_signal": {
+						"type": "string",
+						"title": "U C Signal"
+					},
+					"I_A_signal": {
+						"type": "string",
+						"title": "I A Signal"
+					},
+					"I_B_signal": {
+						"type": "string",
+						"title": "I B Signal"
+					},
+					"I_C_signal": {
+						"type": "string",
+						"title": "I C Signal"
+					},
+					"U_mult": {
+						"type": "integer",
+						"title": "U Mult",
+						"default": 721
+					},
+					"U_dev": {
+						"type": "integer",
+						"title": "U Dev",
+						"default": 1
+					},
+					"I_mult": {
+						"type": "integer",
+						"title": "I Mult",
+						"default": 25000
+					},
+					"I_dev": {
+						"type": "integer",
+						"title": "I Dev",
+						"default": 66
+					},
+					"byte_order": {
+						"type": "string",
+						"title": "Byte Order",
+						"default": "Little"
+					},
+					"signal_bytes": {
+						"type": "integer",
+						"title": "Signal Bytes",
+						"default": 3
+					},
+					"threshold": {
+						"type": "number",
+						"maximum": 1.0,
+						"minimum": 0.0,
+						"title": "Threshold",
+						"default": 0.5
+					}
+				},
+				"type": "object",
+				"required": [
+					"U_A_signal",
+					"U_B_signal",
+					"U_C_signal",
+					"I_A_signal",
+					"I_B_signal",
+					"I_C_signal"
+				],
+				"title": "InferenceSingleRequest",
+				"description": "Запрос соответствует строке raw_data CSV: Base64-сигналы + ADC-метаданные."
+			},
+			"InferenceSingleResponse": {
+				"properties": {
+					"model_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Model Id"
+					},
+					"threshold": {
+						"type": "number",
+						"title": "Threshold"
+					},
+					"classes": {
+						"items": {
+							"$ref": "#/components/schemas/InferenceClass"
+						},
+						"type": "array",
+						"title": "Classes"
+					}
+				},
+				"type": "object",
+				"required": [
+					"model_id",
+					"threshold",
+					"classes"
+				],
+				"title": "InferenceSingleResponse"
+			},
+			"InferenceStartRequest": {
+				"properties": {
+					"dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Dataset Id"
+					},
+					"threshold": {
+						"type": "number",
+						"maximum": 1.0,
+						"minimum": 0.0,
+						"title": "Threshold",
+						"default": 0.5
+					}
+				},
+				"type": "object",
+				"required": [
+					"dataset_id"
+				],
+				"title": "InferenceStartRequest"
+			},
+			"InferenceStartResponse": {
+				"properties": {
+					"status": {
+						"type": "string",
+						"title": "Status"
+					},
+					"model_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Model Id"
+					},
+					"dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Dataset Id"
+					},
+					"task_id": {
+						"type": "string",
+						"title": "Task Id"
+					},
+					"threshold": {
+						"type": "number",
+						"title": "Threshold"
+					},
+					"message": {
+						"type": "string",
+						"title": "Message"
+					}
+				},
+				"type": "object",
+				"required": [
+					"status",
+					"model_id",
+					"dataset_id",
+					"task_id",
+					"threshold",
+					"message"
+				],
+				"title": "InferenceStartResponse"
+			},
+			"LoadDevice": {
+				"properties": {
+					"load_id": {
+						"type": "string",
+						"title": "Load Id"
+					},
+					"phase_connection": {
+						"type": "string",
+						"title": "Phase Connection"
+					},
+					"category": {
+						"type": "string",
+						"title": "Category"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					}
+				},
+				"type": "object",
+				"required": [
+					"load_id",
+					"phase_connection",
+					"category"
+				],
+				"title": "LoadDevice"
+			},
+			"ModelArchitectureInfo": {
+				"properties": {
+					"architecture": {
+						"type": "string",
+						"title": "Architecture"
+					},
+					"description": {
+						"type": "string",
+						"title": "Description"
+					},
+					"default_config": {
+						"type": "object",
+						"title": "Default Config"
+					},
+					"suitable_for_phases": {
+						"items": {
+							"type": "string"
+						},
+						"type": "array",
+						"title": "Suitable For Phases"
+					}
+				},
+				"type": "object",
+				"required": [
+					"architecture",
+					"description",
+					"default_config",
+					"suitable_for_phases"
+				],
+				"title": "ModelArchitectureInfo",
+				"description": "Информация об архитектуре модели"
+			},
+			"ModelCheckRequest": {
+				"properties": {
+					"dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Dataset Id"
+					},
+					"threshold": {
+						"type": "number",
+						"maximum": 1.0,
+						"minimum": 0.0,
+						"title": "Threshold",
+						"default": 0.5
+					}
+				},
+				"type": "object",
+				"required": [
+					"dataset_id"
+				],
+				"title": "ModelCheckRequest"
+			},
+			"ModelCheckResponse": {
+				"properties": {
+					"task_id": {
+						"type": "string",
+						"title": "Task Id"
+					},
+					"status": {
+						"type": "string",
+						"title": "Status"
+					},
+					"message": {
+						"type": "string",
+						"title": "Message"
+					},
+					"validation_info": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Validation Info"
+					}
+				},
+				"type": "object",
+				"required": [
+					"task_id",
+					"status",
+					"message",
+					"validation_info"
+				],
+				"title": "ModelCheckResponse",
+				"description": "Ответ на запуск проверки модели"
+			},
+			"ModelCreateRequest": {
+				"properties": {
+					"architecture": {
+						"type": "string",
+						"title": "Architecture"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"output_size": {
+						"type": "integer",
+						"title": "Output Size"
+					},
+					"phase_type": {
+						"type": "string",
+						"title": "Phase Type",
+						"default": "three"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"signals": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"items": {
+										"type": "string"
+									},
+									"type": "array"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Signals",
+						"description": "Связи сигнал-устройство: номер сигнала -> список device_id"
+					},
+					"signal_aliases": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"type": "string"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Signal Aliases",
+						"description": "Алиасы для сигналов: номер сигнала -> человекочитаемое имя"
+					},
+					"config": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Config"
+					},
+					"pruning_mask": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Pruning Mask",
+						"description": "Маска прунинга (base64)"
+					}
+				},
+				"type": "object",
+				"required": [
+					"architecture",
+					"name",
+					"output_size"
+				],
+				"title": "ModelCreateRequest",
+				"description": "Запрос на создание модели"
+			},
+			"ModelListResponse": {
+				"properties": {
+					"models": {
+						"items": {
+							"$ref": "#/components/schemas/ModelMetadata"
+						},
+						"type": "array",
+						"title": "Models"
+					},
+					"count": {
+						"type": "integer",
+						"title": "Count"
+					}
+				},
+				"type": "object",
+				"required": [
+					"models",
+					"count"
+				],
+				"title": "ModelListResponse"
+			},
+			"ModelMetadata": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id",
+						"description": "Уникальный идентификатор метаданных модели"
+					},
+					"file_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "File Id",
+						"description": "Идентификатор файла модели в хранилище"
+					},
+					"architecture": {
+						"type": "string",
+						"title": "Architecture",
+						"description": "Архитектура модели"
+					},
+					"version": {
+						"type": "string",
+						"title": "Version",
+						"description": "Версия модели"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name",
+						"description": "Название модели"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description",
+						"description": "Описание модели"
+					},
+					"phase_type": {
+						"type": "string",
+						"title": "Phase Type",
+						"description": "Тип фазы (single/three)"
+					},
+					"output_size": {
+						"type": "integer",
+						"title": "Output Size",
+						"description": "Количество выходных нейронов"
+					},
+					"config": {
+						"type": "object",
+						"title": "Config",
+						"description": "Конфигурация модели"
+					},
+					"metrics": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Metrics",
+						"description": "Метрики обучения модели"
+					},
+					"pruning_mask": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Pruning Mask",
+						"description": "Маска прунинга (base64)"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At",
+						"description": "Дата создания"
+					},
+					"updated_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Updated At",
+						"description": "Дата обновления"
+					},
+					"signals": {
+						"anyOf": [
+							{
+								"items": {
+									"type": "object"
+								},
+								"type": "array"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Signals",
+						"description": "Сигналы модели с устройствами"
+					},
+					"signal_aliases": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"type": "string"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Signal Aliases",
+						"description": "Алиасы сигналов (номер -> имя)"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"file_id",
+					"architecture",
+					"version",
+					"name",
+					"phase_type",
+					"output_size",
+					"created_at",
+					"updated_at"
+				],
+				"title": "ModelMetadata",
+				"description": "Метаданные модели"
+			},
+			"ModelTrainingRequest": {
+				"properties": {
+					"dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Dataset Id"
+					},
+					"batch_size": {
+						"type": "integer",
+						"maximum": 256.0,
+						"minimum": 1.0,
+						"title": "Batch Size",
+						"description": "Размер батча для обучения",
+						"default": 32
+					},
+					"epochs": {
+						"type": "integer",
+						"maximum": 1000.0,
+						"minimum": 1.0,
+						"title": "Epochs",
+						"description": "Количество эпох обучения",
+						"default": 50
+					},
+					"learning_rate": {
+						"type": "number",
+						"maximum": 1.0,
+						"exclusiveMinimum": 0.0,
+						"title": "Learning Rate",
+						"description": "Learning rate для оптимизатора. Если не указан, используется 1e-7",
+						"default": 1e-7
+					},
+					"trained_model_name": {
+						"anyOf": [
+							{
+								"type": "string",
+								"minLength": 1
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Trained Model Name",
+						"description": "Имя новой модели, которая будет создана после успешного обучения"
+					},
+					"augmentation_noise_percentage": {
+						"anyOf": [
+							{
+								"type": "number",
+								"maximum": 0.05,
+								"minimum": 0.001
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Augmentation Noise Percentage",
+						"description": "Процент шума для аугментации (0.05 = 5%). Если None - аугментация отключена"
+					},
+					"augmentation_num_samples": {
+						"anyOf": [
+							{
+								"type": "integer",
+								"maximum": 10.0,
+								"minimum": 1.0
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Augmentation Num Samples",
+						"description": "Количество синтетических сэмплов для аугментации. Если None - аугментация отключена"
+					},
+					"preprocessing_converter": {
+						"type": "string",
+						"title": "Preprocessing Converter",
+						"description": "Тип предобработки данных",
+						"default": "direct"
+					},
+					"quantization": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/QuantizationParams"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Параметры QAT квантования. Если None — без квантования"
+					}
+				},
+				"additionalProperties": false,
+				"type": "object",
+				"required": [
+					"dataset_id"
+				],
+				"title": "ModelTrainingRequest",
+				"description": "Запрос на обучение модели"
+			},
+			"ModelTrainingResponse": {
+				"properties": {
+					"status": {
+						"type": "string",
+						"title": "Status",
+						"description": "Статус запуска тренировки"
+					},
+					"model_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Model Id",
+						"description": "ID модели"
+					},
+					"dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Dataset Id",
+						"description": "ID датасета"
+					},
+					"task_id": {
+						"type": "string",
+						"title": "Task Id",
+						"description": "ID задачи Celery"
+					},
+					"batch_size": {
+						"type": "integer",
+						"title": "Batch Size",
+						"description": "Размер батча"
+					},
+					"epochs": {
+						"type": "integer",
+						"title": "Epochs",
+						"description": "Количество эпох"
+					},
+					"learning_rate": {
+						"type": "number",
+						"title": "Learning Rate",
+						"description": "Используемый learning rate"
+					},
+					"trained_model_name": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Trained Model Name",
+						"description": "Имя новой модели после обучения"
+					},
+					"preprocessing_converter": {
+						"type": "string",
+						"title": "Preprocessing Converter",
+						"description": "Тип предобработки"
+					},
+					"validation_info": {
+						"type": "object",
+						"title": "Validation Info",
+						"description": "Информация о валидации"
+					},
+					"message": {
+						"type": "string",
+						"title": "Message",
+						"description": "Сообщение"
+					},
+					"augmentation": {
+						"type": "object",
+						"title": "Augmentation",
+						"description": "Параметры аугментации"
+					},
+					"quantization": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Quantization",
+						"description": "Параметры квантования"
+					}
+				},
+				"type": "object",
+				"required": [
+					"status",
+					"model_id",
+					"dataset_id",
+					"task_id",
+					"batch_size",
+					"epochs",
+					"learning_rate",
+					"preprocessing_converter",
+					"validation_info",
+					"message",
+					"augmentation"
+				],
+				"title": "ModelTrainingResponse",
+				"description": "Ответ на запуск тренировки модели"
+			},
+			"QuantizationParams": {
+				"properties": {
+					"enabled": {
+						"type": "boolean",
+						"title": "Enabled",
+						"description": "Включить QAT квантование",
+						"default": false
+					},
+					"num_bits": {
+						"type": "integer",
+						"title": "Num Bits",
+						"description": "Битность квантования (4 или 8)",
+						"default": 8
+					},
+					"symmetric": {
+						"type": "boolean",
+						"title": "Symmetric",
+						"description": "Симметричное квантование",
+						"default": true
+					}
+				},
+				"type": "object",
+				"title": "QuantizationParams",
+				"description": "Параметры квантования модели"
+			},
+			"TaskListResponse": {
+				"properties": {
+					"tasks": {
+						"items": {
+							"$ref": "#/components/schemas/CeleryTask"
+						},
+						"type": "array",
+						"title": "Tasks"
+					},
+					"count": {
+						"type": "integer",
+						"title": "Count"
+					}
+				},
+				"type": "object",
+				"required": [
+					"tasks",
+					"count"
+				],
+				"title": "TaskListResponse"
+			},
+			"TaskStatus": {
+				"type": "string",
+				"enum": [
+					"new",
+					"running",
+					"completed",
+					"interrupted",
+					"failed",
+					"pausing",
+					"paused",
+					"not_found"
+				],
+				"title": "TaskStatus"
+			},
+			"TaskType": {
+				"type": "string",
+				"enum": [
+					"celery-test",
+					"training",
+					"dataset-fill",
+					"model-testing",
+					"inference"
+				],
+				"title": "TaskType"
+			},
+			"TaskWithRuntimes": {
+				"properties": {
+					"type": {
+						"$ref": "#/components/schemas/TaskType"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At"
+					},
+					"runtimes": {
+						"items": {
+							"$ref": "#/components/schemas/CeleryTaskRuntime"
+						},
+						"type": "array",
+						"title": "Runtimes",
+						"default": []
+					}
+				},
+				"type": "object",
+				"required": [
+					"type",
+					"name",
+					"id",
+					"created_at"
+				],
+				"title": "TaskWithRuntimes"
+			},
+			"UpdateLoadRequest": {
+				"properties": {
+					"phase_connection": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Phase Connection"
+					},
+					"category": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Category"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					}
+				},
+				"type": "object",
+				"title": "UpdateLoadRequest"
+			},
+			"ValidationError": {
+				"properties": {
+					"loc": {
+						"items": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "integer"
+								}
+							]
+						},
+						"type": "array",
+						"title": "Location"
+					},
+					"msg": {
+						"type": "string",
+						"title": "Message"
+					},
+					"type": {
+						"type": "string",
+						"title": "Error Type"
+					}
+				},
+				"type": "object",
+				"required": [
+					"loc",
+					"msg",
+					"type"
+				],
+				"title": "ValidationError"
+			}
+		}
+	}
+}

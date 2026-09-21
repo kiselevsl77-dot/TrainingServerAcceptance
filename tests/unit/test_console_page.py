@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -349,3 +350,68 @@ def test_query_param_help_adds_format_hint():
     assert console._param_help(limit) is None
     # описание из спецификации и подсказка формата объединяются в одной подсказке
     assert console._param_help(file_id) == "Filter by file ID · Формат: UUID"
+
+
+# ---------------------------------------------------------------------------
+# Multipart-форма: файл и `file_type` обязательны (контракт 17.09.2026)
+# ---------------------------------------------------------------------------
+UPLOAD = "post /api/data/file"
+
+
+class _Uploaded:
+    """Загруженный файл Streamlit: форма читает только имя и содержимое."""
+
+    name = "__TEST__probe.raw.csv"
+
+    @staticmethod
+    def getvalue() -> bytes:
+        return b"chunkID;timestamp\n1;2026-01-01T00:00:00\n"
+
+
+def _multipart_form(
+    monkeypatch: pytest.MonkeyPatch, texts: dict[str, str], uploaded: Any
+) -> tuple[Any, dict[str, Any] | None, Any, list[str]]:
+    """Готовит multipart-форму консоли с подменёнными виджетами.
+
+    Returns:
+        Кортеж (описание операции, тело JSON, multipart-часть, подписи `st.caption`).
+    """
+    captions: list[str] = []
+    column = SimpleNamespace(text_input=lambda *args, key=None, **kwargs: texts.get(str(key), ""))
+    monkeypatch.setattr(console.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        console.st, "caption", lambda text, *args, **kwargs: captions.append(str(text))
+    )
+    monkeypatch.setattr(console.st, "columns", lambda count: [column, column])
+    monkeypatch.setattr(console.st, "file_uploader", lambda *args, **kwargs: uploaded)
+    spec = ep.find(UPLOAD)
+    assert spec is not None
+    body, multipart = console._render_body_inputs(spec)
+    return spec, body, multipart, captions
+
+
+def test_multipart_without_file_is_not_sent(monkeypatch: pytest.MonkeyPatch):
+    """Без файла multipart-запрос не формируется."""
+    _, body, multipart, captions = _multipart_form(monkeypatch, {}, None)
+
+    assert body is None and multipart is None
+    assert any("без файла не отправляется" in text for text in captions)
+
+
+def test_multipart_without_file_type_is_not_sent(monkeypatch: pytest.MonkeyPatch):
+    """`file_type` обязателен: без него консоль не отправляет запрос (живой 422)."""
+    _, body, multipart, captions = _multipart_form(monkeypatch, {}, _Uploaded())
+
+    assert body is None and multipart is None
+    assert any("Укажите тип файла" in text for text in captions)
+
+
+def test_multipart_payload_carries_file_and_file_type(monkeypatch: pytest.MonkeyPatch):
+    """С заполненным `file_type` формируется multipart с файлом, типом и описанием."""
+    texts = {f"console_ft_{UPLOAD}": "RAW", f"console_fd_{UPLOAD}": "тестовый файл"}
+    _, body, multipart, _ = _multipart_form(monkeypatch, texts, _Uploaded())
+
+    assert body is None
+    assert multipart is not None
+    assert multipart.file_name == "__TEST__probe.raw.csv"
+    assert multipart.form_data() == {"file_type": "RAW", "description": "тестовый файл"}

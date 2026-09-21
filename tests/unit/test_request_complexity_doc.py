@@ -29,7 +29,7 @@ TABLE_BEGIN = "## 4."
 TABLE_END = "## 5."
 
 LEVELS = ("S1", "S2", "S3", "S4")
-LEVELS_EXPECTED = {"S1": 14, "S2": 11, "S3": 4, "S4": 3}
+LEVELS_EXPECTED = {"S1": 15, "S2": 16, "S3": 6, "S4": 3}
 LEVELS_HARDEST = {
     "post /api/datasets/fill/{dataset_id}",
     "post /api/ml_models/models/upload",
@@ -40,13 +40,16 @@ LEVELS_HARD = {
     "put /api/loads/{load_id}",
     "post /api/ml_models/models",
     "post /api/ml_models/models/{model_id}/train",
+    # AutoML (контракт 17.09.2026): вложенные правила сетки и итерация отбора
+    "post /api/ml_models/models/{model_id}/find_params/population",
+    "post /api/ml_models/find_params/population/{population_id}/selection",
 }
 
 NO_BODY_CELLS = {"—", "-", "none"}
 COLUMNS = 8
 NUMBER, MODULE, OPERATION, SAFETY, BODY, LEVEL, PREPARATION, REASON = range(COLUMNS)
 MIN_CELL_LENGTH = 15
-OPERATIONS_IN_TABLE = 32
+OPERATIONS_IN_TABLE = 40
 
 CHECK_ID_PATTERN = re.compile(r"TC-[A-Z]+-\d{2}")
 OPERATION_PATTERN = re.compile(r"^(GET|POST|PUT|DELETE|PATCH)\s+(\S+)$")
@@ -107,7 +110,7 @@ def _level(cell: str) -> str:
 
 
 def test_table_covers_every_operation(rows: list[list[str]]):
-    """В таблице §4 есть все операции реестра (32) и нет лишних."""
+    """В таблице §4 есть все операции реестра (40) и нет лишних."""
     keys = [_operation_key(row[OPERATION]) for row in rows]
 
     assert len(rows) == OPERATIONS_IN_TABLE

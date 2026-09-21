@@ -3,13 +3,15 @@
 Стенд повторяет живой реестр нагрузок (замечание №2):
 
     * `result_size` и серверный срез `limit`/`offset` работают;
-    * в элементе **нет** `phase_connection`, хотя `POST`/`PUT` его требуют;
-    * фильтр `ph_n` игнорируется, `load_id`/`category` — точные и регистрозависимые,
+    * в элементе нет `phase_connection` — контракт 17.09.2026 убрал требование фазы,
+      поэтому это больше не дефект (`TC-LOAD-02` фиксирует состав полей);
+    * параметр `ph_n` из контракта убран: `TC-LOAD-03` фиксирует, игнорирует его
+      сервер или отклоняет; `load_id`/`category` — точные и регистрозависимые,
       `description_search` — по подстроке;
     * маршрута удаления нагрузки нет (проба `TC-LOAD-07`).
 
-Проверки `TC-LOAD-02/03` ожидаемо «блокированы API» — на этом и держится
-автоматическое замечание к API уровня P0 (FR-T7).
+Проверки `TC-LOAD-02/03` больше **не** «блокированы API»: закрытые контрактом дефекты
+не порождают автоматических замечаний (FR-T7).
 """
 
 from __future__ import annotations
@@ -19,9 +21,9 @@ from collections.abc import Callable
 import httpx
 import pytest
 
+from acceptance import notes
 from acceptance.api import Apis
 from acceptance.checks import catalog
-from acceptance.checks import engine as checks_engine
 from acceptance.checks import loads as check_loads
 from acceptance.checks import runner as check_runner
 from acceptance.checks.registry import CheckStatus
@@ -41,8 +43,8 @@ def load_record(
 ) -> dict[str, object]:
     """Элемент реестра нагрузок.
 
-    `phase_connection` задаётся только для подмен, проверяющих фильтр `ph_n`:
-    в живом реестре этого поля нет (ожидаемый дефект `TC-LOAD-02`).
+    `phase_connection` задаётся только для подмен, проверяющих поведение параметра `ph_n`:
+    в контракте 17.09.2026 поля фазы нет, и в живом реестре его тоже нет.
     """
     record: dict[str, object] = {
         "load_id": load_id,
@@ -107,7 +109,7 @@ class FakeLoads:
         return httpx.Response(404, json={"detail": "Not Found"})
 
     def _list(self, query: dict[str, str]) -> httpx.Response:
-        """Реестр с фильтрами: `ph_n` не влияет на выдачу (замечание №2)."""
+        """Реестр с фильтрами: `ph_n` (убран из контракта) не влияет на выдачу."""
         rows = list(self.loads)
 
         def match(record: dict[str, object]) -> bool:
@@ -205,24 +207,24 @@ def test_registry_skipped_on_empty_registry():
     assert "реестр нагрузок пуст" in outcome.verdict
 
 
-def test_fields_blocked_without_phase_connection():
-    """В списке нет `phase_connection` — «блокировано API» P0 + автозамечание (FR-T7)."""
+def test_fields_reflect_contract_without_phase():
+    """Контракт снял фазу: обязательные поля на месте, `phase_connection` не требуется."""
     fake = FakeLoads()
     session = new_session(base_url=BASE_URL)
     context, _ = stand(fake.handler, "TC-LOAD-02", session=session)
 
     result = check_runner.automate(context)
 
-    assert result is not None and result.status == CheckStatus.BLOCKED
-    assert "phase_connection" in result.verdict
+    assert result is not None and result.status == CheckStatus.PASSED
+    assert "phase_connection" in result.verdict and "17.09.2026" in result.verdict
     assert result.evidence["phase_connection"] is False
-    note = checks_engine.ensure_defect_note(session, spec_of("TC-LOAD-02"), result)
-    assert note is not None and note["priority"] == "P0"
-    assert note["module"] == "Loads"
+    assert result.evidence["missing"] == []
+    # дефект P0 закрыт контрактом: автозамечание по проверке больше не создаётся
+    assert notes.note_from_check("TC-LOAD-02") is None
 
 
-def test_fields_pass_when_phase_connection_present(monkeypatch: pytest.MonkeyPatch):
-    """Если поле появилось в схеме, требование FR-3 покрыто — проверка проходит."""
+def test_fields_report_phase_when_present(monkeypatch: pytest.MonkeyPatch):
+    """Если поле фазы вернулось в выдачу, проверка фиксирует это и не падает."""
     fields = {**LoadItem.model_fields, "phase_connection": LoadItem.model_fields["category"]}
     monkeypatch.setattr(check_loads.LoadItem, "model_fields", fields)
     fake = FakeLoads()
@@ -231,27 +233,30 @@ def test_fields_pass_when_phase_connection_present(monkeypatch: pytest.MonkeyPat
     outcome = check_loads.evaluate(context)
 
     assert outcome is not None and outcome.status == CheckStatus.PASSED
-    assert "требование FR-3 покрыто" in outcome.verdict
+    assert "поле фазы присутствует" in outcome.verdict
+    assert outcome.evidence["phase_connection"] is True
 
 
 # ---------------------------------------------------------------------------
 # TC-LOAD-03/04 — фильтры
 # ---------------------------------------------------------------------------
-def test_ph_n_filter_blocked_when_ignored():
-    """`ph_n` не влияет на выдачу — «блокировано API» (замечание к API P0)."""
+def test_unknown_param_ignored_is_recorded():
+    """`ph_n` нет в контракте: сервер игнорирует параметр — факт фиксируется, отказа нет."""
     fake = FakeLoads(ignore_ph_n=True)
     context, journal = stand(fake.handler, "TC-LOAD-03")
 
     outcome = check_loads.evaluate(context)
 
-    assert outcome is not None and outcome.status == CheckStatus.BLOCKED
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert "игнорируется" in outcome.verdict
     assert outcome.evidence["filtered_size"] == outcome.evidence["full_size"] == 4
+    assert outcome.evidence["contract"] == "параметр `ph_n` в контракте 17.09.2026 отсутствует"
     assert journal.records[-1].query == "ph_n=Ph_A"
     assert journal.records[-1].label == "TC-LOAD-03"  # проба помечена меткой проверки
 
 
-def test_ph_n_filter_passes_when_respected():
-    """Если сервер фильтрует по фазе, проверка проходит и фиксирует сокращение выдачи."""
+def test_unknown_param_filtered_is_recorded():
+    """Если сервер снова фильтрует по `ph_n`, проверка фиксирует возврат параметра."""
     loads = [
         load_record("antminer_s19", "Antminer", "Стенд Antminer", phase_connection="Ph_B"),
         load_record("tektronix_pws", "Tektronix", "Источник", phase_connection="Ph_A"),
@@ -263,7 +268,7 @@ def test_ph_n_filter_passes_when_respected():
 
     assert outcome is not None and outcome.status == CheckStatus.PASSED
     assert outcome.evidence["filtered_size"] == 1
-    assert "сокращает выдачу" in outcome.verdict
+    assert "вернулся в сборку" in outcome.verdict
 
 
 def test_exact_filters_pass_and_record_case_sensitivity():

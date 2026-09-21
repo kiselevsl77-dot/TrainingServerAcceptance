@@ -1,8 +1,8 @@
-"""Тесты каталога проверок чек-листа (FR-T4, этапы T3–T4).
+"""Тесты каталога проверок чек-листа (FR-T4, этапы T3–T5).
 
 Главная проверка — **совпадение каталога с программой испытаний**: описания проверок
-групп `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD`, `TC-TASK` должны соответствовать
-таблицам `docs/02` (идентификатор, название, требования, класс).
+групп `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD`, `TC-TASK`, `TC-DS` должны
+соответствовать таблицам `docs/02` (идентификатор, название, требования, класс).
 
 Дополнительно проверяется связность каталога с остальными частями пульта:
 
@@ -12,7 +12,7 @@
       `acceptance.checks.runner`;
     * у проверок с ожидаемым дефектом API есть шаблон замечания (`notes.note_from_check`);
     * модули проверок совпадают со справочником замечаний (`notes.MODULES`);
-    * структура каталога готова к этапам T5–T10 (10 групп, 69 проверок).
+    * структура каталога готова к этапам T6–T10 (10 групп, 69 проверок).
 """
 
 from __future__ import annotations
@@ -44,10 +44,17 @@ GROUP_HEADINGS: dict[str, str] = {
     "## 13. TC-CLEAN": "TC-CLEAN",
 }
 
-#: Группы, наполненные в каталоге (этапы T3 и T4).
-IMPLEMENTED_GROUPS: tuple[str, ...] = ("TC-SYS", "TC-FILE", "TC-REC", "TC-LOAD", "TC-TASK")
+#: Группы, наполненные в каталоге (этапы T3–T5).
+IMPLEMENTED_GROUPS: tuple[str, ...] = (
+    "TC-SYS",
+    "TC-FILE",
+    "TC-REC",
+    "TC-LOAD",
+    "TC-TASK",
+    "TC-DS",
+)
 
-#: Состав классов по таблицам `docs/02` §4–§8. Замечание: сводка §14 для `TC-FILE`
+#: Состав классов по таблицам `docs/02` §4–§9. Замечание: сводка §14 для `TC-FILE`
 #: указывает «tech 10, live 4», но в таблице §5 у `TC-FILE-14` (удаление
 #: несуществующего файла) класс `tech` — каталог следует таблице, а не сводке.
 CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
@@ -56,6 +63,7 @@ CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
     "TC-REC": {"tech": 5, "manual": 1},
     "TC-LOAD": {"tech": 7},
     "TC-TASK": {"tech": 4, "live": 3, "manual": 1},
+    "TC-DS": {"tech": 3, "live": 3, "heavy": 1},
 }
 
 #: Проверки без автоматического сценария (выполняются только оператором).
@@ -129,13 +137,13 @@ def test_group_classes_match_checklist(group_key: str):
 
 
 def test_catalog_is_ready_for_next_stages():
-    """Каталог описывает 10 групп; на этапах T3–T4 наполнены пять групп (41 проверка)."""
+    """Каталог описывает 10 групп; на этапах T3–T5 наполнены шесть групп (48 проверок)."""
     summary = catalog.catalog_summary()
 
     assert summary["groups_total"] == 10
     assert summary["checks_total"] == 69
-    assert summary["groups_implemented"] == 5
-    assert summary["checks_implemented"] == 41
+    assert summary["groups_implemented"] == 6
+    assert summary["checks_implemented"] == 48
     assert [group.key for group in catalog.groups(implemented_only=True)] == list(
         IMPLEMENTED_GROUPS
     )
@@ -155,7 +163,7 @@ def test_catalog_is_ready_for_next_stages():
         group = catalog.group(key)
         assert group is not None
         assert group.is_implemented and group.is_complete
-    pending = catalog.group("TC-DS")
+    pending = catalog.group("TC-MOD")
     assert pending is not None
     assert not pending.is_implemented
     assert not pending.is_complete
@@ -173,10 +181,14 @@ def test_check_ids_are_unique_and_looked_up():
         assert catalog.group_of(spec.check_id) == spec.check_id.rsplit("-", 1)[0]
     assert catalog.stage_of("TC-TASK-01") == "T4"
     assert catalog.stage_of("TC-FILE-01") == "T3"
-    assert catalog.group_of("TC-DS-01") == ""
-    assert catalog.stage_of("TC-DS-01") == ""
-    assert catalog.group("TC-DS") is not None
-    assert catalog.by_group("TC-DS") == ()
+    assert catalog.stage_of("TC-DS-01") == "T5"
+    assert catalog.group_of("TC-DS-01") == "TC-DS"
+    assert len(catalog.by_group("TC-DS")) == 7
+    # группы следующих этапов ещё не наполнены — проверок в них нет
+    assert catalog.group_of("TC-MOD-01") == ""
+    assert catalog.stage_of("TC-MOD-01") == ""
+    assert catalog.group("TC-MOD") is not None
+    assert catalog.by_group("TC-MOD") == ()
 
 
 # ---------------------------------------------------------------------------
@@ -207,9 +219,9 @@ def test_automations_are_declared():
         assert runner.scenario(spec) is None, spec.check_id
 
     names = runner.automation_names()
-    # 38 проверок автоматизированы; 39-й сценарий (`tasks.external_observation`) —
+    # 45 проверок автоматизированы; 46-й сценарий (`tasks.external_observation`) —
     # вспомогательный: он подтверждает ручную проверку TC-TASK-08 (BR-R5)
-    assert len(names) == len(automated) + 1 == 39
+    assert len(names) == len(automated) + 1 == 46
     assert len(set(names)) == len(names)
     assert "tasks.external_observation" in names
     assert "files.round_trip" in names
@@ -235,8 +247,6 @@ def test_blocked_checks_have_known_defects():
     assert [spec.check_id for spec in blocked] == [
         "TC-FILE-10",
         "TC-REC-05",
-        "TC-LOAD-02",
-        "TC-LOAD-03",
     ]
     for spec in blocked:
         note = notes.note_from_check(spec.check_id)

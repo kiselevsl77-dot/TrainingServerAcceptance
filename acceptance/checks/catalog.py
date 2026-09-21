@@ -9,8 +9,10 @@
 «Task service»): монитор задач — фундамент всех асинхронных проверок, поэтому
 инфраструктура чек-листа появилась сразу с рабочим сценарием. Этап T3 добавляет
 группы `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD` (33 проверки) и вместе с ними —
-первую версию отчёта. Структура каталога рассчитана на все 10 групп
-(69 проверок, `PLANNED_GROUPS`): группы T5–T10 добавляются без переделки —
+первую версию отчёта. Этап T5 добавляет группу `TC-DS` (7 проверок модуля
+«Datasets») вместе с учётом состава датасетов (`acceptance.dataset_composition`) —
+наполнено 48 проверок из 69. Структура каталога рассчитана на все 10 групп
+(69 проверок, `PLANNED_GROUPS`): группы T6–T10 добавляются без переделки —
 достаточно дописать кортеж проверок и зарегистрировать группу в `CHECKS_BY_GROUP`.
 
 Сверка каталога с таблицей чек-листа (`docs/02`): id, название, группа и класс —
@@ -583,38 +585,39 @@ TC_LOAD_SPECS: tuple[CheckSpec, ...] = (
     ),
     CheckSpec(
         check_id="TC-LOAD-02",
-        title="Состав полей элемента реестра",
+        title="Состав полей реестра и контракт",
         module=LOADS_MODULE,
-        requirement="FR-3, замечание к API",
+        requirement="FR-3, контракт 17.09.2026",
         check_class=CheckClass.TECH,
         steps=(
             "GET /api/loads/list и прочитать состав полей элемента",
-            "Проверить наличие `phase_connection` (требуется `POST`/`PUT`)",
-            "Зафиксировать расхождение замечанием к API",
+            "Сверить обязательные поля (`load_id`, `category`) со схемой `LoadDevice`",
+            "Зафиксировать, что требование фазы снято контрактом 17.09.2026",
         ),
         expected=(
-            "**ожидаемо**: в ответе нет `phase_connection`, хотя `POST`/`PUT` его требуют "
-            "→ замечание к API (P0)"
+            "состав полей зафиксирован: обязательные `load_id` и `category` есть; "
+            "`phase_connection` в контракте отсутствует (требование фазы снято)"
         ),
         endpoints=("get /api/loads/list",),
-        blocked_by_api="в ответе списка нет `phase_connection`",
         automation="loads.fields",
     ),
     CheckSpec(
         check_id="TC-LOAD-03",
-        title="Фильтр `ph_n`",
+        title="Неизвестный параметр `ph_n`",
         module=LOADS_MODULE,
-        requirement="FR-3",
+        requirement="FR-3, контракт 17.09.2026",
         check_class=CheckClass.TECH,
         steps=(
             "GET /api/loads/list — запомнить полный состав",
-            "GET /api/loads/list?ph_n=Ph_A",
-            "Сравнить выдачи и зафиксировать факт",
+            "GET /api/loads/list?ph_n=Ph_A (параметра нет в контракте)",
+            "Зафиксировать поведение сервера: игнорирование или отказ",
         ),
-        expected="**ожидаемо**: фильтр не влияет на выдачу → замечание к API",
+        expected=(
+            "параметр отсутствует в контракте: сервер либо игнорирует его (200 и полная "
+            "выдача), либо отклоняет запрос (400/422); 5xx — отказ"
+        ),
         endpoints=("get /api/loads/list",),
-        blocked_by_api="фильтр `ph_n` не влияет на выдачу",
-        automation="loads.ph_n_filter",
+        automation="loads.unknown_param",
     ),
     CheckSpec(
         check_id="TC-LOAD-04",
@@ -846,6 +849,164 @@ TC_TASK_SPECS: tuple[CheckSpec, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# TC-DS — модуль «Datasets» (FR-4, UC-09…UC-14) — этап T5
+# ---------------------------------------------------------------------------
+DATASETS_MODULE = "Datasets"
+
+TC_DS_SPECS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        check_id="TC-DS-01",
+        title="Создание датасета",
+        module=DATASETS_MODULE,
+        requirement="UC-09, BR-F3",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "POST /api/datasets/ с именем `__TEST__…` и `type = direct_fill`",
+            "Проверить ответ: `id`, `creation_date`, `type`",
+            "GET /api/datasets/{dataset_id} — подтвердить, что датасет создан",
+            "Удалить датасет (самоочистка NFR-T4) и зафиксировать результат",
+        ),
+        expected=(
+            "HTTP 201; в ответе `id` и `creation_date`, `type = direct_fill`; "
+            "датасет виден в `GET` и удалён после проверки"
+        ),
+        endpoints=(
+            "post /api/datasets/",
+            "get /api/datasets/{dataset_id}",
+            "delete /api/datasets/{dataset_id}",
+        ),
+        automation="datasets.create",
+    ),
+    CheckSpec(
+        check_id="TC-DS-02",
+        title="Список и фильтры датасетов",
+        module=DATASETS_MODULE,
+        requirement="UC-12, NFR-4",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/datasets/ без фильтров",
+            "Сверить `count` с числом элементов `datasets`",
+            "Проверить фильтры `name`, `description`, `type`, `creation_date` на живом реестре",
+        ),
+        expected=(
+            "`datasets` + `count` согласованы; фильтры возвращают только соответствующие "
+            "датасеты (расхождения фиксируются замечанием)"
+        ),
+        endpoints=("get /api/datasets/",),
+        automation="datasets.list",
+    ),
+    CheckSpec(
+        check_id="TC-DS-03",
+        title="Метаданные датасета",
+        module=DATASETS_MODULE,
+        requirement="UC-13",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/datasets/{dataset_id} выбранного датасета",
+            "Зафиксировать состав полей метаданных",
+            "Получить состав датасета провайдером состава: сервер → локальный учёт пульта → "
+            "предположение по реестру файлов",
+            "Если серверный состав есть — сверить его с фактом наполнения пультом",
+        ),
+        expected=(
+            "метаданные получены; **состав датасета и агрегаты отсутствуют** → замечание к "
+            "API (P1); при появлении серверного состава проверка требует его совпадения с "
+            "составом, отправленным пультом"
+        ),
+        endpoints=("get /api/datasets/{dataset_id}",),
+        automation="datasets.meta",
+    ),
+    CheckSpec(
+        check_id="TC-DS-04",
+        title="Правка датасета",
+        module=DATASETS_MODULE,
+        requirement="UC-13, BR-F3",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Создать `__TEST__`-датасет",
+            "PUT /api/datasets/{dataset_id} — изменить `name` и `description`",
+            "GET /api/datasets/{dataset_id} — убедиться, что правка сохранена",
+            "Удалить датасет (самоочистка)",
+        ),
+        expected=(
+            "`name`/`description` изменены, изменения видны в последующем `GET`; "
+            "`updated_at` отсутствует (замечание)"
+        ),
+        endpoints=(
+            "post /api/datasets/",
+            "put /api/datasets/{dataset_id}",
+            "get /api/datasets/{dataset_id}",
+        ),
+        automation="datasets.update",
+    ),
+    CheckSpec(
+        check_id="TC-DS-05",
+        title="Наполнение датасета",
+        module=DATASETS_MODULE,
+        requirement="UC-14, BR-F3",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "Создать `__TEST__`-датасет и выбрать пару RAW+markup из реестра файлов",
+            "Зафиксировать состав наполнения до вызова API (сервер его не сообщает, P1)",
+            "POST /api/datasets/fill/{dataset_id} → ожидается 202",
+            "Найти задачу `dataset-fill` в `GET /api/tasks/` (обходной путь: `task_id` нет) "
+            "и отследить её до терминального статуса",
+            "Удалить датасет и зафиксировать перечень созданного/удалённого",
+        ),
+        expected=(
+            "HTTP 202; **`task_id` в ответе отсутствует** → задача `dataset-fill` найдена в "
+            "`GET /api/tasks/` и отслежена монитором (T4); состав зафиксирован локально; "
+            "датасет удалён после проверки"
+        ),
+        endpoints=("post /api/datasets/fill/{dataset_id}", "get /api/tasks/"),
+        automation="datasets.fill",
+    ),
+    CheckSpec(
+        check_id="TC-DS-06",
+        title="Полный контракт `fill` на несуществующих идентификаторах",
+        module=DATASETS_MODULE,
+        requirement="UC-14, NFR-2",
+        check_class=CheckClass.TECH,
+        steps=(
+            "POST /api/datasets/fill/{несуществующий_id} с корректным телом",
+            "Проба без обязательного поля `raw_file_ids`",
+            "Проба с пустым списком `raw_file_ids`",
+            "Зафиксировать коды ответов и формат ошибки",
+        ),
+        expected=(
+            "валидация возвращает понятную ошибку (`422`/`400`) — дешёвая предпроверка "
+            "тяжёлой операции; боевой датасет в проверке не участвует"
+        ),
+        endpoints=("post /api/datasets/fill/{dataset_id}",),
+        automation="datasets.fill_contract",
+    ),
+    CheckSpec(
+        check_id="TC-DS-07",
+        title="Удаление датасета и самоочистка",
+        module=DATASETS_MODULE,
+        requirement="UC-13, NFR-T4",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Зафиксировать число датасетов в реестре",
+            "Создать `__TEST__`-датасет и убедиться, что он виден в реестре",
+            "DELETE /api/datasets/{dataset_id}",
+            "GET /api/datasets/{dataset_id} и `GET /api/datasets/` — подтвердить отсутствие",
+            "Зафиксировать поведение повторного удаления",
+        ),
+        expected=(
+            "`__TEST__`-датасет удалён, его отсутствие подтверждено `GET`/списком; "
+            "в отчёте — перечень созданного/удалённого"
+        ),
+        endpoints=(
+            "post /api/datasets/",
+            "delete /api/datasets/{dataset_id}",
+            "get /api/datasets/{dataset_id}",
+        ),
+        automation="datasets.delete",
+    ),
+)
+
 #: Проверки по группам: ключ группы → кортеж описаний (заполняется по этапам).
 CHECKS_BY_GROUP: dict[str, tuple[CheckSpec, ...]] = {
     "TC-SYS": TC_SYS_SPECS,
@@ -853,6 +1014,7 @@ CHECKS_BY_GROUP: dict[str, tuple[CheckSpec, ...]] = {
     "TC-REC": TC_REC_SPECS,
     "TC-LOAD": TC_LOAD_SPECS,
     "TC-TASK": TC_TASK_SPECS,
+    "TC-DS": TC_DS_SPECS,
 }
 
 #: Группы каталога в порядке программы испытаний (`docs/02` §14).

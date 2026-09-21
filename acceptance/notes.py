@@ -33,6 +33,7 @@ MODULES = (
     "Loads",
     "Datasets",
     "ML models",
+    "ML models: AutoML",
     "Task service",
     "Прочее",
 )
@@ -174,14 +175,23 @@ KNOWN_DEFECTS: tuple[dict[str, str], ...] = (
         "reproduction": "Запросить GET /api/data/files?limit=5&offset=0 и сравнить count/размер выдачи.",
     },
     {
-        "title": "В GET /api/loads/list отсутствует phase_connection, фильтр ph_n не работает",
+        "title": (
+            "Loads: в ответе не было phase_connection, фильтр ph_n не работал "
+            "(закрыто контрактом 17.09.2026)"
+        ),
         "module": "Loads",
         "endpoint": "GET /api/loads/list",
-        "priority": "P0",
-        "fact": "Схема ответа в спецификации пуста; фактически приходит {loads, result_size, limit, "
-        "offset} без phase_connection, а POST/PUT его требуют. Фильтр ph_n ничего не фильтрует.",
-        "expected": "phase_connection в ответе списка и рабочий фильтр ph_n (по спецификации FR-3).",
-        "reproduction": "GET /api/loads/list?ph_n=Ph_A — сравнить выдачу с запросом без фильтра.",
+        "priority": "P2",
+        "fact": "На сборке dev@58ac72f схема ответа в спецификации была пуста; фактически "
+        "приходило {loads, result_size, limit, offset} без phase_connection, тогда как POST/PUT "
+        "требовали поле, а фильтр ph_n ничего не фильтровал. **Контракт 17.09.2026 закрыл "
+        "расхождение**: phase_connection убран из LoadDevice/UpdateLoadRequest (фаза серверу "
+        "больше не нужна), параметр ph_n убран из GET /api/loads/list.",
+        "expected": "снято контрактом 17.09.2026: поле фазы не требуется, параметра ph_n нет; "
+        "не закрыто — ответ списка по-прежнему описан пустой схемой (P1), см. docs/09 "
+        "«Контракт API 17.09.2026 — изменения и план работ» §7.3.",
+        "reproduction": "POST /api/loads принимает тело без phase_connection; "
+        "GET /api/loads/list?ph_n=Ph_A либо игнорирует параметр (200), либо отклоняет (400/422).",
     },
     {
         "title": "Нет сущности «субдатасет» и связи «запись ↔ пара RAW+markup»",
@@ -380,9 +390,10 @@ DEFECT_BY_CHECK: dict[str, str] = {
     "TC-REC-04": "Нет сущности «субдатасет» и связи «запись ↔ пара RAW+markup»",
     "TC-FILE-05": "GET /api/data/files игнорирует limit/offset",
     "TC-FILE-09": "Скачивание отдаёт файл целиком: нет Content-Length, Range, ETag",
-    "TC-LOAD-02": "В GET /api/loads/list отсутствует phase_connection",
-    "TC-LOAD-03": "В GET /api/loads/list отсутствует phase_connection",
     "TC-LOAD-06": "Удаление нагрузки отсутствует, категория — свободный текст",
+    # этап T5: замечания к модулю «Datasets» — состав/агрегаты и обходной путь задачи fill
+    "TC-DS-03": "Нет связи «датасет ↔ файлы» и агрегатов (записи/чанки)",
+    "TC-DS-05": "POST /api/datasets/fill/{id} не возвращает task_id",
 }
 
 

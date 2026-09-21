@@ -52,14 +52,14 @@ def _notes_sample() -> list[dict]:
             reproduction="GET /api/data/files?limit=1",
         ).to_dict(),
         api_notes.manual_note(
-            "Нет phase_connection в списке нагрузок",
-            module="Loads",
-            endpoint="GET /api/loads/list",
+            "Нет сущности «субдатасет» и связи «запись ↔ пара RAW+markup»",
+            module="Записи и разметка",
+            endpoint="GET /api/data/files",
             priority="P0",
-            fact="Поле отсутствует",
-            expected="phase_connection обязателен",
-            reproduction="GET /api/loads/list",
-            check_id="TC-LOAD-01",
+            fact="Реестр файлов плоский: RAW и markup одной записи не связаны",
+            expected="Поля пары (record_id/role) либо сущность субдатасета",
+            reproduction="Найти в реестре два файла Antminer_S19.raw.csv с разным размером",
+            check_id="TC-REC-04",
         ).to_dict(),
         template.to_dict(),
     ]
@@ -183,11 +183,11 @@ def test_filter_notes_by_priority_module_source_link_and_search():
     notes = api_notes.notes_of(_Session_with(_notes_sample()))
 
     assert len(api_notes.filter_notes(notes, priority="P0")) == 1
-    assert len(api_notes.filter_notes(notes, module="Loads")) == 1
+    assert len(api_notes.filter_notes(notes, module="Записи и разметка")) == 1
     assert len(api_notes.filter_notes(notes, source=SOURCE_AUTO)) == 1
     assert len(api_notes.filter_notes(notes, linked="с привязкой к проверке")) == 1
     assert len(api_notes.filter_notes(notes, linked="без привязки")) == 2
-    assert len(api_notes.filter_notes(notes, search="phase_connection")) == 1
+    assert len(api_notes.filter_notes(notes, search="субдатасет")) == 1
     assert len(api_notes.filter_notes(notes, search="нет такого текста")) == 0
     assert len(api_notes.filter_notes(notes, priority="P1")) == 1
 
@@ -212,7 +212,7 @@ def test_notes_rows_and_summary():
     assert set(rows[0]) >= {"Модуль", "Замечание", "Эндпоинт", "Проверка", "Источник", "id"}
     assert summary["total"] == 3
     assert summary["by_priority"] == {"P0": 1, "P1": 1, "P2": 1}
-    assert summary["by_module"]["Loads"] == 1
+    assert summary["by_module"]["Записи и разметка"] == 1
     assert summary["by_source"][SOURCE_AUTO] == 1
     assert summary["linked_to_checks"] == 1
     assert summary["without_check"] == 2
@@ -237,7 +237,7 @@ def test_notes_exports_json_csv_and_markdown():
 
     csv_text = api_notes.notes_to_csv(notes)
     assert csv_text.splitlines()[0].startswith("note_id,priority,module,title")
-    assert "phase_connection" in csv_text
+    assert "субдатасет" in csv_text
 
     markdown = api_notes.notes_to_markdown(notes, meta=meta)
     assert markdown.startswith("## Замечания к API")

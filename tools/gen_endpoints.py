@@ -1,7 +1,8 @@
 """Генератор реестра эндпоинтов `acceptance/endpoints.py` из `docs/SOM1.json`.
 
 Зачем генератор, а не рукописный список: реестр консоли запросов (FR-T3) обязан
-совпадать со спецификацией испытуемого сервера (32 операции). Ручной список
+совпадать со спецификацией испытуемого сервера — контрактом 17.09.2026 (40 операций).
+Ручной список
 неизбежно расходится со спекой, поэтому реестр **выводится** из `docs/SOM1.json`,
 а расхождение ловят тест (`tests/unit/test_endpoints.py`) и проверка
 `python -m tools.gen_endpoints --check`.
@@ -38,6 +39,9 @@ HEAVY_PATHS = {
     "/api/ml_models/models/{model_id}/train",
     "/api/ml_models/{model_id}/check",
     "/api/ml_models/models/{model_id}/inference",
+    # AutoML: создание популяции материализует десятки моделей, итерация отбора их обучает
+    "/api/ml_models/models/{model_id}/find_params/population",
+    "/api/ml_models/find_params/population/{population_id}/selection",
 }
 
 #: Явные исключения из правил по методу (иначе: DELETE → destructive,
@@ -58,7 +62,10 @@ ENDPOINT_NOTES: dict[str, str] = {
     ),
     "/api/data/files": "limit/offset игнорируются сервером (P2) — пагинация клиентская",
     "/api/{file_id}": "маршрут удаления в корне /api/; batch-удаления пары нет",
-    "/api/loads/list": "в ответе нет phase_connection, фильтр ph_n не влияет (P0)",
+    "/api/loads/list": (
+        "контракт 17.09.2026: параметр `ph_n` убран; в ответе нет `phase_connection`, "
+        "схема ответа по-прежнему пуста (P1)"
+    ),
     "/api/datasets/fill/{dataset_id}": (
         "ответ без task_id (P1) — созданную задачу искать в GET /api/tasks/"
     ),
@@ -70,6 +77,30 @@ ENDPOINT_NOTES: dict[str, str] = {
     ),
     "/api/tasks/": "limit по умолчанию 100; фильтры task_type/status/start_date/end_date",
     "/api/tasks/{task_id}": "статус not_found для неизвестной задачи (BR-R7)",
+    # --- AutoML (контракт 17.09.2026) ---------------------------------------
+    "/api/ml_models/models/{model_id}/find_params/population": (
+        "создаёт десятки мутантов (новые модели, веса базовой НЕ наследуются); при сбое — "
+        "полный откат; вариант «в один вызов» (POST того же пути без model_id) в контракте отсутствует"
+    ),
+    "/api/ml_models/find_params/population/{population_id}/selection": (
+        "ответ 202: запускается задача `find-params` (обучение всех активных мутантов); "
+        "`test_dataset_id` по умолчанию = train; без `selection_config` метки отбора не проставляются"
+    ),
+    "/api/ml_models/find_params/population/{population_id}": (
+        "DELETE — каскад: модели, сигналы, файлы, S3-блобы и ZIP-ы популяции, без предпросмотра (P2)"
+    ),
+    "/api/ml_models/find_params/population": "список популяций без пагинации (сначала новые)",
+    "/api/ml_models/find_params/population/{population_id}/mutated_models": (
+        "фильтры по метке (best/normal/discarded/failed) и сортировка по рангу последнего "
+        "`check_results`; мутанты без ранга — в конце"
+    ),
+    "/api/ml_models/find_params/population/{population_id}/selections": (
+        "итерации отбора (сначала старые); `train_config`/`test_config` — свободные объекты без схемы"
+    ),
+    "/api/ml_models/find_params/population/{population_id}/grid.csv": (
+        "ответ `text/csv` (tidy-таблица «мутант × оси»); `selection_id` по умолчанию — "
+        "последняя запись `check_results`; пустая ячейка метрики означает «нет данных», не ноль"
+    ),
 }
 
 #: Фактический вид ответа там, где спецификация расходится с сервером
@@ -272,7 +303,7 @@ def _fields(schema: dict[str, Any]) -> list[str]:
 
 
 def _response_kind(responses: dict[str, Any]) -> str:
-    """Вид ответа: `json`, `binary` (файл) или `empty` (нет тела)."""
+    """Вид ответа: `json`, `binary` (файл), `csv` (текстовая выгрузка) или `empty`."""
     for status in ("200", "201", "202", "204"):
         response = responses.get(status)
         if not response:
@@ -282,6 +313,8 @@ def _response_kind(responses: dict[str, Any]) -> str:
             return "empty"
         if "application/octet-stream" in content:
             return "binary"
+        if "text/csv" in content:
+            return "csv"
         return "json"
     return "json"
 

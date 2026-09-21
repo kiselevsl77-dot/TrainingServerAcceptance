@@ -677,16 +677,16 @@ def test_tasks_screen_watches_external_task(pult_with_session):
 # Экран «Чек-лист проверок» — группа TC-TASK (FR-T4) — этап T4
 # ---------------------------------------------------------------------------
 def test_checks_screen_shows_task_group(pult_with_session):
-    """Чек-лист: сводка по каталогу (41/69), фильтр по группе TC-TASK, шаги в карточке (FR-T4)."""
+    """Чек-лист: сводка по каталогу (48/69), фильтр по группе TC-TASK, шаги в карточке (FR-T4)."""
     app, _journal, _store = pult_with_session
     app = _open(app, "checks")
 
     assert not app.exception
     assert app.title[0].value == "Чек-лист проверок"
     values = _metric_values(app)
-    assert values["Проверок в каталоге"] == "41 / 69"
-    assert values["В выборке"] == "41"
-    assert values["Не выполнено"] == "41"
+    assert values["Проверок в каталоге"] == "48 / 69"
+    assert values["В выборке"] == "48"
+    assert values["Не выполнено"] == "48"
     assert values["Выполнено"] == "0"
 
     options = _widget(app, "selectbox", "checks_group").options
@@ -714,6 +714,36 @@ def test_checks_screen_shows_task_group(pult_with_session):
     texts = " ".join(markdown.value for markdown in app.markdown)
     assert "GET /api/tasks/" in texts  # шаг проверки TC-TASK-02
     assert any(box.value for box in app.info)  # ожидаемый результат проверки
+
+
+def test_checks_screen_shows_datasets_group(pult_with_session):
+    """Чек-лист: группа TC-DS (7 проверок), пикер датасета и режим состава (этап T5)."""
+    app, _journal, _store = pult_with_session
+    app = _open(app, "checks")
+
+    options = _widget(app, "selectbox", "checks_group").options
+    _widget(app, "selectbox", "checks_group").select(
+        next(option for option in options if option.startswith("TC-DS ·"))
+    )
+    app.run()
+
+    assert not app.exception
+    rows = app.dataframe[0].value.to_dict("records")
+    assert [row["ID"] for row in rows] == [f"TC-DS-0{index}" for index in range(1, 8)]
+    assert _metric_values(app)["В выборке"] == "7"
+
+    options = _widget(app, "selectbox", "checks_selected").options
+    _widget(app, "selectbox", "checks_selected").select(
+        next(option for option in options if option.startswith("TC-DS-03"))
+    )
+    app.run()
+
+    assert not app.exception
+    # реестр датасетов пуст → доступен ручной ввод `dataset_id` и выбор режима состава
+    assert _widget(app, "text_input", "checks_datasetTC-DS-03") is not None
+    assert _widget(app, "selectbox", "checks_composition_modeTC-DS-03") is not None
+    texts = " ".join(markdown.value for markdown in app.markdown)
+    assert "состав" in texts
 
 
 def test_checks_screen_filters_by_class_and_search(pult_with_session):
@@ -1186,3 +1216,46 @@ def test_notes_screen_deletes_note_with_confirmation(pult_with_session):
     assert store.session.notes == []
     assert any(item["event"] == "api_note_removed" for item in store.session.history)
     assert any("Замечание удалено из сессии" in box.value for box in app.success)
+
+
+# ---------------------------------------------------------------------------
+# Экран «Датасеты» — реестр, состав, наполнение и уборка (FR-4) — этап T5
+# ---------------------------------------------------------------------------
+def test_datasets_screen_shows_registry_and_controls(pult_with_session):
+    """Датасеты: KPI, пустой реестр, режим состава и подтверждение наполнения (этап T5)."""
+    app, _journal, _store = pult_with_session
+    app = _open(app, "datasets")
+
+    assert not app.exception
+    assert app.title[0].value == "🗂️ Датасеты"
+    values = _metric_values(app)
+    assert values["Датасетов в реестре"] == "0"
+    assert values["Создано пультом (`__TEST__`)"] == "0"
+    assert values["Записей состава"] == "0"
+    assert values["Задач `dataset-fill`"] == "0"
+
+    # вкладка «Реестр»: пустой реестр — приглашение создать датасет
+    assert any("По заданным фильтрам датасетов нет" in box.value for box in app.info)
+    # вкладка «Создание»: имя по умолчанию начинается с обязательного префикса
+    assert _widget(app, "text_input", "datasets_new_name").value.startswith("__TEST__")
+    # вкладка «Состав»: ручной ввод `dataset_id` и режим чтения состава
+    assert _widget(app, "text_input", "datasets_card_manual") is not None
+    assert _widget(app, "selectbox", "datasets_card_mode") is not None
+    # вкладка «Наполнение»: пары RAW+markup и обязательное подтверждение (NFR-T4)
+    assert _widget(app, "multiselect", "datasets_fill_pairs") is not None
+    assert _widget(app, "checkbox", "datasets_fill_confirm") is not None
+    # вкладка «Уборка»: тестовых датасетов нет
+    assert any(
+        "Тестовых датасетов в реестре и в учёте сессии нет" in box.value for box in app.success
+    )
+
+
+def test_datasets_screen_requires_confirmation_for_fill(pult_with_session):
+    """Наполнение без подтверждения не выполняется: оператор видит предупреждение (NFR-T4)."""
+    app, _journal, _store = pult_with_session
+    app = _open(app, "datasets")
+
+    next(button for button in app.button if button.key == "datasets_fill").click().run()
+
+    assert not app.exception
+    assert any("Подтвердите наполнение" in box.value for box in app.warning)

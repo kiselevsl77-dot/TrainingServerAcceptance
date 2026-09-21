@@ -150,12 +150,12 @@ def test_overall_stats_cover_whole_checklist():
 
     stats = checks_engine.overall_stats(session)
 
-    assert stats["implemented"] == 41
+    assert stats["implemented"] == 48
     assert stats["program_total"] == 69
-    assert stats["total"] == 41
+    assert stats["total"] == 48
     assert stats["done"] == 1
     assert stats["passed"] == 1
-    assert stats["not_run"] == 40
+    assert stats["not_run"] == 47
 
 
 def test_checklist_rows_filter_by_group_status_and_text():
@@ -178,7 +178,19 @@ def test_checklist_rows_filter_by_group_status_and_text():
     assert {row["check_id"] for row in found} == {"TC-FILE-07", "TC-REC-02", "TC-REC-06"}
 
     live = checks_engine.checklist_rows(session, classes=("live",))
-    assert len(live) == 6
+    assert len(live) == 9
+
+    datasets_rows = checks_engine.checklist_rows(session, groups=("TC-DS",))
+    assert [row["check_id"] for row in datasets_rows] == [
+        "TC-DS-01",
+        "TC-DS-02",
+        "TC-DS-03",
+        "TC-DS-04",
+        "TC-DS-05",
+        "TC-DS-06",
+        "TC-DS-07",
+    ]
+    assert datasets_rows[0]["class_label"] == "боевая (реальные данные)"
 
     pending = checks_engine.checklist_rows(session, groups=("TC-FILE",), only_pending=True)
     assert len(pending) == 12

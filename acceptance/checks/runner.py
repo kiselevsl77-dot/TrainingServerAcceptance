@@ -42,6 +42,7 @@ from client.tasks import TasksApi
 
 if TYPE_CHECKING:  # pragma: no cover - только для аннотаций
     from acceptance.api import Apis
+    from client.datasets import DatasetsApi
     from client.files import FilesApi
     from client.loads import LoadsApi
     from client.system import SystemApi
@@ -53,6 +54,7 @@ AUTOMATION_DOMAINS: tuple[str, ...] = (
     "acceptance.checks.records",
     "acceptance.checks.loads",
     "acceptance.checks.tasks",
+    "acceptance.checks.datasets",
 )
 
 
@@ -226,6 +228,12 @@ class AutomationContext:
         if self.apis is None:
             raise PreconditionError("API системы недоступен: не задан адрес испытуемого сервера")
         return self.apis.system
+
+    def datasets_api(self) -> DatasetsApi:
+        """API датасетов (`client.datasets.DatasetsApi`); «пропущена», если стенд не настроен."""
+        if self.apis is None:
+            raise PreconditionError("API датасетов недоступен: не задан адрес испытуемого сервера")
+        return self.apis.datasets
 
     def probe_request(
         self,

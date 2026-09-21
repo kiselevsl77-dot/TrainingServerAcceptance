@@ -28,6 +28,7 @@ from acceptance.ui import state  # noqa: E402
 from acceptance.ui.pages import (  # noqa: E402
     checks,
     console,
+    datasets,
     logs,
     notes,
     records,
@@ -45,6 +46,7 @@ SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
     "session": ("🧪 Сессия испытаний", session.render),
     "records": ("🧩 Записи", records.render),
     "tasks": ("⏱️ Задачи", tasks.render),
+    "datasets": ("🗂️ Датасеты", datasets.render),
     "checks": ("✅ Чек-лист проверок", checks.render),
     "console": ("📡 Консоль запросов", console.render),
     "notes": ("✍️ Замечания к API", notes.render),
@@ -54,7 +56,7 @@ SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
 
 GROUPS: list[tuple[str, list[str]]] = [
     ("", ["stand", "session"]),
-    ("Испытания", ["records", "tasks", "checks", "console"]),
+    ("Испытания", ["records", "tasks", "datasets", "checks", "console"]),
     ("Результаты", ["notes", "logs", "report"]),
 ]
 
@@ -109,7 +111,7 @@ def _render_sidebar() -> None:
                 st.rerun()
 
     st.sidebar.divider()
-    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T4")
+    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T5")
 
 
 artifacts = state.ensure_logging(state.log_level(), state.current_session_id())

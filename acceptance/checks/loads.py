@@ -1,11 +1,13 @@
 """Автоматические сценарии проверок модуля «Loads» (TC-LOAD-01…07, этап T3).
 
 Проверки читают реестр нагрузок и сравнивают его с требованиями постановки (FR-3,
-UC-06…UC-08). Два ожидаемых дефекта фиксируются статусом «блокировано API» — движок
-сам формирует к ним замечания (FR-T7):
+UC-06…UC-08). Контракт 17.09.2026 снял требование фазы подключения, поэтому прежние
+ожидаемые дефекты P0 закрыты и проверки стали **фиксацией факта**:
 
-    * `TC-LOAD-02` — в ответе списка нет `phase_connection`, хотя `POST`/`PUT` его требуют;
-    * `TC-LOAD-03` — фильтр `ph_n` не влияет на выдачу.
+    * `TC-LOAD-02` — состав полей элемента реестра сверяется со схемой `LoadDevice`
+      (`phase_connection` из контракта убран; «ожидаемого» дефекта больше нет);
+    * `TC-LOAD-03` — проба неизвестного параметра `ph_n` (из контракта убран):
+      фиксируется, игнорирует его сервер (200) или отклоняет (400/422).
 
 `TC-LOAD-07` — негативная проба: маршрута удаления нагрузки нет. Проба удаляет
 **выбранную** нагрузку, поэтому предпочитает `__TEST__…`-идентификатор, а если такого
@@ -120,31 +122,46 @@ def _registry(context: AutomationContext) -> CheckOutcome:
 
 
 def _fields(context: AutomationContext) -> CheckOutcome:
-    """TC-LOAD-02: `phase_connection` отсутствует в списке, хотя нужен `POST`/`PUT` (P0)."""
+    """TC-LOAD-02: состав полей реестра против контракта 17.09.2026 (FR-3).
+
+    Контракт снял требование фазы подключения: `phase_connection` убран из
+    `LoadDevice`/`UpdateLoadRequest`, поэтому «поля фазы нет в ответе списка» больше не
+    расхождение. Проверка фиксирует фактический состав полей элемента и его
+    согласованность с обязательными полями `LoadDevice` (`load_id`, `category`).
+    """
     items = _loads(context)
     fields = list(LoadItem.model_fields)
+    required = ("load_id", "category")
+    missing = [name for name in required if name not in fields]
     evidence: dict[str, Any] = {
         "fields": fields,
+        "required": list(required),
+        "missing": missing,
         "phase_connection": MISSING_PHASE in fields,
+        "contract": "17.09.2026: требование фазы снято (`phase_connection` нет, `ph_n` убран)",
         "sample": {key: str(value) for key, value in items[0].model_dump().items()},
-        "expected": "`phase_connection` в ответе списка (требуется при создании и правке)",
     }
-    if MISSING_PHASE in fields:
+    if missing:
         return CheckOutcome(
-            CheckStatus.PASSED,
-            f"поле `{MISSING_PHASE}` присутствует в элементе реестра — требование FR-3 покрыто",
+            CheckStatus.FAILED,
+            f"в элементе реестра нет обязательных полей {missing}: `LoadDevice` требует их",
             evidence,
         )
-    return CheckOutcome(
-        CheckStatus.BLOCKED,
-        f"в элементе реестра нет `{MISSING_PHASE}`, хотя `POST`/`PUT` его требуют — "
-        "сверить нагрузку по фазе из API нельзя (замечание P0)",
-        evidence,
-    )
+    verdict = f"состав полей реестра: {', '.join(fields)}"
+    if MISSING_PHASE in fields:
+        verdict += "; поле фазы присутствует в выдаче — зафиксировано"
+    else:
+        verdict += "; `phase_connection` в контракте 17.09.2026 нет — расхождение снято"
+    return CheckOutcome(CheckStatus.PASSED, verdict, evidence)
 
 
-def _ph_n_filter(context: AutomationContext) -> CheckOutcome:
-    """TC-LOAD-03: фильтр `ph_n` влияет на выдачу (FR-3) — ожидаемо не влияет."""
+def _unknown_param(context: AutomationContext) -> CheckOutcome:
+    """TC-LOAD-03: `ph_n` отсутствует в контракте — фиксация поведения сервера (FR-3).
+
+    Контракт 17.09.2026 убрал параметр `ph_n` из `GET /api/loads/list`. Проверка выясняет,
+    как сервер относится к неизвестному параметру: игнорирует его (200 и та же выдача) или
+    отклоняет запрос (400/422). Отказом считается только 5xx или сетевая ошибка.
+    """
     items = _loads(context)
     probe = context.probe_request("GET", "/api/loads/list", query={"ph_n": "Ph_A"})
     body = probe.body_json if isinstance(probe.body_json, dict) else {}
@@ -154,14 +171,24 @@ def _ph_n_filter(context: AutomationContext) -> CheckOutcome:
         "status": probe.status,
         "full_size": len(items),
         "filtered_size": len(rows) if rows is not None else None,
+        "contract": "параметр `ph_n` в контракте 17.09.2026 отсутствует",
         "error": probe.error or None,
     }
     if probe.status is None:
-        return CheckOutcome(CheckStatus.FAILED, f"проба ph_n не отвечает: {probe.error}", evidence)
-    if int(probe.status) >= 400:
+        return CheckOutcome(
+            CheckStatus.FAILED, f"проба `ph_n` не отвечает: {probe.error}", evidence
+        )
+    status = int(probe.status)
+    if status >= 500:
         return CheckOutcome(
             CheckStatus.FAILED,
-            f"фильтр ph_n отвечает {probe.status}: {probe.body_text[:200]}",
+            f"проба `ph_n` отвечает {status} (5xx): {probe.body_text[:200]}",
+            evidence,
+        )
+    if status in (400, 422):
+        return CheckOutcome(
+            CheckStatus.PASSED,
+            f"сервер отклоняет неизвестный параметр `ph_n` (код {status}) — поведение зафиксировано",
             evidence,
         )
     if rows is None:
@@ -171,13 +198,14 @@ def _ph_n_filter(context: AutomationContext) -> CheckOutcome:
     if len(rows) < len(items):
         return CheckOutcome(
             CheckStatus.PASSED,
-            f"фильтр ph_n сокращает выдачу: {len(rows)} из {len(items)} нагрузок",
+            f"сервер фильтрует по `ph_n`: {len(rows)} из {len(items)} нагрузок — параметр "
+            "вернулся в сборку, сверить с контрактом 17.09.2026",
             evidence,
         )
     return CheckOutcome(
-        CheckStatus.BLOCKED,
-        "фильтр ph_n не влияет на выдачу: список тот же, что без фильтра (замечание к API P0) — "
-        "фазовых данных в реестре нет",
+        CheckStatus.PASSED,
+        "неизвестный параметр `ph_n` игнорируется: выдача та же, что без фильтра "
+        "(параметра нет в контракте 17.09.2026) — зафиксировано",
         evidence,
     )
 
@@ -398,7 +426,7 @@ def _missing_delete(context: AutomationContext) -> CheckOutcome:
 AUTOMATIONS = {
     "loads.registry": _registry,
     "loads.fields": _fields,
-    "loads.ph_n_filter": _ph_n_filter,
+    "loads.unknown_param": _unknown_param,
     "loads.exact_filters": _exact_filters,
     "loads.description_search": _description_search,
     "loads.categories": _categories,

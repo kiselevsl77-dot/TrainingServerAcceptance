@@ -26,7 +26,7 @@
 | Параметр | Значение |
 |---|---|
 | Формат | OpenAPI 3.1.0, `info.title = Energomera`, `info.version = 0.1.0` |
-| Состав | 27 путей, 32 операции, 34 схемы; теги: `Система`, `File Import`, `Datasets`, `Loads`, `ML models`, `Task service` |
+| Состав | **17.09.2026** — 34 пути, 40 операций, 49 схем; теги: `Система`, `File Import`, `Datasets`, `Loads`, `ML models: initialization`, `ML models: training`, `ML models: testing`, `ML models: inference`, `ML models: AutoML`, `Task service`. Предыдущая версия (31.08.2026) — 27 путей, 32 операции, 34 схемы, 6 тегов; снимок сохранён в `docs/SOM1.2026-08-31.json` |
 | Базовый URL | **в спецификации отсутствует** (`servers` не задан) — адрес держится вне контракта (в UI — переменная `TRAINING_SERVER_BASE_URL`) |
 | Авторизация | **не описана**: `securitySchemes` и `security` пусты |
 | Форматы | JSON; загрузка — `multipart/form-data`; скачивание объявлено как `application/json`, фактически — бинарный поток |
@@ -41,7 +41,8 @@
 | `File Import` | `POST /api/data/file`, `GET /api/data/files`, `GET /api/data/file/{file_id}/download`, `DELETE /api/{file_id}` | реестр файлов, загрузка / скачивание / удаление | этап 1 (FR-2) ✅ |
 | `Loads` | `GET /api/loads/list`, `POST /api/loads`, `PUT /api/loads/{load_id}` | реестр нагрузок (устройств) | этап 2 (FR-3) ✅ — чтение; запись UC-07/UC-08 — задел |
 | `Datasets` | `GET/POST /api/datasets/`, `GET/PUT/DELETE /api/datasets/{dataset_id}`, `POST /api/datasets/fill/{dataset_id}` | датасеты и их заполнение | план этапа 3 (FR-4) |
-| `ML models` | `GET/POST /api/ml_models/models`, `POST /api/ml_models/models/upload`, `GET /api/ml_models/architectures`, `GET/DELETE /api/ml_models/models/{model_id}`, `POST /api/ml_models/models/{model_id}/train`, `POST /api/ml_models/{model_id}/check`, `POST /api/ml_models/models/{model_id}/inference`, `POST .../inference/single`, `GET .../download_onnx` | каталог архитектур, модели, обучение / проверка / инференс | частично: `GET /api/ml_models/models` (этап 2), остальное — этапы 4–7 |
+| `ML models: initialization`, `: training`, `: testing`, `: inference` | `GET/POST /api/ml_models/models`, `POST /api/ml_models/models/upload`, `GET /api/ml_models/architectures`, `GET/DELETE /api/ml_models/models/{model_id}`, `POST /api/ml_models/models/{model_id}/train`, `POST /api/ml_models/{model_id}/check`, `POST /api/ml_models/models/{model_id}/inference`, `POST .../inference/single`, `GET .../download_onnx` | каталог архитектур, модели, обучение / проверка / инференс (до 17.09.2026 — один тег `ML models`, 11 операций) | частично: `GET /api/ml_models/models` (этап 2), остальное — этапы 4–7 |
+| `ML models: AutoML` | `POST /api/ml_models/models/{model_id}/find_params/population`, `POST /api/ml_models/find_params/population/{population_id}/selection`, `DELETE/GET /api/ml_models/find_params/population/{population_id}`, `GET /api/ml_models/find_params/population`, `GET .../mutated_models`, `GET .../selections`, `GET .../grid.csv` | поиск гиперпараметров и архитектуры (NAS): популяции мутантов, итерации отбора, выгрузка сетки метрик | **новое в контракте 17.09.2026** — доступно из консоли (реестр), помощники и приёмочные проверки — отдельным этапом (`docs/09`) |
 | `Task service` | `POST /api/tasks/test`, `POST /api/tasks/{task_id}/pause\|interrupt\|resume`, `GET /api/tasks/`, `GET /api/tasks/{task_id}` | мониторинг и управление задачами | план этапов 3–8 (FR-8) |
 
 ### 1.3 Сущности и связи
@@ -79,13 +80,13 @@
 | 4 | `FileMetadataResponse` | `id, file_name, size, s3_path, import_date, file_type` | в ответе **нет `description`**, хотя загрузка его принимает (`Body_upload_data_file…description`) | загруженное описание теряется — недоступно ни в списке, ни в карточке |
 | 5 | `GET /api/data/file/{file_id}/download` | `200` c `content: application/json`, схема `{}`; документированы только `200`/`422` | бинарный поток: `content-type: application/octet-stream`, `content-disposition: attachment; filename=…`, **нет `Content-Length`**, **нет `Accept-Ranges`**; при не-ASCII имени — `404 {"detail":"'latin-1' codec can't encode characters…"}` | нет прогресса загрузки и докачки (файлы до 2.1 ГБ, всего 41.7 ГБ); **54 из 62 субдатасетов** не скачиваются вовсе |
 | 6 | `DELETE /api/{file_id}` | `200`, схема `{}`; 404 не описан | `{"message":"File deleted successfully", …}`; путь — **в корне `/api/`** | риск коллизии с любым будущим маршрутом `/api/<x>`; ответ разбирается эвристикой; batch-удаления пары нет |
-| 7 | `GET /api/loads/list` | параметры `category, ph_n, load_id, description_search, limit, offset` **без описаний**; ответ `{}` | `{loads, result_size, limit, offset}`; элемент `{load_id, category, description}` — **без `phase_connection`**; `ph_n` **не фильтрует**; `limit=0` → пустой список при `result_size = 62` | схема `LoadDevice` неприменима (фаза обязательна) → отдельная модель `LoadItem`; фильтр по фазе недоступен |
+| 7 | `GET /api/loads/list` | параметры `category, load_id, description_search, limit, offset` **без описаний**; ответ `{}` | `{loads, result_size, limit, offset}`; элемент `{load_id, category, description}` — **без `phase_connection`**; `limit=0` → пустой список при `result_size = 62` | **частично закрыто контрактом 17.09.2026**: параметр `ph_n` убран, поле фазы убрано из `LoadDevice`/`UpdateLoadRequest` — расхождение «фаза обязательна при записи, но не отдаётся в списке» снято; остаётся P1 — схема ответа по-прежнему пуста |
 | 8 | `POST /api/loads`, `PUT /api/loads/{load_id}` | `200`, схема `{}`; 404/409 нет | — | нельзя показать, что именно создано/изменено; нет семантики конфликтов (BR-R3) |
 
 | 9 | `DELETE` нагрузки | **отсутствует** | — | ошибочную нагрузку нельзя удалить (файлы/датасеты/модели удаляются) |
 | 10 | `POST /api/datasets/fill/{dataset_id}` | `202`, схема `{}` | в описании задачи видно «Fill dataset … with 52 raw and 52 markup files» — данные есть внутри, наружу не отдаются | UI не может перейти к мониторингу (нет `task_id`), хотя `train`/`check`/`inference` его возвращают |
 | 11 | `ModelMetadata.signals` | `array` **без `items`** | в запросе `ModelCreateRequest.signals` — `object {signal_num → [device_id]}`; живые модели: `null`/пусто | противоречие типов «запрос ↔ ответ»; отобразить привязки нельзя |
-| 12 | `phase_connection`, `ph_n` | свободная `string`, без справочника и описания | в разметке: `Ph_A`, `Ph_B`, **`Ph_С`** (кириллическая `С`); фазы живут только в markup-файлах | нет валидации и подсказок; фазы показываются только как часть «набора нагрузок» |
+| 12 | `phase_connection`, `ph_n` (было до 17.09.2026) | свободная `string`, без справочника и описания | поле и параметр **удалены из контракта 17.09.2026**; в markup-файлах фазы остались: `Ph_A`, `Ph_B`, **`Ph_С`** (кириллическая `С`) | фаза больше не участвует в API нагрузок (**закрыто**); при необходимости фазового анализа — перспективное требование к API |
 | 13 | `device_id` vs `load_id` | у моделей фильтр `device_id`, в `InferenceClass` — `device_ids`, в разметке — `LoadID` | реестр нагрузок устройства не отдаёт | неясно, как сопоставлять модель и нагрузки («набор нагрузок модели» строится эвристикой) |
 | 14 | `DatasetType` | `const: "direct_fill"` (одно значение) | все 6 живых датасетов — `direct_fill` | любое расширение (например, датасет из субдатасетов) — ломающее изменение контракта |
 | 15 | `file_type` | `string`; в описании параметра — «RAW, LOADS, ONNX» | фактически `RAW` 129, `LOADS` 129, `H5` 5, `REPORT_ZIP` 2 | значения вне контракта; в UI появился раздел «Прочие файлы» и своя таблица MIME-типов |
@@ -478,6 +479,39 @@ markup-файл (первые строки):
 | 3 | у `GET /api/data/files` в спецификации объявлены только `id`, `file_name`, `import_date`, `file_type`; параметров `limit`/`offset` нет, при этом сервер их молча игнорирует (см. §2.2 и §5.2) | P1 | пагинация недоступна ни по спецификации, ни фактически: реестр (265 файлов, 41.7 ГБ) приходится читать целиком, а консоль может передать лишние параметры только «свободной» строкой |
 | 4 | скачивание файла с не-ASCII именем по-прежнему возвращает `404` (дефект `latin-1`, §2.1) — подтверждено интеграционным тестом консоли: `404` возвращается полем результата, а не исключением | P0 | без исправления недоступна разметка большинства записей; пульт фиксирует это как «блокировано API» и замечание к API |
 | 5 | `POST /api/tasks/test` создаёт задачу без расхода ресурсов обучения — удобная проверка команд управления задачами (`pause`/`resume`/`interrupt`) до этапов T4–T8 | — (положительная находка) | команды управления задачами можно проверить без обучения; в реестре консоли операция помечена классом `write` (создаёт задачу, но не расходует ресурсы) |
+## 7. Контракт 17.09.2026: что изменилось и что осталось (обновление от 17.09.2026)
+
+Контракт получен отдельным файлом `api_17_09_26.json` и зафиксирован в пульте как
+`docs/SOM1.json`; предыдущая версия сохранена как `docs/SOM1.2026-08-31.json`. Полный разбор
+изменений и план работ — `09. Контракт API 17.09.2026 — изменения и план работ.md`,
+актуальность версии проверяет `tests/unit/test_contract_version.py`.
+
+**Закрыто контрактом:**
+
+1. `phase_connection` убран из `LoadDevice` и `UpdateLoadRequest`, параметр `ph_n` — из
+   `GET /api/loads/list` (см. §2.1 п. 7, п. 12): требование фазы снято, «ожидаемый дефект P0»
+   пульта больше не воспроизводится.
+2. `TaskType` дополнен значением `find-params` (задача итерации отбора AutoML).
+
+**Добавлено:**
+
+3. Восемь операций AutoML и 15 схем к ним: `POST .../find_params/population`,
+   `POST .../population/{id}/selection` (202 + задача `find-params`),
+   `DELETE/GET .../population/{id}`, `GET .../population`, `GET .../mutated_models`,
+   `GET .../selections`, `GET .../grid.csv`.
+4. Тег `ML models` разделён на пять: `initialization` (7 операций), `training` (1),
+   `testing` (1), `inference` (2), `AutoML` (8) — модулей в реестре консоли стало 10.
+
+**Остаётся открытым (новые находки):**
+
+| № | Наблюдение | Класс | Следствие |
+|---|---|---|---|
+| 1 | описание `POST /api/ml_models/models/{model_id}/find_params/population` ссылается на «вариант в один вызов» `POST /api/ml_models/find_params/population`, но такого пути в `paths` нет | P1 (описание) | популяцию можно создать только от существующей модели; ссылку нужно снять либо операцию добавить |
+| 2 | `GET .../population/{id}/grid.csv` отдаёт `text/csv` — первый не-JSON media-тип в контракте | P2 (описание) | реестр консоли распознаёт CSV отдельным видом ответа; для клиентов нужны пример файла, разделитель и кодировка |
+| 3 | `base_config`, `config_mutations`, `check_results`, `train_config`, `test_config` в схемах AutoML — свободные `object` без свойств и примеров | P2 | тело итерации отбора и разбор результатов собираются эвристически; проверки фиксируют факт, а не структуру |
+| 4 | `DELETE .../population/{id}` удаляет каскадом модели, сигналы, файлы, S3-блобы и ZIP-ы без «сухого прогона» и без счётчиков | P2 (эксплуатация) | на общем стенде операция допустима только для `__TEST__`-популяций, созданных пультом |
+| 5 | схема ответа `GET /api/loads/list` по-прежнему пуста (`{}`) | P1 | состав полей реестра выясняется фактически; проверка `TC-LOAD-02` фиксирует его как есть |
+
 
 
 

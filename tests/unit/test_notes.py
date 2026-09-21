@@ -72,20 +72,36 @@ def test_known_defect_notes_are_ready_to_use():
     assert all(note.source == "авто" and note.fact and note.expected for note in notes)
     assert {"P0", "P1", "P2"}.issubset({note.priority for note in notes})
     assert any("phase_connection" in note.title for note in notes)
+    assert any("закрыто контрактом 17.09.2026" in note.title for note in notes)
     assert any("latin-1" in note.title for note in notes)
 
 
 def test_defect_for_matches_check_to_known_defect():
     """Связь «проверка → известный дефект»: текст для замечания у ожидаемо блокированных (T3)."""
-    defect = defect_for("tc-load-02")
+    defect = defect_for("tc-file-10")
 
     assert defect is not None
-    assert "phase_connection" in defect["title"]
+    assert "не-ASCII" in defect["title"]
     assert defect["priority"] == "P0"
     assert defect_for("TC-SYS-01") is None
+    # Loads: требование фазы снято контрактом 17.09.2026 — проверки больше не блокированы
+    assert defect_for("TC-LOAD-02") is None
+    assert defect_for("TC-LOAD-03") is None
     assert set(DEFECT_BY_CHECK) <= {
         defect_id for defect_id in DEFECT_BY_CHECK if defect_for(defect_id) is not None
     }
+
+
+def test_datasets_checks_have_defect_templates():
+    """У проверок `TC-DS-03/05` есть шаблон замечания P1 к модулю «Datasets» (этап T5)."""
+    for check_id in ("TC-DS-03", "TC-DS-05"):
+        note = note_from_check(check_id)
+
+        assert note is not None, check_id
+        assert note.priority == "P1"
+        assert note.module == "Datasets"
+        assert note.source == SOURCE_AUTO
+        assert "датасет" in note.fact.lower() or "fill" in note.fact.lower()
 
 
 def test_note_from_check_is_ready_auto_note():

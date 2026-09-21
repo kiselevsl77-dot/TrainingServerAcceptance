@@ -624,22 +624,6 @@
 						}
 					},
 					{
-						"name": "ph_n",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"anyOf": [
-								{
-									"type": "string"
-								},
-								{
-									"type": "null"
-								}
-							],
-							"title": "Ph N"
-						}
-					},
-					{
 						"name": "load_id",
 						"in": "query",
 						"required": false,
@@ -818,7 +802,7 @@
 		"/api/ml_models/models": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Create Model",
 				"description": "Создает новую модель с заданной архитектурой",
@@ -864,7 +848,7 @@
 			},
 			"get": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Get Models",
 				"operationId": "get_models_api_ml_models_models_get",
@@ -1024,7 +1008,7 @@
 		"/api/ml_models/models/upload": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Upload Model",
 				"description": "Загружает готовую модель (например, после сжатия) и создаёт её метаданные.\n- **file**: файл модели (.h5)\n- **metadata**: JSON-строка с полями, соответствующими ModelFileUploadRequest (без поля version)",
@@ -1066,7 +1050,7 @@
 		"/api/ml_models/architectures": {
 			"get": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Get Supported Architectures",
 				"description": "Получить список поддерживаемых архитектур с информацией.\nЕсли указан параметр architecture - возвращает информацию только об этой архитектуре.",
@@ -1122,7 +1106,7 @@
 		"/api/ml_models/models/{model_id}": {
 			"delete": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Delete Model",
 				"description": "Удаляет модель, её связи сигналов и связанный файл модели.",
@@ -1157,7 +1141,7 @@
 			},
 			"get": {
 				"tags": [
-					"ML models"
+					"ML models: initialization"
 				],
 				"summary": "Get Model By Id",
 				"description": "Получить метаданные модели по идентификатору вместе с информацией о сигналах.",
@@ -1198,10 +1182,52 @@
 				}
 			}
 		},
+		"/api/ml_models/models/{model_id}/download_onnx": {
+			"get": {
+				"tags": [
+					"ML models: initialization"
+				],
+				"summary": "Download Model Onnx",
+				"description": "Скачивание модели в ONNX формате",
+				"operationId": "download_model_onnx_api_ml_models_models__model_id__download_onnx_get",
+				"parameters": [
+					{
+						"name": "model_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Model Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/ml_models/models/{model_id}/train": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: training"
 				],
 				"summary": "Train Model",
 				"description": "Запускает обучение модели с поддержкой аугментации данных",
@@ -1261,7 +1287,7 @@
 		"/api/ml_models/{model_id}/check": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: testing"
 				],
 				"summary": "Check Model",
 				"description": "Запускает проверку модели на тестовом датасете",
@@ -1314,7 +1340,7 @@
 		"/api/ml_models/models/{model_id}/inference": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: inference"
 				],
 				"summary": "Inference",
 				"description": "Запускает инференс модели на датасете (асинхронно через TaskService/Celery).",
@@ -1368,7 +1394,7 @@
 		"/api/ml_models/models/{model_id}/inference/single": {
 			"post": {
 				"tags": [
-					"ML models"
+					"ML models: inference"
 				],
 				"summary": "Inference Single",
 				"description": "Синхронный предикт одного сэмпла из 6 сигналов (Base64 как в raw_data CSV).",
@@ -1419,14 +1445,14 @@
 				}
 			}
 		},
-		"/api/ml_models/models/{model_id}/download_onnx": {
-			"get": {
+		"/api/ml_models/models/{model_id}/find_params/population": {
+			"post": {
 				"tags": [
-					"ML models"
+					"ML models: AutoML"
 				],
-				"summary": "Download Model Onnx",
-				"description": "Скачивание модели в ONNX формате",
-				"operationId": "download_model_onnx_api_ml_models_models__model_id__download_onnx_get",
+				"summary": "Create Find Params Population From Model",
+				"description": "Сгенерировать популяцию мутированных моделей из СУЩЕСТВУЮЩЕЙ базовой модели.\n\nБазовая модель нужна только как ИСТОЧНИК КОНФИГА: каждый мутант создаётся\nчерез create_model_metadata, то есть это НОВАЯ сеть со случайной инициализацией.\nВеса базовой модели НЕ наследуются — даже если она уже обучена. Это поиск\nархитектуры (NAS) вокруг её конфига, а не дообучение: каждый мутант в\nselection обучается с нуля.\n\nВариант в один вызов, который также создаёт базовую модель, —\nсм. POST /find_params/population.\n\nЕсли хотя бы один мутант не материализовался, популяция откатывается целиком\n(базовая модель сохраняется) — частично созданных популяций в БД не остаётся.",
+				"operationId": "create_find_params_population_from_model_api_ml_models_models__model_id__find_params_population_post",
 				"parameters": [
 					{
 						"name": "model_id",
@@ -1439,6 +1465,114 @@
 						}
 					}
 				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/FindParamsPopulationCreateRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FindParamsPopulationCreateResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population/{population_id}/selection": {
+			"post": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "Run Find Params Selection",
+				"description": "Запустить одну train-check итерацию find-params по популяции.\n\nСоздаёт задачу `find-params` и запускает её асинхронно через Celery.\nСама задача (find_params_task.py) обучает всех активных мутантов на\n`train_dataset_id`, тестирует на `test_dataset_id` (по умолчанию = train),\nсохраняет строку `find_params_selection` + `check_results` по каждому\nмутанту и проставляет метки отбора (`best`/`normal`/`discarded`/`failed`).",
+				"operationId": "run_find_params_selection_api_ml_models_find_params_population__population_id__selection_post",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/FindParamsSelectionRunRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FindParamsSelectionRunResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population/{population_id}": {
+			"delete": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "Delete Find Params Population",
+				"description": "Полностью удалить find_params_population и все порождённые артефакты.\n\nОчищает по порядку:\n  * все строки `model_metadata`, на которые когда-либо ссылался любой мутант\n    этой популяции (полный lineage: исходные конфиги мутантов + каждая\n    обученная версия из каждой итерации отбора), а также соответствующие\n    строки `model_metadata_signals`, `file_metadata` и S3-блобы `.h5`;\n  * все ZIP-файлы тест-отчётов (S3 + `file_metadata`), на которые ссылаются\n    `check_results` мутантов;\n  * все файлы-чекпоинты `.h5` от любых приостановленных/выполняющихся\n    find-params runtime'ов этой популяции;\n  * все строки `celery_task_runtimes` для find-params этой популяции\n    (их родительские строки `celery_tasks` остаются на месте);\n  * саму строку `find_params_population` (каскадно удаляет\n    `find_params_mutated_models` + `find_params_selection`).\n\nПользовательская **базовая модель**, на которую ссылается\n`find_params_population.base_model_id`, всегда сохраняется.\n\nВозвращает сводку по количеству удалённого в каждой категории. Всегда\nвозвращает 200, даже если отдельные S3/БД-удаления упали по ходу (каждая\nошибка логируется, очистка продолжается best-effort).",
+				"operationId": "delete_find_params_population_api_ml_models_find_params_population__population_id__delete",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					}
+				],
 				"responses": {
 					"200": {
 						"description": "Successful Response",
@@ -1446,6 +1580,289 @@
 							"application/json": {
 								"schema": {}
 							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "Get Find Params Population",
+				"description": "Получить одну find_params-популяцию по id.",
+				"operationId": "get_find_params_population_api_ml_models_find_params_population__population_id__get",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FindParamsPopulation"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population": {
+			"get": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "List Find Params Populations",
+				"description": "Список всех find_params-популяций (сначала новые).",
+				"operationId": "list_find_params_populations_api_ml_models_find_params_population_get",
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"$ref": "#/components/schemas/FindParamsPopulation"
+									},
+									"type": "array",
+									"title": "Response List Find Params Populations Api Ml Models Find Params Population Get"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population/{population_id}/mutated_models": {
+			"get": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "List Find Params Mutated Models",
+				"description": "Список мутантов популяции с фильтром по метке и сортировкой по рангу отбора.\n\nРанг читается из последней записи `check_results` каждого мутанта (поле\n`rank`, записывается на этапе разметки). Ранжированные мутанты идут первыми\n(по умолчанию от лучшего к худшему; от худшего к лучшему при `descending=true`);\nмутанты без ранга — только что созданная популяция до первого отбора — всегда\nпоказываются после ранжированных, в порядке вставки. Пустая метка (ещё не\nоценён) показывается всегда; флаги сужают только ранжированные группы.",
+				"operationId": "list_find_params_mutated_models_api_ml_models_find_params_population__population_id__mutated_models_get",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					},
+					{
+						"name": "is_show_best",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean",
+							"description": "Показывать мутантов с меткой 'best'.",
+							"default": true,
+							"title": "Is Show Best"
+						},
+						"description": "Показывать мутантов с меткой 'best'."
+					},
+					{
+						"name": "is_show_normal",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean",
+							"description": "Показывать мутантов с меткой 'normal'.",
+							"default": true,
+							"title": "Is Show Normal"
+						},
+						"description": "Показывать мутантов с меткой 'normal'."
+					},
+					{
+						"name": "is_show_discarded",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean",
+							"description": "Показывать мутантов с меткой 'discarded'.",
+							"default": true,
+							"title": "Is Show Discarded"
+						},
+						"description": "Показывать мутантов с меткой 'discarded'."
+					},
+					{
+						"name": "is_show_failed",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean",
+							"description": "Показывать мутантов с меткой 'failed'.",
+							"default": true,
+							"title": "Is Show Failed"
+						},
+						"description": "Показывать мутантов с меткой 'failed'."
+					},
+					{
+						"name": "descending",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "boolean",
+							"description": "Сортировать по рангу от худшего к лучшему вместо от лучшего к худшему.",
+							"default": false,
+							"title": "Descending"
+						},
+						"description": "Сортировать по рангу от худшего к лучшему вместо от лучшего к худшему."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/FindParamsMutatedModel"
+									},
+									"title": "Response List Find Params Mutated Models Api Ml Models Find Params Population  Population Id  Mutated Models Get"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population/{population_id}/selections": {
+			"get": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "List Find Params Selections",
+				"description": "Список всех train-check итераций отбора по популяции (сначала старые).",
+				"operationId": "list_find_params_selections_api_ml_models_find_params_population__population_id__selections_get",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"$ref": "#/components/schemas/FindParamsSelection"
+									},
+									"title": "Response List Find Params Selections Api Ml Models Find Params Population  Population Id  Selections Get"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/ml_models/find_params/population/{population_id}/grid.csv": {
+			"get": {
+				"tags": [
+					"ML models: AutoML"
+				],
+				"summary": "Download Find Params Grid Csv",
+				"description": "Выгрузка популяции в CSV: одна строка на мутанта, один столбец на ось сетки.\n\nФормат «длинный» (tidy): столбцы осей названы полными путями правил, далее\n`mutant_id`, `model_id`, `updated_at`, `selections_count`, `label`, `rank`,\n`loss`, `accuracy`. K-мерную сетку так можно свести в любую таблицу штатной\nсводной таблицей Excel (Вставка → Сводная таблица), поэтому агрегация на\nстороне сервера не нужна.\n\nБазовая (немутированная) модель попадает в файл со ВСЕМИ пустыми ячейками\nосей — это точка отсчёта для сравнения. Пустая ячейка метрики означает\n«нет данных» (мутант упал, отбор ещё не запускался, либо запись сделана до\nпоявления поля), а не ноль.\n\nФайл генерируется на лету и нигде не хранится.",
+				"operationId": "download_find_params_grid_csv_api_ml_models_find_params_population__population_id__grid_csv_get",
+				"parameters": [
+					{
+						"name": "population_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"format": "uuid",
+							"title": "Population Id"
+						}
+					},
+					{
+						"name": "selection_id",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string",
+									"format": "uuid"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "Итерация отбора, метрики которой попадут в файл. По умолчанию — последняя запись check_results каждого мутанта.",
+							"title": "Selection Id"
+						},
+						"description": "Итерация отбора, метрики которой попадут в файл. По умолчанию — последняя запись check_results каждого мутанта."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "CSV-сетка популяции",
+						"content": {
+							"text/csv": {}
 						}
 					},
 					"422": {
@@ -2182,6 +2599,426 @@
 				],
 				"title": "FileMetadataResponse"
 			},
+			"FindParamsLabel": {
+				"type": "string",
+				"enum": [
+					"normal",
+					"best",
+					"discarded",
+					"failed"
+				],
+				"title": "FindParamsLabel",
+				"description": "Текущий статус мутанта в популяции (обновляется после каждой итерации)."
+			},
+			"FindParamsMutatedModel": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"population_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Population Id"
+					},
+					"model_id": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Model Id"
+					},
+					"config_mutations": {
+						"type": "object",
+						"title": "Config Mutations"
+					},
+					"check_results": {
+						"items": {
+							"type": "object"
+						},
+						"type": "array",
+						"title": "Check Results"
+					},
+					"label": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/FindParamsLabel"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"label_description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Label Description"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At"
+					},
+					"updated_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Updated At"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"population_id",
+					"config_mutations",
+					"created_at",
+					"updated_at"
+				],
+				"title": "FindParamsMutatedModel",
+				"description": "Мутант — модель с мутациями относительно base_config популяции.\ncheck_results аккумулируется по итерациям; label отражает последнюю оценку."
+			},
+			"FindParamsPopulation": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"base_config": {
+						"type": "object",
+						"title": "Base Config"
+					},
+					"base_model_id": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Base Model Id"
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At"
+					},
+					"updated_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Updated At"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"name",
+					"base_config",
+					"created_at",
+					"updated_at"
+				],
+				"title": "FindParamsPopulation",
+				"description": "Поколение AutoML-поиска: базовый конфиг + опциональный линейидж."
+			},
+			"FindParamsPopulationCreateRequest": {
+				"properties": {
+					"name": {
+						"type": "string",
+						"maxLength": 200,
+						"title": "Name",
+						"description": "Human-readable population name."
+					},
+					"description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Description",
+						"description": "Free-form notes."
+					},
+					"population_config": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/PopulationConfig"
+							}
+						],
+						"description": "Grid rules + flags. The number of mutants is derived from the rules (product of each rule's models_amount), not passed explicitly."
+					}
+				},
+				"type": "object",
+				"required": [
+					"name",
+					"population_config"
+				],
+				"title": "FindParamsPopulationCreateRequest",
+				"description": "Request body for POST /models/{model_id}/find_params/population."
+			},
+			"FindParamsPopulationCreateResponse": {
+				"properties": {
+					"population_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Population Id"
+					},
+					"base_model_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Base Model Id"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"include_base_in_population": {
+						"type": "boolean",
+						"title": "Include Base In Population"
+					},
+					"num_mutants": {
+						"type": "integer",
+						"title": "Num Mutants",
+						"description": "Derived population size: the product of every rule's models_amount (excludes the identity base)."
+					},
+					"mutated_model_ids": {
+						"items": {
+							"type": "string",
+							"format": "uuid"
+						},
+						"type": "array",
+						"title": "Mutated Model Ids",
+						"description": "IDs of the find_params_mutated_models rows (NOT the underlying model_metadata IDs). Order: base mutant FIRST if include_base_in_population=true, then the grid mutants."
+					}
+				},
+				"type": "object",
+				"required": [
+					"population_id",
+					"base_model_id",
+					"name",
+					"include_base_in_population",
+					"num_mutants",
+					"mutated_model_ids"
+				],
+				"title": "FindParamsPopulationCreateResponse",
+				"description": "Response from POST /models/{model_id}/find_params/population."
+			},
+			"FindParamsSelection": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Id"
+					},
+					"population_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Population Id"
+					},
+					"dataset_id": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Dataset Id"
+					},
+					"check_dataset_id": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Check Dataset Id"
+					},
+					"name": {
+						"type": "string",
+						"title": "Name"
+					},
+					"train_config": {
+						"type": "object",
+						"title": "Train Config"
+					},
+					"test_config": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Test Config"
+					},
+					"created_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Created At"
+					},
+					"updated_at": {
+						"type": "string",
+						"format": "date-time",
+						"title": "Updated At"
+					}
+				},
+				"type": "object",
+				"required": [
+					"id",
+					"population_id",
+					"name",
+					"train_config",
+					"created_at",
+					"updated_at"
+				],
+				"title": "FindParamsSelection",
+				"description": "Одна train-check итерация поиска на популяции."
+			},
+			"FindParamsSelectionRunRequest": {
+				"properties": {
+					"train_dataset_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Train Dataset Id",
+						"description": "Dataset for training."
+					},
+					"test_dataset_id": {
+						"anyOf": [
+							{
+								"type": "string",
+								"format": "uuid"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Test Dataset Id",
+						"description": "Dataset for post-train testing. If omitted, train_dataset_id is used."
+					},
+					"train_config": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Train Config",
+						"description": "Kwargs for train_models_with_callbacks: batch_size, epochs, learning_rate, augmentation_params, preprocessing_converter, quantization."
+					},
+					"test_config": {
+						"anyOf": [
+							{
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Test Config",
+						"description": "Kwargs for test_models_with_callbacks (e.g. threshold)."
+					},
+					"selection_config": {
+						"anyOf": [
+							{
+								"$ref": "#/components/schemas/SelectionConfig"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Labelling step config: best_count, discarded_count, and sort_keys (ordered ranking tiers). Omit for the default: rank by accuracy desc."
+					},
+					"name": {
+						"anyOf": [
+							{
+								"type": "string",
+								"maxLength": 200
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Name",
+						"description": "Human-readable iteration name. Defaults to selection_<utc-iso>."
+					}
+				},
+				"type": "object",
+				"required": [
+					"train_dataset_id"
+				],
+				"title": "FindParamsSelectionRunRequest",
+				"description": "Request body for POST /find_params/population/{population_id}/selection."
+			},
+			"FindParamsSelectionRunResponse": {
+				"properties": {
+					"task_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Task Id"
+					},
+					"runtime_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Runtime Id"
+					},
+					"population_id": {
+						"type": "string",
+						"format": "uuid",
+						"title": "Population Id"
+					},
+					"message": {
+						"type": "string",
+						"title": "Message"
+					}
+				},
+				"type": "object",
+				"required": [
+					"task_id",
+					"runtime_id",
+					"population_id",
+					"message"
+				],
+				"title": "FindParamsSelectionRunResponse",
+				"description": "Response from POST /find_params/population/{population_id}/selection."
+			},
 			"HTTPValidationError": {
 				"properties": {
 					"detail": {
@@ -2396,10 +3233,6 @@
 						"type": "string",
 						"title": "Load Id"
 					},
-					"phase_connection": {
-						"type": "string",
-						"title": "Phase Connection"
-					},
 					"category": {
 						"type": "string",
 						"title": "Category"
@@ -2419,7 +3252,6 @@
 				"type": "object",
 				"required": [
 					"load_id",
-					"phase_connection",
 					"category"
 				],
 				"title": "LoadDevice"
@@ -2967,6 +3799,254 @@
 				"title": "ModelTrainingResponse",
 				"description": "Ответ на запуск тренировки модели"
 			},
+			"MutationMode": {
+				"type": "string",
+				"enum": [
+					"scale",
+					"set",
+					"add"
+				],
+				"title": "MutationMode",
+				"description": "How an AutoML mutation rule's axis value is applied to a config field."
+			},
+			"MutationRangeRule": {
+				"properties": {
+					"path": {
+						"type": "string",
+						"title": "Path",
+						"description": "Dot-path with [N]/[*] navigators, e.g. 'layers[*].parameters.filters'. Multiple paths can be combined with ';' separator (e.g. 'layers[0].parameters.units; layers[2].parameters.units') -- whitespace around ';' is ignored, sub-paths are resolved independently and matches are concatenated. Indices where any path segment doesn't exist are silently skipped -- no key is ever CREATED (modify-only-existing semantics)."
+					},
+					"mode": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/MutationMode"
+							}
+						],
+						"description": "How each axis value is applied to the existing field value: 'scale' multiplies (new = old * value); 'set' replaces (new = value); 'add' adds (new = old + value), value can be negative. 'scale' and 'add' skip non-numeric matches silently."
+					},
+					"models_amount": {
+						"type": "integer",
+						"minimum": 1.0,
+						"title": "Models Amount",
+						"description": "Number of models this rule contributes along its axis (REQUIRED). The population size is the product of every rule's models_amount."
+					},
+					"bounds": {
+						"anyOf": [
+							{
+								"prefixItems": [
+									{
+										"type": "number"
+									},
+									{
+										"type": "number"
+									}
+								],
+								"type": "array",
+								"maxItems": 2,
+								"minItems": 2
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Bounds",
+						"description": "(low, high) clamp applied to the final value."
+					},
+					"uniform": {
+						"type": "boolean",
+						"title": "Uniform",
+						"description": "If true (the grid default), the axis value is applied to EVERY match of `path`, preserving inter-layer proportions. `uniform=false` (independent per-match values) is NOT supported in grid mode.",
+						"default": true
+					},
+					"round": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/RoundMode"
+							}
+						],
+						"description": "Rounding applied after clamp.",
+						"default": "none"
+					},
+					"type": {
+						"const": "range",
+						"title": "Type",
+						"description": "Rule discriminator. Must be 'range'.",
+						"default": "range"
+					},
+					"range": {
+						"prefixItems": [
+							{
+								"type": "number"
+							},
+							{
+								"type": "number"
+							}
+						],
+						"type": "array",
+						"maxItems": 2,
+						"minItems": 2,
+						"title": "Range",
+						"description": "(low, high) endpoints of the linearly-spaced axis (both inclusive)."
+					}
+				},
+				"type": "object",
+				"required": [
+					"path",
+					"mode",
+					"models_amount",
+					"range"
+				],
+				"title": "MutationRangeRule",
+				"description": "A rule whose axis is `models_amount` evenly-spaced points in [low, high].\n\nPoints use inclusive endpoints (numpy-style linspace):\npoint_i = low + i*(high-low)/(models_amount-1); models_amount=1 -> [low].\nUse this to sweep a parameter across a linear gradient."
+			},
+			"MutationValuesRule": {
+				"properties": {
+					"path": {
+						"type": "string",
+						"title": "Path",
+						"description": "Dot-path with [N]/[*] navigators, e.g. 'layers[*].parameters.filters'. Multiple paths can be combined with ';' separator (e.g. 'layers[0].parameters.units; layers[2].parameters.units') -- whitespace around ';' is ignored, sub-paths are resolved independently and matches are concatenated. Indices where any path segment doesn't exist are silently skipped -- no key is ever CREATED (modify-only-existing semantics)."
+					},
+					"mode": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/MutationMode"
+							}
+						],
+						"description": "How each axis value is applied to the existing field value: 'scale' multiplies (new = old * value); 'set' replaces (new = value); 'add' adds (new = old + value), value can be negative. 'scale' and 'add' skip non-numeric matches silently."
+					},
+					"models_amount": {
+						"type": "integer",
+						"minimum": 1.0,
+						"title": "Models Amount",
+						"description": "Number of models this rule contributes along its axis (REQUIRED). The population size is the product of every rule's models_amount."
+					},
+					"bounds": {
+						"anyOf": [
+							{
+								"prefixItems": [
+									{
+										"type": "number"
+									},
+									{
+										"type": "number"
+									}
+								],
+								"type": "array",
+								"maxItems": 2,
+								"minItems": 2
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Bounds",
+						"description": "(low, high) clamp applied to the final value."
+					},
+					"uniform": {
+						"type": "boolean",
+						"title": "Uniform",
+						"description": "If true (the grid default), the axis value is applied to EVERY match of `path`, preserving inter-layer proportions. `uniform=false` (independent per-match values) is NOT supported in grid mode.",
+						"default": true
+					},
+					"round": {
+						"allOf": [
+							{
+								"$ref": "#/components/schemas/RoundMode"
+							}
+						],
+						"description": "Rounding applied after clamp.",
+						"default": "none"
+					},
+					"type": {
+						"const": "values",
+						"title": "Type",
+						"description": "Rule discriminator. Must be 'values'.",
+						"default": "values"
+					},
+					"values": {
+						"items": {
+							"anyOf": [
+								{
+									"type": "number"
+								},
+								{
+									"type": "string"
+								}
+							]
+						},
+						"type": "array",
+						"minItems": 1,
+						"title": "Values",
+						"description": "Explicit axis values, each applied via `mode`. Strings are allowed with mode='set' — that's how you sweep categorical hyperparameters (activation over ['relu','tanh'], optimizer over ['adam','sgd']). `bounds`/`round` don't apply to string values."
+					},
+					"random_choice": {
+						"type": "boolean",
+						"title": "Random Choice",
+						"description": "If true, the axis is `models_amount` values drawn uniformly at random (with replacement) from `values`, so len(values) need not equal models_amount. Reproducible via `population_config.rng_seed`.",
+						"default": false
+					}
+				},
+				"type": "object",
+				"required": [
+					"path",
+					"mode",
+					"models_amount",
+					"values"
+				],
+				"title": "MutationValuesRule",
+				"description": "A rule whose axis is an explicit list of values.\n\nBy default the axis IS `values`, so len(values) must equal models_amount.\nWith `random_choice=true`, the axis is `models_amount` values drawn\nuniformly at random (with replacement) from `values` (seed via\npopulation_config.rng_seed), so len(values) need not equal models_amount."
+			},
+			"PopulationConfig": {
+				"properties": {
+					"include_base_in_population": {
+						"type": "boolean",
+						"title": "Include Base In Population",
+						"description": "If true, the base (un-mutated) model is also registered as a mutant of the population (with empty config_mutations).",
+						"default": true
+					},
+					"rng_seed": {
+						"anyOf": [
+							{
+								"type": "integer"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Rng Seed",
+						"description": "Optional seed for `random_choice` value rules (reproducibility). Has no effect on deterministic range/values axes."
+					},
+					"rules": {
+						"items": {
+							"oneOf": [
+								{
+									"$ref": "#/components/schemas/MutationRangeRule"
+								},
+								{
+									"$ref": "#/components/schemas/MutationValuesRule"
+								}
+							],
+							"discriminator": {
+								"propertyName": "type",
+								"mapping": {
+									"range": "#/components/schemas/MutationRangeRule",
+									"values": "#/components/schemas/MutationValuesRule"
+								}
+							}
+						},
+						"type": "array",
+						"minItems": 1,
+						"title": "Rules",
+						"description": "One or more mutation rules. Each defines one axis of the grid; the population is the Cartesian product of all axes."
+					}
+				},
+				"type": "object",
+				"required": [
+					"rules"
+				],
+				"title": "PopulationConfig",
+				"description": "How to generate the population grid from a base config."
+			},
 			"QuantizationParams": {
 				"properties": {
 					"enabled": {
@@ -2991,6 +4071,93 @@
 				"type": "object",
 				"title": "QuantizationParams",
 				"description": "Параметры квантования модели"
+			},
+			"RoundMode": {
+				"type": "string",
+				"enum": [
+					"int",
+					"nearest_pow2",
+					"none"
+				],
+				"title": "RoundMode",
+				"description": "Rounding applied to a mutated value after clamping."
+			},
+			"SelectionConfig": {
+				"properties": {
+					"best_count": {
+						"type": "integer",
+						"minimum": 0.0,
+						"title": "Best Count",
+						"default": 1
+					},
+					"discarded_count": {
+						"type": "integer",
+						"minimum": 0.0,
+						"title": "Discarded Count",
+						"default": 1
+					},
+					"sort_keys": {
+						"items": {
+							"$ref": "#/components/schemas/SortKey"
+						},
+						"type": "array",
+						"title": "Sort Keys",
+						"description": "Ordered ranking tiers (lexicographic). Default = rank by test accuracy descending — identical to the previous single-metric behaviour."
+					}
+				},
+				"type": "object",
+				"title": "SelectionConfig",
+				"description": "Labelling-step config for a selection iteration."
+			},
+			"SortKey": {
+				"properties": {
+					"metric": {
+						"type": "string",
+						"title": "Metric",
+						"description": "'accuracy' | 'loss' | a config path."
+					},
+					"direction": {
+						"type": "string",
+						"enum": [
+							"asc",
+							"desc"
+						],
+						"title": "Direction",
+						"description": "Sort direction (required). 'desc' = higher is better."
+					},
+					"tolerance": {
+						"anyOf": [
+							{
+								"type": "number",
+								"minimum": 0.0
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Tolerance",
+						"description": "Values within this absolute tolerance count as tied at this tier."
+					},
+					"aggregate": {
+						"type": "string",
+						"enum": [
+							"sum",
+							"mean",
+							"max",
+							"min"
+						],
+						"title": "Aggregate",
+						"description": "Reduce a config-path metric's many matches to one value.",
+						"default": "sum"
+					}
+				},
+				"type": "object",
+				"required": [
+					"metric",
+					"direction"
+				],
+				"title": "SortKey",
+				"description": "One tier of the selection ranking (applied lexicographically).\n\n`metric` is either a NAMED metric — 'accuracy' (test accuracy) or 'loss'\n(final-epoch train loss) — or a CONFIG PATH (e.g. 'layers[*].parameters.units')\nresolved against the trained model config and reduced to one number by\n`aggregate`. `direction` is required. `tolerance` (optional): two mutants whose\nvalues at this tier differ by <= tolerance are treated as tied, so the NEXT tier\ndecides; omit it for an exact comparison."
 			},
 			"TaskListResponse": {
 				"properties": {
@@ -3034,6 +4201,7 @@
 					"training",
 					"dataset-fill",
 					"model-testing",
+					"find-params",
 					"inference"
 				],
 				"title": "TaskType"
@@ -3088,17 +4256,6 @@
 			},
 			"UpdateLoadRequest": {
 				"properties": {
-					"phase_connection": {
-						"anyOf": [
-							{
-								"type": "string"
-							},
-							{
-								"type": "null"
-							}
-						],
-						"title": "Phase Connection"
-					},
 					"category": {
 						"anyOf": [
 							{

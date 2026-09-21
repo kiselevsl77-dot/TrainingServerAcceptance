@@ -5,11 +5,14 @@
     POST /api/loads           — создание нагрузки
     PUT  /api/loads/{load_id} — правка нагрузки
 
-Замечания к API, выявленные на живом сервисе (см. документ этапа 2):
+Контракт 17.09.2026 снял требование фазы подключения:
+    * `phase_connection` убран из `LoadDevice`/`UpdateLoadRequest` (и из `required`),
+      поэтому поле не отправляется;
+    * параметр `ph_n` убран из `GET /api/loads/list` — фильтров стало пять.
+
+Замечания к API, оставшиеся в силе (проверено на живом сервисе):
     * ответ списка описан в спецификации пустой схемой, фактически приходит
-      `{loads, result_size, limit, offset}` и **без `phase_connection`**;
-    * фильтр `ph_n` присутствует в спецификации, но ничего не фильтрует
-      (данных о фазе в реестре нет);
+      `{loads, result_size, limit, offset}` и без поля фазы;
     * `load_id` и `category` фильтруются **точно** (регистрозависимо),
       `description_search` — по подстроке;
     * эндпоинта удаления нагрузки нет, поэтому «ошибочную» нагрузку через API
@@ -54,8 +57,8 @@ class LoadsApi:
             offset: смещение от начала списка.
 
         Note:
-            `ph_n` не передаётся: на живом сервисе параметр не влияет на результат
-            (фильтр заявлен в спецификации, но данных о фазе в реестре нет).
+            `ph_n` не передаётся: контракт 17.09.2026 убрал параметр из
+            `GET /api/loads/list` (до этого сервер его игнорировал).
         """
         params: dict[str, Any] = {
             "load_id": load_id or None,
@@ -76,14 +79,17 @@ class LoadsApi:
         self,
         *,
         load_id: str,
-        phase_connection: str,
         category: str,
         description: str | None = None,
     ) -> None:
-        """POST /api/loads — создание нагрузки (UC-07)."""
+        """POST /api/loads — создание нагрузки (UC-07).
+
+        Note:
+            `phase_connection` не передаётся: контракт 17.09.2026 убрал поле из
+            `LoadDevice` (фаза подключения серверу больше не нужна).
+        """
         request = LoadDevice(
             load_id=load_id,
-            phase_connection=phase_connection,
             category=category,
             description=description,
         )
@@ -93,13 +99,11 @@ class LoadsApi:
         self,
         load_id: str,
         *,
-        phase_connection: str | None = None,
         category: str | None = None,
         description: str | None = None,
     ) -> None:
         """PUT /api/loads/{load_id} — правка нагрузки (UC-08)."""
         request = UpdateLoadRequest(
-            phase_connection=phase_connection,
             category=category,
             description=description,
         )

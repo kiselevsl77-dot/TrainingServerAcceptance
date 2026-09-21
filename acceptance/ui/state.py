@@ -35,7 +35,7 @@ from acceptance.session import (
 from acceptance.tasks_monitor import TaskMonitor, task_card
 from client.errors import ClientError
 from client.http import ApiHttpClient
-from client.schemas import CeleryTask, FileMetadataResponse, LoadItem
+from client.schemas import CeleryTask, DatasetResponse, FileMetadataResponse, LoadItem
 from client.settings import TrainingServerSettings, get_settings
 
 KEY_SESSION_ID = "pult_session_id"
@@ -306,6 +306,40 @@ def load_loads() -> tuple[list[LoadItem], str | None]:
 def refresh_loads() -> None:
     """Сбрасывает кэш реестра нагрузок (кнопка «Обновить»)."""
     load_loads.clear()
+
+
+# ---------------------------------------------------------------------------
+# Реестр датасетов (кэш: экран «Датасеты» и пикер `dataset_id` в чек-листе)
+# ---------------------------------------------------------------------------
+#: Датасеты меняются проверками (создание/правка/удаление), поэтому кэш короче
+#: «справочного»: экран датасетов и пикер чек-листа видят свежий реестр почти сразу.
+DATASETS_CACHE_TTL = 30.0
+
+
+@st.cache_data(ttl=DATASETS_CACHE_TTL, show_spinner="Загрузка реестра датасетов…")
+def load_datasets() -> tuple[list[DatasetResponse], str | None]:
+    """Читает реестр датасетов испытуемого сервера (кэш 30 с).
+
+    Returns:
+        Кортеж (датасеты, текст ошибки). Ошибка не бросается: экран показывает её
+        подписью, а сценарий проверки возвращает статус «пропущена». Пагинации у
+        `GET /api/datasets/` нет (в спецификации только фильтры), поэтому реестр
+        читается целиком.
+    """
+    runtime = get_runtime()
+    if runtime is None:
+        return [], "Адрес испытуемого сервера не задан (TRAINING_SERVER_BASE_URL в .env)."
+    try:
+        return list(runtime.apis.datasets.list_datasets().datasets), None
+    except ClientError as exc:
+        return [], _error_text(exc)
+    except httpx.HTTPError as exc:
+        return [], f"Сеть недоступна: {exc}"
+
+
+def refresh_datasets() -> None:
+    """Сбрасывает кэш реестра датасетов (кнопка «Обновить реестр»)."""
+    load_datasets.clear()
 
 
 # ---------------------------------------------------------------------------

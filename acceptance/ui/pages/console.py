@@ -164,6 +164,12 @@ def _render_request(*, runtime: state.Runtime, session: TestSession | None) -> N
     if spec.body_kind == ep.BODY_JSON and json_body is None:
         ready = False
         st.caption("Тело запроса должно быть корректным JSON.")
+    if spec.body_kind == ep.BODY_MULTIPART and multipart is None:
+        ready = False
+        st.caption(
+            "Тело запроса заполнено не полностью: нужны файл и тип файла (`file_type`) — "
+            "оба обязательны по контракту."
+        )
 
     if st.button(
         "▶ Выполнить запрос",
@@ -359,15 +365,22 @@ def _render_body_inputs(
         uploaded = st.file_uploader("Файл для загрузки", key=f"console_file_{spec.key}")
         col_type, col_desc = st.columns(2)
         file_type = col_type.text_input(
-            "Тип файла (file_type)",
+            "Тип файла (file_type) *",
             key=f"console_ft_{spec.key}",
             placeholder="RAW",
-            help="Известные значения: RAW, LOADS, ONNX (типы H5/REPORT_ZIP вне перечисления "
-            "спецификации — замечание P2).",
+            help="Обязательное поле тела: без него сервер отвечает 422 «file_type: Field "
+            "required» (подтверждено прогоном 18.09.2026). Известные значения: RAW, LOADS, "
+            "ONNX (типы H5/REPORT_ZIP вне перечисления спецификации — замечание P2).",
         )
         description = col_desc.text_input("Описание (description)", key=f"console_fd_{spec.key}")
         if uploaded is None:
             st.caption("Файл не выбран — multipart-запрос без файла не отправляется.")
+            return None, None
+        if not file_type.strip():
+            st.caption(
+                "Укажите тип файла: сервер требует `file_type` вместе с файлом "
+                "(без него — 422 «Field required»)."
+            )
             return None, None
         payload = MultipartPayload(
             file_name=uploaded.name,

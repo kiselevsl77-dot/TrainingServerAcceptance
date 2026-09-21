@@ -2,7 +2,8 @@
 
 Реестр **не пишется руками**: он выводится из спецификации `docs/SOM1.json`
 генератором `tools/gen_endpoints.py` (блок между маркерами в конце файла).
-Так консоль запросов гарантированно содержит все 32 операции испытуемого API,
+Так консоль запросов гарантированно содержит все операции испытуемого API
+(контракт 17.09.2026 — 40 операций),
 а расхождение со спецификацией ловится тестом `tests/unit/test_endpoints.py`
 и командой `python -m tools.gen_endpoints --check`.
 
@@ -65,6 +66,7 @@ BODY_MULTIPART = "multipart"
 #: Виды ответа.
 RESPONSE_JSON = "json"
 RESPONSE_BINARY = "binary"
+RESPONSE_CSV = "csv"
 RESPONSE_EMPTY = "empty"
 
 PATH = "path"
@@ -194,6 +196,16 @@ class EndpointSpec:
     def is_binary(self) -> bool:
         """True, если операция отдаёт файл (не JSON)."""
         return self.response_kind == RESPONSE_BINARY
+
+    @property
+    def is_csv(self) -> bool:
+        """True, если операция отдаёт текстовую выгрузку CSV."""
+        return self.response_kind == RESPONSE_CSV
+
+    @property
+    def is_file(self) -> bool:
+        """True, если ответ — файл (двоичный или CSV-выгрузка)."""
+        return self.response_kind in (RESPONSE_BINARY, RESPONSE_CSV)
 
     @property
     def has_body(self) -> bool:
@@ -524,11 +536,6 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 type="string",
             ),
             ParamSpec(
-                name="ph_n",
-                location=QUERY,
-                type="string",
-            ),
-            ParamSpec(
                 name="load_id",
                 location=QUERY,
                 type="string",
@@ -551,7 +558,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
         ),
         response_kind=RESPONSE_JSON,
         safety=Safety.READ,
-        note="в ответе нет phase_connection, фильтр ph_n не влияет (P0)",
+        note="контракт 17.09.2026: параметр `ph_n` убран; в ответе нет `phase_connection`, схема ответа по-прежнему пуста (P1)",
     ),
     EndpointSpec(
         key="post /api/loads",
@@ -564,13 +571,11 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
         body_required=True,
         body_fields=(
             "load_id: string",
-            "phase_connection: string",
             "category: string",
             "description: string",
         ),
         body_sample="""{
   "load_id": "<load_id>",
-  "phase_connection": "<phase_connection>",
   "category": "<category>"
 }""",
         response_kind=RESPONSE_JSON,
@@ -594,12 +599,10 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
         body_kind=BODY_JSON,
         body_required=True,
         body_fields=(
-            "phase_connection: string",
             "category: string",
             "description: string",
         ),
         body_sample="""{
-  "phase_connection": "<phase_connection>",
   "category": "<category>",
   "description": "<description>"
 }""",
@@ -608,7 +611,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="post /api/ml_models/models",
-        module="ML models",
+        module="ML models: initialization",
         method="POST",
         path="/api/ml_models/models",
         summary="Create Model",
@@ -638,7 +641,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="get /api/ml_models/models",
-        module="ML models",
+        module="ML models: initialization",
         method="GET",
         path="/api/ml_models/models",
         summary="Get Models",
@@ -694,7 +697,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="post /api/ml_models/models/upload",
-        module="ML models",
+        module="ML models: initialization",
         method="POST",
         path="/api/ml_models/models/upload",
         summary="Upload Model",
@@ -711,7 +714,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="get /api/ml_models/architectures",
-        module="ML models",
+        module="ML models: initialization",
         method="GET",
         path="/api/ml_models/architectures",
         summary="Get Supported Architectures",
@@ -729,7 +732,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="delete /api/ml_models/models/{model_id}",
-        module="ML models",
+        module="ML models: initialization",
         method="DELETE",
         path="/api/ml_models/models/{model_id}",
         summary="Delete Model",
@@ -748,7 +751,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="get /api/ml_models/models/{model_id}",
-        module="ML models",
+        module="ML models: initialization",
         method="GET",
         path="/api/ml_models/models/{model_id}",
         summary="Get Model By Id",
@@ -766,8 +769,28 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
         safety=Safety.READ,
     ),
     EndpointSpec(
+        key="get /api/ml_models/models/{model_id}/download_onnx",
+        module="ML models: initialization",
+        method="GET",
+        path="/api/ml_models/models/{model_id}/download_onnx",
+        summary="Download Model Onnx",
+        operation_id="download_model_onnx_api_ml_models_models__model_id__download_onnx_get",
+        params=(
+            ParamSpec(
+                name="model_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+        ),
+        response_kind=RESPONSE_BINARY,
+        safety=Safety.READ,
+        note="модель отдаётся файлом, но спецификация описывает ответ как application/json",
+    ),
+    EndpointSpec(
         key="post /api/ml_models/models/{model_id}/train",
-        module="ML models",
+        module="ML models: training",
         method="POST",
         path="/api/ml_models/models/{model_id}/train",
         summary="Train Model",
@@ -806,7 +829,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="post /api/ml_models/{model_id}/check",
-        module="ML models",
+        module="ML models: testing",
         method="POST",
         path="/api/ml_models/{model_id}/check",
         summary="Check Model",
@@ -834,7 +857,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="post /api/ml_models/models/{model_id}/inference",
-        module="ML models",
+        module="ML models: inference",
         method="POST",
         path="/api/ml_models/models/{model_id}/inference",
         summary="Inference",
@@ -863,7 +886,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
     ),
     EndpointSpec(
         key="post /api/ml_models/models/{model_id}/inference/single",
-        module="ML models",
+        module="ML models: inference",
         method="POST",
         path="/api/ml_models/models/{model_id}/inference/single",
         summary="Inference Single",
@@ -913,12 +936,12 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
         safety=Safety.READ,
     ),
     EndpointSpec(
-        key="get /api/ml_models/models/{model_id}/download_onnx",
-        module="ML models",
-        method="GET",
-        path="/api/ml_models/models/{model_id}/download_onnx",
-        summary="Download Model Onnx",
-        operation_id="download_model_onnx_api_ml_models_models__model_id__download_onnx_get",
+        key="post /api/ml_models/models/{model_id}/find_params/population",
+        module="ML models: AutoML",
+        method="POST",
+        path="/api/ml_models/models/{model_id}/find_params/population",
+        summary="Create Find Params Population From Model",
+        operation_id="create_find_params_population_from_model_api_ml_models_models__model_id__find_params_population_post",
         params=(
             ParamSpec(
                 name="model_id",
@@ -928,9 +951,220 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                 required=True,
             ),
         ),
-        response_kind=RESPONSE_BINARY,
+        body_kind=BODY_JSON,
+        body_required=True,
+        body_fields=(
+            "name: string",
+            "description: string",
+            "population_config: object",
+        ),
+        body_sample="""{
+  "name": "<name>",
+  "population_config": {
+    "include_base_in_population": true,
+    "rules": [
+      {
+        "path": "<path>",
+        "mode": "scale",
+        "models_amount": 1,
+        "uniform": true,
+        "type": "range",
+        "range": [
+          "<range_item>"
+        ]
+      }
+    ]
+  }
+}""",
+        response_kind=RESPONSE_JSON,
+        safety=Safety.HEAVY,
+        note="создаёт десятки мутантов (новые модели, веса базовой НЕ наследуются); при сбое — полный откат; вариант «в один вызов» (POST того же пути без model_id) в контракте отсутствует",
+    ),
+    EndpointSpec(
+        key="post /api/ml_models/find_params/population/{population_id}/selection",
+        module="ML models: AutoML",
+        method="POST",
+        path="/api/ml_models/find_params/population/{population_id}/selection",
+        summary="Run Find Params Selection",
+        operation_id="run_find_params_selection_api_ml_models_find_params_population__population_id__selection_post",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+        ),
+        body_kind=BODY_JSON,
+        body_required=True,
+        body_fields=(
+            "train_dataset_id: uuid",
+            "test_dataset_id: uuid",
+            "train_config: object",
+            "test_config: object",
+            "selection_config: object",
+            "name: string",
+        ),
+        body_sample="""{
+  "train_dataset_id": "<uuid>"
+}""",
+        response_kind=RESPONSE_JSON,
+        safety=Safety.HEAVY,
+        note="ответ 202: запускается задача `find-params` (обучение всех активных мутантов); `test_dataset_id` по умолчанию = train; без `selection_config` метки отбора не проставляются",
+    ),
+    EndpointSpec(
+        key="delete /api/ml_models/find_params/population/{population_id}",
+        module="ML models: AutoML",
+        method="DELETE",
+        path="/api/ml_models/find_params/population/{population_id}",
+        summary="Delete Find Params Population",
+        operation_id="delete_find_params_population_api_ml_models_find_params_population__population_id__delete",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+        ),
+        response_kind=RESPONSE_JSON,
+        safety=Safety.DESTRUCTIVE,
+        note="DELETE — каскад: модели, сигналы, файлы, S3-блобы и ZIP-ы популяции, без предпросмотра (P2)",
+    ),
+    EndpointSpec(
+        key="get /api/ml_models/find_params/population/{population_id}",
+        module="ML models: AutoML",
+        method="GET",
+        path="/api/ml_models/find_params/population/{population_id}",
+        summary="Get Find Params Population",
+        operation_id="get_find_params_population_api_ml_models_find_params_population__population_id__get",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+        ),
+        response_kind=RESPONSE_JSON,
         safety=Safety.READ,
-        note="модель отдаётся файлом, но спецификация описывает ответ как application/json",
+        note="DELETE — каскад: модели, сигналы, файлы, S3-блобы и ZIP-ы популяции, без предпросмотра (P2)",
+    ),
+    EndpointSpec(
+        key="get /api/ml_models/find_params/population",
+        module="ML models: AutoML",
+        method="GET",
+        path="/api/ml_models/find_params/population",
+        summary="List Find Params Populations",
+        operation_id="list_find_params_populations_api_ml_models_find_params_population_get",
+        response_kind=RESPONSE_JSON,
+        safety=Safety.READ,
+        note="список популяций без пагинации (сначала новые)",
+    ),
+    EndpointSpec(
+        key="get /api/ml_models/find_params/population/{population_id}/mutated_models",
+        module="ML models: AutoML",
+        method="GET",
+        path="/api/ml_models/find_params/population/{population_id}/mutated_models",
+        summary="List Find Params Mutated Models",
+        operation_id="list_find_params_mutated_models_api_ml_models_find_params_population__population_id__mutated_models_get",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+            ParamSpec(
+                name="is_show_best",
+                location=QUERY,
+                type="boolean",
+                description="Показывать мутантов с меткой 'best'.",
+                default="True",
+            ),
+            ParamSpec(
+                name="is_show_normal",
+                location=QUERY,
+                type="boolean",
+                description="Показывать мутантов с меткой 'normal'.",
+                default="True",
+            ),
+            ParamSpec(
+                name="is_show_discarded",
+                location=QUERY,
+                type="boolean",
+                description="Показывать мутантов с меткой 'discarded'.",
+                default="True",
+            ),
+            ParamSpec(
+                name="is_show_failed",
+                location=QUERY,
+                type="boolean",
+                description="Показывать мутантов с меткой 'failed'.",
+                default="True",
+            ),
+            ParamSpec(
+                name="descending",
+                location=QUERY,
+                type="boolean",
+                description="Сортировать по рангу от худшего к лучшему вместо от лучшего к худшему.",
+                default="False",
+            ),
+        ),
+        response_kind=RESPONSE_JSON,
+        safety=Safety.READ,
+        note="фильтры по метке (best/normal/discarded/failed) и сортировка по рангу последнего `check_results`; мутанты без ранга — в конце",
+    ),
+    EndpointSpec(
+        key="get /api/ml_models/find_params/population/{population_id}/selections",
+        module="ML models: AutoML",
+        method="GET",
+        path="/api/ml_models/find_params/population/{population_id}/selections",
+        summary="List Find Params Selections",
+        operation_id="list_find_params_selections_api_ml_models_find_params_population__population_id__selections_get",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+        ),
+        response_kind=RESPONSE_JSON,
+        safety=Safety.READ,
+        note="итерации отбора (сначала старые); `train_config`/`test_config` — свободные объекты без схемы",
+    ),
+    EndpointSpec(
+        key="get /api/ml_models/find_params/population/{population_id}/grid.csv",
+        module="ML models: AutoML",
+        method="GET",
+        path="/api/ml_models/find_params/population/{population_id}/grid.csv",
+        summary="Download Find Params Grid Csv",
+        operation_id="download_find_params_grid_csv_api_ml_models_find_params_population__population_id__grid_csv_get",
+        params=(
+            ParamSpec(
+                name="population_id",
+                location=PATH,
+                type="string",
+                format="uuid",
+                required=True,
+            ),
+            ParamSpec(
+                name="selection_id",
+                location=QUERY,
+                type="string",
+                format="uuid",
+                description="Итерация отбора, метрики которой попадут в файл. По умолчанию — последняя запись check_results каждого мутанта.",
+            ),
+        ),
+        response_kind=RESPONSE_CSV,
+        safety=Safety.READ,
+        note="ответ `text/csv` (tidy-таблица «мутант × оси»); `selection_id` по умолчанию — последняя запись `check_results`; пустая ячейка метрики означает «нет данных», не ноль",
     ),
     EndpointSpec(
         key="post /api/tasks/test",
@@ -1024,6 +1258,7 @@ ENDPOINTS: tuple[EndpointSpec, ...] = (
                     "training",
                     "dataset-fill",
                     "model-testing",
+                    "find-params",
                     "inference",
                 ),
             ),

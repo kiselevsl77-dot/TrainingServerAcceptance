@@ -41,12 +41,16 @@ class TaskStatus(StrEnum):
 
 
 class TaskType(StrEnum):
-    """Типы задач Celery."""
+    """Типы задач Celery.
+
+    Значение `find-params` добавлено контрактом 17.09.2026 (итерация отбора AutoML).
+    """
 
     CELERY_TEST = "celery-test"
     TRAINING = "training"
     DATASET_FILL = "dataset-fill"
     MODEL_TESTING = "model-testing"
+    FIND_PARAMS = "find-params"
     INFERENCE = "inference"
 
 
@@ -123,18 +127,23 @@ class FileMetadataListResponse(BaseModel):
 
 
 class LoadDevice(BaseModel):
-    """Тело запроса `POST /api/loads` — создание нагрузки (UC-07)."""
+    """Тело запроса `POST /api/loads` — создание нагрузки (UC-07).
+
+    Контракт 17.09.2026 убрал `phase_connection` из свойств и из `required`:
+    сервер больше не требует фазу подключения, поэтому поле не отправляется.
+    """
 
     load_id: str
-    phase_connection: str
     category: str
     description: str | None = None
 
 
 class UpdateLoadRequest(BaseModel):
-    """Тело запроса `PUT /api/loads/{load_id}` — правка нагрузки (UC-08)."""
+    """Тело запроса `PUT /api/loads/{load_id}` — правка нагрузки (UC-08).
 
-    phase_connection: str | None = None
+    Контракт 17.09.2026 убрал `phase_connection` из свойств схемы.
+    """
+
     category: str | None = None
     description: str | None = None
 
@@ -142,12 +151,14 @@ class UpdateLoadRequest(BaseModel):
 class LoadItem(BaseModel):
     """Элемент реестра нагрузок (`GET /api/loads/list`, UC-06).
 
-    Замечания к API (проверено на живом сервисе):
-        * в ответе нет `phase_connection`, хотя `LoadDevice` (POST/PUT) требует его,
-          а фильтр `ph_n` предусмотрен спецификацией — фактически он ничего не
-          фильтрует (данных о фазе в реестре нет);
+    Замечания к API:
         * схема ответа в `SOM1.json` описана как пустая (`{}`), реально приходит
-          `{loads, result_size, limit, offset}`.
+          `{loads, result_size, limit, offset}` (P1);
+        * контракт 17.09.2026 снял требование фазы: `phase_connection` убран из
+          `LoadDevice`/`UpdateLoadRequest`, а параметр `ph_n` — из `GET /api/loads/list`,
+          поэтому «фазы нет в ответе» больше не расхождение (дефект P0 закрыт, сборка
+          `dev@58ac72f` воспроизводила его);
+        * `load_id` и `category` фильтруются **точно** (регистрозависимо).
     """
 
     load_id: str

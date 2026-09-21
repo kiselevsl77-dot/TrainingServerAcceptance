@@ -16,8 +16,8 @@ from typing import Any
 import httpx
 import pytest
 
+from acceptance import dataset_composition, report
 from acceptance import notes as notes_api
-from acceptance import report
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
 from acceptance.checks.registry import CheckResult, CheckStatus
@@ -133,16 +133,16 @@ def full_session() -> Session:
 
 
 def blocked_session() -> Session:
-    """Сессия с ожидаемым дефектом API: `TC-LOAD-02` блокирована и имеет замечание P0."""
+    """Сессия с ожидаемым дефектом API: `TC-FILE-10` блокирована и имеет замечание P0."""
     session = new_session(base_url=BASE_URL, info=filled_info())
-    spec = catalog.find("TC-LOAD-02")
+    spec = catalog.find("TC-FILE-10")
     assert spec is not None
     result = mark_check(
         session,
         spec.check_id,
         CheckStatus.BLOCKED,
-        verdict="в элементе реестра нет `phase_connection` — замечание P0",
-        evidence={"phase_connection": False},
+        verdict="скачивание файла с не-ASCII именем отвечает 404 (дефект latin-1) — замечание P0",
+        evidence={"status": 404, "file": "Antminer_№1.raw.csv"},
     )
     checks_engine.ensure_defect_note(session, spec, result)
     return session
@@ -327,14 +327,14 @@ def test_blocked_check_is_listed_with_auto_note():
     """Ожидаемый дефект попадает в сводку «блокировано API» и в раздел замечаний P0."""
     session = blocked_session()
     bundle = report.build(session)
-    note = notes_api.note_from_check("TC-LOAD-02")
+    note = notes_api.note_from_check("TC-FILE-10")
     assert note is not None
 
     assert "**Ожидаемо блокированные проверки (дефекты API):**" in bundle.markdown
-    assert "| TC-LOAD-02 |" in bundle.markdown
+    assert "| TC-FILE-10 |" in bundle.markdown
     assert "### P0 — блокирует корректную работу UI/проверки (1)" in bundle.markdown
     assert note.title in bundle.markdown
-    assert "проверка: `TC-LOAD-02`" in bundle.markdown
+    assert "проверка: `TC-FILE-10`" in bundle.markdown
     assert bundle.payload["readiness"]["notes"] == {
         "total": 1,
         "p0": 1,
@@ -342,7 +342,7 @@ def test_blocked_check_is_listed_with_auto_note():
         "p2": 0,
         "auto": 1,
     }
-    assert [item["check_id"] for item in bundle.payload["notes"]] == ["TC-LOAD-02"]
+    assert [item["check_id"] for item in bundle.payload["notes"]] == ["TC-FILE-10"]
 
 
 def test_notes_annex_lists_priorities():
@@ -351,9 +351,9 @@ def test_notes_annex_lists_priorities():
     rows = csv_rows(report.notes_csv(session))
 
     assert rows and rows[0]["priority"] == "P0"
-    assert rows[0]["check_id"] == "TC-LOAD-02"
-    assert "phase_connection" in rows[0]["title"]
-    assert "проверка TC-LOAD-02" in rows[0]["evidence"]
+    assert rows[0]["check_id"] == "TC-FILE-10"
+    assert "не-ASCII" in rows[0]["title"]
+    assert "проверка TC-FILE-10" in rows[0]["evidence"]
 
 
 def test_prospective_requirements_section():
@@ -433,9 +433,9 @@ def test_checks_annex_covers_catalog():
 
     assert [row["check_id"] for row in rows] == implemented_ids()
     assert tuple(rows[0]) == report.CHECK_COLUMNS
-    blocked = next(row for row in rows if row["check_id"] == "TC-LOAD-02")
+    blocked = next(row for row in rows if row["check_id"] == "TC-FILE-10")
     assert blocked["status"] == str(CheckStatus.BLOCKED)
-    assert blocked["group"] == "TC-LOAD"
+    assert blocked["group"] == "TC-FILE"
     assert blocked["class"] == "tech"
     assert blocked["journal_range"] == "#3…7"
 
@@ -555,3 +555,63 @@ def test_manifest_annex_missing_file_is_a_warning(tmp_path: Path):
     assert any("манифест записей не прочитан" in text for text in bundle.warnings)
     assert bundle.payload["readiness"]["ready"] is False
     assert not [name for name in bundle.annexes if name.startswith("records_manifest")]
+
+
+# ---------------------------------------------------------------------------
+# Датасеты и состав (этап T5)
+# ---------------------------------------------------------------------------
+def test_datasets_section_lists_sources_and_duplicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Состав датасетов в отчёте: ярлык источника и косвенные признаки дублей (T5)."""
+    monkeypatch.setattr(dataset_composition, "DATA_DIR", tmp_path)
+    session = new_session(base_url=BASE_URL, info=filled_info())
+    start_session(session)
+    raw_a = "11111111-1111-4111-8111-111111111111"
+    markup_a = "22222222-2222-4222-8222-222222222222"
+    raw_b = "33333333-3333-4333-8333-333333333333"
+    dataset_composition.record_fill(
+        session,
+        dataset_id="d-1",
+        raw_file_ids=[raw_a],
+        markup_file_ids=[markup_a],
+        name="skfu-train",
+        check_id="TC-DS-05",
+    )
+    dataset_composition.record_composition(
+        session,
+        dataset_composition.DatasetComposition(
+            dataset_id="d-2",
+            source=dataset_composition.SOURCE_HEURISTIC,
+            name="leti-train",
+            files=(
+                dataset_composition.CompositionFile(
+                    file_id=raw_a, role=dataset_composition.ROLE_RAW
+                ),
+                dataset_composition.CompositionFile(
+                    file_id=raw_b, role=dataset_composition.ROLE_RAW
+                ),
+            ),
+        ),
+    )
+
+    bundle = report.build(session)
+
+    assert "## 7. Датасеты и состав" in bundle.markdown
+    assert "локальный учёт пульта" in bundle.markdown
+    assert "предположение по реестру файлов" in bundle.markdown
+    assert "Файлы, входящие в несколько датасетов" in bundle.markdown
+    payload = bundle.payload["datasets"]
+    assert payload["overlap"]["totals"]["cross_dataset"] == 1
+    assert {item["dataset_id"] for item in payload["compositions"]} == {"d-1", "d-2"}
+
+
+def test_datasets_section_notes_absence_of_composition():
+    """Без учёта состава раздел честно сообщает, что состав не фиксировался (T5)."""
+    session = new_session(base_url=BASE_URL, info=filled_info())
+
+    bundle = report.build(session)
+
+    assert "## 7. Датасеты и состав" in bundle.markdown
+    assert "Состав датасетов в этой сессии не фиксировался" in bundle.markdown
+    assert bundle.payload["datasets"]["compositions"] == []

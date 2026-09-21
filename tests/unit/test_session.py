@@ -134,11 +134,12 @@ def test_session_json_text_round_trip():
 
 def test_add_note_to_session_deduplicates_by_title():
     session = _session(Path("."))
-    note = new_note("Дефект: нет phase_connection", module="Loads", priority="P0")
+    note = new_note("Дефект: нет состава датасета и агрегатов", module="Datasets", priority="P1")
 
     add_note_to_session(session, note)
     add_note_to_session(
-        session, new_note("Дефект: нет phase_connection", module="Loads", priority="P0")
+        session,
+        new_note("Дефект: нет состава датасета и агрегатов", module="Datasets", priority="P1"),
     )
 
     assert len(session.notes) == 1
@@ -262,9 +263,9 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_four():
-    assert SCHEMA_VERSION == 4
-    assert _session(Path(".")).to_dict()["schema_version"] == 4
+def test_current_schema_version_is_five():
+    assert SCHEMA_VERSION == 5
+    assert _session(Path(".")).to_dict()["schema_version"] == 5
 
 
 # ---------------------------------------------------------------------------

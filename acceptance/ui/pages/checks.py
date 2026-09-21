@@ -7,8 +7,14 @@
 Этап T4 реализует экран для **первой группы — `TC-TASK`** (8 проверок модуля
 «Task service»): инфраструктура чек-листа появляется вместе с монитором задач,
 потому что все асинхронные проверки (`dataset-fill`, `training`, `model-testing`,
-`inference`) опираются на него. Остальные группы (TC-SYS…TC-CLEAN) добавляются в T3
-и далее — каталог (`acceptance.checks.catalog`) уже рассчитан на все 69 проверок.
+`inference`) опираются на него. Дальше группы приходят по этапам: T3 — `TC-SYS`,
+`TC-FILE`, `TC-REC`, `TC-LOAD`, T5 — `TC-DS` (датасеты); каталог
+(`acceptance.checks.catalog`) рассчитан на все 69 проверок, наполнено 48.
+
+Проверки модуля «Datasets» получают в карточке запуска пикер `dataset_id`, режим
+чтения состава (провайдер `acceptance.dataset_composition`) и окна ожидания задачи
+наполнения — состав датасета сервер не отдаёт (замечание P1), поэтому пульт ведёт
+его учёт у себя и сверяет с серверным, когда тот появится.
 
 Ресурсоёмкие (`heavy`) проверки — полноправная часть программы: перед запуском
 пульт требует цель проверки, используемые данные, ответственного и подтверждение
@@ -32,6 +38,7 @@ from acceptance import notes
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
 from acceptance.checks.registry import CheckClass, CheckSpec, CheckStatus
+from acceptance.dataset_composition import COMPOSITION_MODES, SOURCE_LABELS
 from acceptance.logging_setup import log_event
 from acceptance.paths import ARTIFACT_DIR, ensure_dirs
 from acceptance.session import TestSession, add_artifact
@@ -82,6 +89,29 @@ KEY_EXPORT = "checks_export_csv"
 KEY_ARTIFACT = "checks_save_artifact"
 KEY_FILE = "checks_file"
 KEY_LOAD = "checks_load"
+KEY_DATASET = "checks_dataset"
+KEY_DATASET_PICK = "checks_dataset_pick"
+KEY_COMPOSITION = "checks_composition_mode"
+KEY_FILL_PAIRS = "checks_fill_pairs"
+KEY_FILL_WAIT = "checks_fill_task_wait"
+KEY_FILL_TIMEOUT = "checks_fill_task_timeout"
+
+#: Подписи режимов чтения состава датасета (карточка запуска `TC-DS-03`).
+COMPOSITION_MODE_LABELS: dict[str, str] = {
+    "auto": "авто (сервер → факт пульта → гипотеза)",
+    "server": "только серверный состав",
+    "local": "только локальный учёт пульта",
+    "heuristic": "только предположение по реестру файлов",
+}
+
+#: Режимы чтения состава, доступные оператору (порядок — от «авто» к частным).
+COMPOSITION_MODE_OPTIONS: tuple[str, ...] = tuple(
+    mode for mode in COMPOSITION_MODES if mode in COMPOSITION_MODE_LABELS
+)
+
+#: Сколько задач сервера предлагать в пикере, когда наблюдений в сессии ещё нет
+#: (находка прогона 18.09.2026: без этого проверки FSM-1 остаются «пропущены»).
+TASK_PICKER_LIMIT = 50
 
 
 def render() -> None:
@@ -98,7 +128,7 @@ def render() -> None:
     st.caption(
         f"Каталог: групп — {summary['groups_implemented']} из {summary['groups_total']}, "
         f"проверок — {summary['checks_implemented']} из {summary['checks_total']} "
-        "(группы `TC-DS`…`TC-CLEAN` добавляются на этапах T5–T10)."
+        "(группы `TC-MOD`…`TC-CLEAN` добавляются на этапах T6–T10)."
     )
 
     session = state.current_session()
@@ -507,6 +537,8 @@ def _render_run(session: TestSession, spec: CheckSpec) -> None:
         load_id = _render_load_picker(spec)
         if load_id:
             params["load_id"] = load_id
+    if spec.check_id.startswith("TC-DS-"):
+        params.update(_render_dataset_params(spec))
     if spec.check_id == "TC-TASK-06":
         params["action"] = str(
             st.selectbox(
@@ -534,6 +566,7 @@ def _render_run(session: TestSession, spec: CheckSpec) -> None:
         if not ready:
             set_flash("warning", reason)
             st.rerun()
+        _ensure_task_observed(session, monitor, spec, params.get("task_id"))
         result = check_run.run_check(
             session=session,
             monitor=monitor,
@@ -590,22 +623,165 @@ def _render_load_picker(spec: CheckSpec) -> str:
     return labels.get(str(chosen), "")
 
 
+def _render_dataset_picker(spec: CheckSpec) -> str:
+    """Пикер `dataset_id` для сценариев `TC-DS`: живой реестр датасетов и ручной ввод."""
+    datasets, error = state.load_datasets()
+    if error:
+        st.caption(f"Реестр датасетов недоступен: {error}")
+    options: dict[str, str] = {}
+    for item in datasets:
+        created = (
+            item.creation_date.strftime("%d.%m.%Y") if item.creation_date else "дата неизвестна"
+        )
+        options[f"{item.name} · {item.type} · {created}"] = str(item.id)
+    manual = st.text_input(
+        "Идентификатор датасета (UUID), если нужного нет в списке",
+        key=f"{KEY_DATASET}{spec.check_id}",
+        placeholder="например, 5f0a5b7e-…",
+    )
+    if manual.strip():
+        return manual.strip()
+    if not options:
+        st.caption("Реестр датасетов пуст: будет использован первый датасет реестра.")
+        return ""
+    chosen = st.selectbox(
+        "Датасет для сценария проверки",
+        ["", *options],
+        key=f"{KEY_DATASET_PICK}{spec.check_id}",
+        format_func=lambda value: value or "— первый в реестре —",
+    )
+    return options.get(str(chosen), "")
+
+
+def _render_dataset_params(spec: CheckSpec) -> dict[str, Any]:
+    """Параметры сценариев `TC-DS`: датасет, режим состава и окна ожидания наполнения."""
+    params: dict[str, Any] = {}
+    if spec.check_id in ("TC-DS-02", "TC-DS-03"):
+        dataset_id = _render_dataset_picker(spec)
+        if dataset_id:
+            params["dataset_id"] = dataset_id
+    if spec.check_id == "TC-DS-03":
+        sources = "; ".join(
+            SOURCE_LABELS[mode] for mode in COMPOSITION_MODE_OPTIONS if mode in SOURCE_LABELS
+        )
+        params["composition_mode"] = str(
+            st.selectbox(
+                "Режим чтения состава датасета",
+                list(COMPOSITION_MODE_OPTIONS),
+                key=f"{KEY_COMPOSITION}{spec.check_id}",
+                format_func=lambda value: COMPOSITION_MODE_LABELS.get(value, value),
+                help=(
+                    "Источники состава: " + sources + ". Серверный состав появится, когда "
+                    "замечание P1 устранят: проверка перейдёт в строгий режим сама."
+                ),
+            )
+        )
+    if spec.check_id == "TC-DS-05":
+        st.caption(
+            "Проверка создаёт собственный `__TEST__`-датасет: состав датасета сервер не "
+            "отдаёт (P1), а удалить файлы из датасета нельзя — наполнение боевого "
+            "датасета было бы необратимым изменением стенда."
+        )
+        col_pairs, col_wait, col_timeout = st.columns(3)
+        params["fill_pairs"] = str(
+            col_pairs.number_input(
+                "Пар RAW+markup для наполнения",
+                min_value=1,
+                max_value=10,
+                value=1,
+                step=1,
+                key=f"{KEY_FILL_PAIRS}{spec.check_id}",
+            )
+        )
+        params["task_wait"] = str(
+            col_wait.number_input(
+                "Поиск задачи `dataset-fill`, с",
+                min_value=0,
+                max_value=300,
+                value=30,
+                step=5,
+                key=f"{KEY_FILL_WAIT}{spec.check_id}",
+            )
+        )
+        params["task_timeout"] = str(
+            col_timeout.number_input(
+                "Ожидание терминального статуса, с",
+                min_value=60,
+                max_value=3600,
+                value=600,
+                step=60,
+                key=f"{KEY_FILL_TIMEOUT}{spec.check_id}",
+            )
+        )
+    return params
+
+
+def _server_task_options() -> dict[str, str]:
+    """Живой список задач сервера для подстановки `task_id` (пикер чек-листа).
+
+    Нужен там, где в сессии ещё нет наблюдений: проверки `TC-TASK-03/04/05/06`
+    требуют `task_id`, а до 18.09.2026 пикер показывал только наблюдаемые задачи,
+    поэтому при живом реестре задач проверки оставались «пропущены».
+    """
+    tasks, _total, error = state.load_tasks(limit=TASK_PICKER_LIMIT)
+    if error:
+        st.caption(f"Список задач недоступен ({error}): выберите задачу на экране «Задачи».")
+        return {}
+    return {f"{item.id} · {item.type} · {item.name}": str(item.id) for item in tasks}
+
+
+def _ensure_task_observed(
+    session: TestSession,
+    monitor: TaskMonitor | None,
+    spec: CheckSpec,
+    task_id: Any,
+) -> None:
+    """Ставит на наблюдение задачу, выбранную из серверного списка (BR-R5).
+
+    История переходов FSM-1 собирается поллингом, поэтому проверка задачи,
+    выбранной в пикере из списка сервера, должна попасть в наблюдение **до**
+    запуска сценария — иначе цепочка статусов окажется пустой.
+    """
+    if monitor is None or not task_id:
+        return
+    if any(item.task_id == str(task_id) for item in monitor.observed(session)):
+        return
+
+    tasks, _total, _error = state.load_tasks(limit=TASK_PICKER_LIMIT)
+    known = next((item for item in tasks if str(item.id) == str(task_id)), None)
+    if spec.check_id == "TC-TASK-08" or known is None:
+        monitor.register_external(session, str(task_id), check_id=spec.check_id)
+    else:
+        monitor.register_task(session, known, check_id=spec.check_id)
+    monitor.poll_once(session, str(task_id), label=spec.check_id)
+    state.store_session(session)
+
+
 def _render_task_picker(session: TestSession, monitor: TaskMonitor | None, spec: CheckSpec) -> str:
-    """Выбор задачи для сценария проверки (из наблюдаемых задач сессии)."""
+    """Выбор задачи для сценария: наблюдаемые задачи сессии, иначе список сервера."""
     if monitor is None:
         st.info("Монитор задач недоступен: параметры задачи задаются на экране «Задачи».")
         return ""
+
     observations = monitor.observed(session)
-    if not observations and spec.check_id not in ("TC-TASK-02", "TC-TASK-07"):
-        st.info(
-            "Наблюдаемых задач нет: поставьте задачу на наблюдение на экране «Задачи» "
-            "(или запустите `celery-test` на вкладке «Диагностика»)."
-        )
-        return ""
     options = {
         f"{item.task_id} · {item.task_type or '—'} · {item.status_label}": item.task_id
         for item in observations
     }
+    if not options:
+        options = _server_task_options()
+        if not options:
+            if spec.check_id not in ("TC-TASK-02", "TC-TASK-07"):
+                st.info(
+                    "Наблюдаемых задач нет: поставьте задачу на наблюдение на экране «Задачи» "
+                    "(или запустите `celery-test` на вкладке «Диагностика»)."
+                )
+            return ""
+        st.caption(
+            "Наблюдаемых задач в сессии нет: показан список задач сервера. Выбранная задача "
+            "будет поставлена на наблюдение перед запуском (BR-R5)."
+        )
+
     chosen = st.selectbox(
         "Задача для сценария проверки",
         ["", *options],

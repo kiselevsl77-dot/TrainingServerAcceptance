@@ -27,7 +27,7 @@ from uuid import uuid4
 from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -37,8 +37,10 @@ TOOL_VERSION = "0.1.0"
 #:   v3 — добавлены `console_calls` (ручные вызовы консоли запросов: операция, метка
 #:        проверки, статус, номер записи журнала) — след действий оператора для отчёта;
 #:   v4 — добавлены `tasks` (наблюдаемые задачи: тип, происхождение, привязка к проверке,
-#:        история переходов FSM-1, настройки поллинга по каждой задаче) — монитор задач T4.
-#: Файлы v1–v3 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:        история переходов FSM-1, настройки поллинга по каждой задаче) — монитор задач T4;
+#:   v5 — добавлены `dataset_composition` (учёт состава датасетов: серверный состав,
+#:        факт наполнения пультом, гипотеза по реестру файлов) — этап T5.
+#: Файлы v1–v4 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
 ORIGIN_PULT = "пульт"
@@ -128,6 +130,7 @@ class TestSession:
     markup_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     console_calls: list[dict[str, Any]] = field(default_factory=list)
     tasks: list[dict[str, Any]] = field(default_factory=list)
+    dataset_composition: list[dict[str, Any]] = field(default_factory=list)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -194,6 +197,7 @@ class TestSession:
             "markup_stats": self.markup_stats,
             "console_calls": self.console_calls,
             "tasks": self.tasks,
+            "dataset_composition": self.dataset_composition,
             "history": self.history,
         }
 
@@ -222,6 +226,7 @@ class TestSession:
             },
             console_calls=[dict(item) for item in (data.get("console_calls") or [])],
             tasks=[dict(item) for item in (data.get("tasks") or [])],
+            dataset_composition=[dict(item) for item in (data.get("dataset_composition") or [])],
             history=[dict(item) for item in (data.get("history") or [])],
         )
 

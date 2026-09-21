@@ -54,12 +54,12 @@ def test_registry_matches_specification(spec: dict):
 
 
 def test_registry_covers_every_specification_operation(spec: dict):
-    """В реестре есть все операции спецификации (32) и нет лишних."""
+    """В реестре есть все операции спецификации (40) и нет лишних."""
     keys = set(ep.endpoint_keys())
     expected = {f"{method} {path}" for method, path in _operations(spec)}
 
     assert keys == expected
-    assert len(ep.ENDPOINTS) == 32
+    assert len(ep.ENDPOINTS) == 40
 
 
 def test_modules_cover_specification_tags(spec: dict):
@@ -72,7 +72,7 @@ def test_modules_cover_specification_tags(spec: dict):
     }
 
     assert set(ep.module_names()) == tags
-    assert len(ep.MODULES) == 6
+    assert len(ep.MODULES) == 10
     assert all(ep.by_module(module) for module in ep.MODULES)
 
 
@@ -98,11 +98,15 @@ def test_safety_classification_matches_rules():
         "/api/ml_models/models/{model_id}/train",
         "/api/ml_models/{model_id}/check",
         "/api/ml_models/models/{model_id}/inference",
+        # AutoML (контракт 17.09.2026): создание популяции и итерация отбора обучают модели
+        "/api/ml_models/models/{model_id}/find_params/population",
+        "/api/ml_models/find_params/population/{population_id}/selection",
     }
     assert set(destructive) == {
         "/api/{file_id}",
         "/api/datasets/{dataset_id}",
         "/api/ml_models/models/{model_id}",
+        "/api/ml_models/find_params/population/{population_id}",
     }
     assert "get /health" in read_keys
     assert "post /api/ml_models/models/{model_id}/inference/single" in read_keys
@@ -177,13 +181,24 @@ def test_binary_downloads_are_marked_binary():
         assert ep.find(key).is_binary, key
 
 
+def test_csv_export_is_marked_csv():
+    """CSV-выгрузка AutoML (`text/csv`) распознаётся как файл, а не как JSON."""
+    grid = ep.find("get /api/ml_models/find_params/population/{population_id}/grid.csv")
+
+    assert grid.response_kind == ep.RESPONSE_CSV
+    assert grid.is_csv and grid.is_file
+    assert not grid.is_binary
+
+
 def test_known_endpoint_defects_are_documented():
     """Известные особенности эндпоинтов попадают в реестр (подсказки оператору)."""
     assert "latin-1" in ep.find("get /api/data/file/{file_id}/download").note
     assert "limit/offset" in ep.find("get /api/data/files").note
-    assert "phase_connection" in ep.find("get /api/loads/list").note
+    assert "17.09.2026" in ep.find("get /api/loads/list").note
     assert "task_id" in ep.find("post /api/datasets/fill/{dataset_id}").note
-    assert sum(1 for spec_ in ep.ENDPOINTS if spec_.note) >= 10
+    selection = ep.find("post /api/ml_models/find_params/population/{population_id}/selection")
+    assert "find-params" in selection.note and "202" in selection.note
+    assert sum(1 for spec_ in ep.ENDPOINTS if spec_.note) >= 16
 
 
 def test_menu_labels_are_unique_and_descriptive():

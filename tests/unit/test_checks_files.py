@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import datetime
+from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -136,7 +137,7 @@ class FakeStand:
 
     def __init__(
         self,
-        files: list[dict[str, object]] | None = None,
+        files: list[dict[str, Any]] | None = None,
         *,
         ignore_limit: bool = True,
         non_ascii_blocked: bool = True,
