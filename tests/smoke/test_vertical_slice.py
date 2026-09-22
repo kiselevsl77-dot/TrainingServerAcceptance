@@ -294,6 +294,26 @@ def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> N
     )
 
 
+def test_vertical_slice_journal_shows_run_exchange(pult: tuple[AppTest, Path]) -> None:
+    """Прогон оставляет машинный след: журнал показывает обмен по метке проверки (`SCR-402`)."""
+    app, _store = pult
+    app, _session_id = _plan(app)
+    app = _open(app, "scr301_run")
+    labels = [item.label for item in app.button]
+    app = _click(app, next(label for label in labels if label.startswith("▶ Следующая:")))
+
+    app = _open(app, "scr402_journal")
+    frames = [item.value for item in app.dataframe]
+
+    assert not app.exception
+    table = next(frame for frame in frames if "seq" in frame.columns)
+    assert "TC-SYS-01" in list(table["label"]), "метка проверки не попала в машинный след"
+    assert "Обменов" in _captions(app), "нет сводки журнала"
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "журнал не даёт второй команды запуска (IR-P-4)"
+    )
+
+
 def test_vertical_slice_protocol_shows_result(pult: tuple[AppTest, Path]) -> None:
     """Срез завершается протоколом: результат прогона виден в таблице, KPI и выгрузке."""
     app, store = pult
