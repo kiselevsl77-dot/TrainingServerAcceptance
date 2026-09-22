@@ -26,6 +26,12 @@ PRIORITY_HINTS: dict[str, str] = {
 
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
 
+#: Статусы замечания (`FR-P-37`, `DR-P-6`): дефект живёт от «открыто» до «закрыто».
+NOTE_OPEN = "открыто"
+NOTE_IN_PROGRESS = "в работе"
+NOTE_CLOSED = "закрыто"
+NOTE_STATUSES: tuple[str, ...] = (NOTE_OPEN, NOTE_IN_PROGRESS, NOTE_CLOSED)
+
 MODULES = (
     "Система",
     "File Import",
@@ -62,6 +68,10 @@ class ApiNote:
     check_id: str | None = None
     evidence: str = ""
     source: str = SOURCE_OPERATOR
+    #: Статус замечания (`FR-P-37`): «открыто» → «в работе» → «закрыто».
+    status: str = NOTE_OPEN
+    #: Комментарий последней смены статуса (чем подтверждено исправление).
+    status_note: str = ""
 
     @property
     def priority_rank(self) -> int:
@@ -95,6 +105,7 @@ def new_note(
     check_id: str | None = None,
     evidence: str = "",
     source: str = SOURCE_OPERATOR,
+    status: str = NOTE_OPEN,
 ) -> ApiNote:
     """Создаёт замечание к API с новым идентификатором."""
     return ApiNote(
@@ -110,7 +121,73 @@ def new_note(
         check_id=check_id,
         evidence=evidence.strip(),
         source=source,
+        status=status if status in NOTE_STATUSES else NOTE_OPEN,
     )
+
+
+def set_status(note: ApiNote, status: str, *, comment: str = "") -> ApiNote:
+    """Меняет статус замечания с комментарием (`FR-P-37`, `DR-P-6`).
+
+    Закрытие требует комментария: в отчёте должно быть видно, чем подтверждено исправление
+    (перепрогон, новая сборка), — иначе «закрыто» ничем не отличается от «открыто».
+
+    Raises:
+        ValueError: если статус вне перечня или закрытие без комментария.
+    """
+    if status not in NOTE_STATUSES:
+        raise ValueError(
+            f"статус замечания должен быть из {', '.join(NOTE_STATUSES)}, а не «{status}»"
+        )
+    text = str(comment or "").strip()
+    if status == NOTE_CLOSED and not text:
+        raise ValueError("закрытие замечания требует комментария: чем подтверждено исправление")
+    note.status = status
+    note.status_note = text
+    return note
+
+
+def find_note(notes: Sequence[dict[str, Any] | ApiNote], note_id: str) -> ApiNote | None:
+    """Замечание реестра по `note_id` (None — если такого замечания нет)."""
+    key = str(note_id or "").strip()
+    if not key:
+        return None
+    for note in notes:
+        item = note if isinstance(note, ApiNote) else ApiNote.from_dict(note)
+        if item.note_id == key:
+            return item
+    return None
+
+
+def apply_status(
+    notes: Sequence[dict[str, Any]],
+    note_id: str,
+    status: str,
+    *,
+    comment: str = "",
+) -> dict[str, Any]:
+    """Меняет статус замечания прямо в реестре сессии (`session.notes`).
+
+    Реестр сессии хранит замечания словарями, поэтому проверка статуса идёт через `ApiNote`
+    (`set_status`), а затем обновляются два поля — статус и комментарий: остальные данные
+    замечания не переписываются.
+
+    Raises:
+        ValueError: если замечания нет или статус не проходит проверку ядра.
+    """
+    target = next(
+        (
+            note
+            for note in notes
+            if isinstance(note, dict) and str(note.get("note_id") or "") == str(note_id or "")
+        ),
+        None,
+    )
+    if target is None:
+        raise ValueError(f"замечание {note_id or '?'} не найдено в реестре сессии")
+    checked = set_status(ApiNote.from_dict(dict(target)), status, comment=comment)
+    target["status"] = checked.status
+    target["status_note"] = checked.status_note
+    return target
 
 
 def sorted_notes(notes: Sequence[dict[str, Any] | ApiNote]) -> list[ApiNote]:

@@ -545,6 +545,11 @@ def _notes_section(session: TestSession) -> str:
             continue
         for note in items:
             lines.append(f"* **{note.title}** · модуль: {note.module} · источник: {note.source}")
+            if note.status:
+                status = note.status + (
+                    f" ({note.status_note})" if str(note.status_note or "").strip() else ""
+                )
+                lines.append(f"  * статус: {status}")
             if note.endpoint:
                 lines.append(f"  * эндпоинт: `{note.endpoint}`")
             if note.check_id:
@@ -664,6 +669,7 @@ def _group_summary(session: TestSession) -> list[dict[str, Any]]:
 NOTE_COLUMNS: tuple[str, ...] = (
     "note_id",
     "priority",
+    "status",
     "module",
     "title",
     "endpoint",

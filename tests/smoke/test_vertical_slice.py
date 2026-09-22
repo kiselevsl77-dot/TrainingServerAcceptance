@@ -294,6 +294,27 @@ def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> N
     )
 
 
+def test_vertical_slice_note_from_known_defect(pult: tuple[AppTest, Path]) -> None:
+    """Замечание из известного дефекта попадает в реестр сессии (`SCR-403`, `FR-P-38`)."""
+    app, store = pult
+    app, session_id = _plan(app)
+    app = _open(app, "scr403_notes")
+    app = _click(app, "Добавить в реестр")
+    session = _stored(store, session_id)
+    frames = [item.value for item in app.dataframe]
+
+    assert not app.exception
+    assert session.notes, "замечание не записано в сессию"
+    assert session.notes[-1]["priority"] in ("P0", "P1", "P2")
+    assert session.notes[-1]["status"] == "открыто"
+    assert "Реестр замечаний" in " ".join(item.value for item in app.subheader)
+    registry = next(frame for frame in frames if "priority" in frame.columns)
+    assert session.notes[-1]["title"][:30] in " ".join(str(item) for item in registry["title"])
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "разбор не даёт второй команды запуска (IR-P-4)"
+    )
+
+
 def test_vertical_slice_journal_shows_run_exchange(pult: tuple[AppTest, Path]) -> None:
     """Прогон оставляет машинный след: журнал показывает обмен по метке проверки (`SCR-402`)."""
     app, _store = pult
