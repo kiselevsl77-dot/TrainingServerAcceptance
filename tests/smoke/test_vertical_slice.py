@@ -194,3 +194,78 @@ def test_slice_programme_screen_without_session_says_so(pult: tuple[AppTest, Pat
     assert "Наборы проверок" in [item.value for item in app.subheader], (
         "выбор наборов виден даже без сессии — это контекст планирования"
     )
+
+
+def _plan(app: AppTest) -> tuple[AppTest, str]:
+    """Проходит планирование: сессия → программа из наборов → утверждение → очередь прогона."""
+    app = _open(app, "scr203_session")
+    app = _click(app, "Создать сессию")
+    session_id = str(app.session_state["pult_session_id"])
+    app = _click(app, "▶ Начать сессию")
+
+    app = _open(app, "scr102_programme")
+    section_set = sets_api.library_from_catalog().by_section("TC-SYS")[0].set_id
+    app.multiselect[0].set_value([sets_api.SMOKE_SET_ID, section_set])
+    app = _click(app, "🧩 Собрать программу (ИЛИ)")
+    app.text_input[0].set_value(AUTHOR)
+    app = _click(app, "✅ Утвердить программу")
+    app = _click(app, "🧾 Собрать очередь прогона")
+    return app, session_id
+
+
+def test_vertical_slice_run_next_check(pult: tuple[AppTest, Path]) -> None:
+    """Срез продолжается прогоном: «▶ Следующая» отправляет один пункт и пишет результат."""
+    app, store = pult
+    app, session_id = _plan(app)
+
+    app = _open(app, "scr301_run")
+    subheaders = [item.value for item in app.subheader]
+
+    assert any(text.startswith("Очередь программы") for text in subheaders), "нет зоны очереди"
+    assert "Управление" in subheaders, "нет зоны управления прогоном"
+    assert "Лента обмена" in subheaders, "нет ленты обмена"
+    assert "Вердикт и след" in subheaders, "нет панели контекста"
+
+    labels = [item.label for item in app.button]
+    assert any(label.startswith("▶ Следующая: TC-SYS-01") for label in labels), (
+        "единственная команда запуска должна называть пункт очереди (IR-P-4)"
+    )
+
+    app = _click(
+        app,
+        next(label for label in labels if label.startswith("▶ Следующая:")),
+    )
+    session = _stored(store, session_id)
+    checks = {str(item["check_id"]): item for item in session.checks}
+
+    assert checks["TC-SYS-01"]["status"] == "успех", "результат прогона не записан в сессию"
+    assert checks["TC-SYS-01"]["origin"] == "прогон"
+    assert session.queue["items"][0]["state"] == "выполнена", "пункт очереди не закрыт"
+    assert session.queue["items"][0]["journal_to"], "диапазон журнала не зафиксирован"
+    assert "Вердикт" in " ".join(_captions(app)) or "успех" in _messages(app)
+
+
+def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> None:
+    """После прогона карточка проверки показывает шаги, доказательства и след обменов."""
+    app, store = pult
+    app, session_id = _plan(app)
+    app = _open(app, "scr301_run")
+    labels = [item.label for item in app.button]
+    app = _click(app, next(label for label in labels if label.startswith("▶ Следующая:")))
+
+    app = _open(app, "scr302_check")
+    subheaders = [item.value for item in app.subheader]
+    markdown = " ".join(item.value for item in app.markdown)
+
+    assert not app.exception
+    assert "TC-SYS-01" in _captions(app), "карточка не называет пункт очереди"
+    assert "Шаги проверки" in markdown, "карточка не показывает шаги проверки"
+    assert "Что будет отправлено" in subheaders, "нет блока предпросмотра payload (FR-P-20)"
+    assert "Доказательства" in subheaders, "нет блока доказательств (FR-P-33)"
+    assert "Отметка оператора" in subheaders, "нет блока отметки оператора (FR-P-32)"
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "карточка проверки не должна давать вторую команду запуска (IR-P-4)"
+    )
+
+    session = _stored(store, session_id)
+    assert session.checks, "результат прогона потерялся при переходе между экранами"

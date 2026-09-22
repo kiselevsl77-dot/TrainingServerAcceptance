@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -23,6 +24,7 @@ from acceptance.config import PultConfig
 from acceptance.http_log import Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
 from acceptance.ui import nav, state
+from acceptance.ui.screens import RENDERERS
 from acceptance.ui.state import Runtime
 from client.http import ApiHttpClient
 from client.settings import TrainingServerSettings
@@ -102,22 +104,48 @@ def test_screen_shows_code_group_and_phase(pult: tuple[AppTest, Path, Path]) -> 
     app, _, _ = pult
     app = _open(app, "scr301_run")
     captions = [item.value for item in app.caption]
-    subheaders = [item.value for item in app.subheader]
 
     assert any("SCR-301" in text and "Испытания" in text and "Ф1–Ф2" in text for text in captions)
-    assert "Рабочая область" in subheaders, "нет рабочей области (третья зона макета)"
-    assert "Панель контекста" in subheaders, "нет панели контекста (третья зона макета)"
 
 
-def test_screen_shows_blocks_states_and_transitions(pult: tuple[AppTest, Path, Path]) -> None:
-    """Скелет показывает блоки макета, состояния (`IR-P-8`) и переходы на другие экраны."""
+def test_run_screen_without_session_says_so(pult: tuple[AppTest, Path, Path]) -> None:
+    """Без сессии «Прогон» объясняет состояние вместо пустого экрана (`IR-P-8`)."""
     app, _, _ = pult
     app = _open(app, "scr301_run")
-    markdown = " ".join(item.value for item in app.markdown)
+    messages = " ".join(item.value for item in app.warning)
 
-    assert "Одна команда запуска" in markdown, "не показан блок макета"
-    assert "Нет сессии" in markdown, "не показано состояние экрана"
-    assert "SCR-102" in markdown, "не показан переход к программе сессии"
+    assert "Сессия испытаний не выбрана" in messages
+    assert "→ Карточка проверки (SCR-302)" not in [item.label for item in app.button], (
+        "без сессии прогон не показывает управление"
+    )
+
+
+def _skeleton_key() -> str | None:
+    """Ключ экрана, который ещё рисуется каркасом скелета (None — все наполнены)."""
+    for key in nav.screens():
+        module = importlib.import_module(RENDERERS[key].__module__)
+        source = Path(str(module.__file__)).read_text(encoding="utf-8")
+        if "render_screen(" in source:
+            return key
+    return None
+
+
+def test_skeleton_screen_shows_blocks_states_and_transitions(
+    pult: tuple[AppTest, Path, Path],
+) -> None:
+    """Скелет (ненаполненный экран) показывает блоки макета, состояния (`IR-P-8`) и переходы."""
+    key = _skeleton_key()
+    if key is None:
+        pytest.skip("все 15 экранов наполнены: каркас скелета больше не используется")
+
+    app, _, _ = pult
+    app = _open(app, key)
+    markdown = " ".join(item.value for item in app.markdown)
+    subheaders = [item.value for item in app.subheader]
+
+    assert "Рабочая область" in subheaders
+    assert "Панель контекста" in subheaders
+    assert "SCR-" in markdown, "скелет не показывает переходы на другие экраны"
 
 
 def test_sidebar_lists_five_groups_and_all_screens(pult: tuple[AppTest, Path, Path]) -> None:

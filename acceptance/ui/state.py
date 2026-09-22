@@ -506,6 +506,9 @@ def _error_text(exc: Exception) -> str:
 #: Ключ маршрута экрана в состоянии сессии (ключи — `acceptance/ui/nav.py`).
 KEY_SCREEN = "pult_screen"
 
+#: Ключ состояния сессии: выбранная проверка (переходы «открыть карточку проверки»).
+KEY_CHECK = "pult_check_id"
+
 #: Наборы проверок — общие данные пульта (файл `acceptance_data/check_sets.json`),
 #: поэтому кэш короткий: правка на `SCR-101` видна сразу после сохранения.
 SETS_CACHE_TTL = 10.0
