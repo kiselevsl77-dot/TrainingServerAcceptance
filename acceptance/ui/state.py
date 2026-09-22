@@ -12,18 +12,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 import streamlit as st
 
+from acceptance import programme as programme_api
+from acceptance import queue as queue_api
+from acceptance import results as results_api
+from acceptance import sets as sets_api
 from acceptance.api import Apis, build_client
 from acceptance.config import PultConfig, load_config
 from acceptance.exchange import build_console_client
-from acceptance.http_log import Journal
+from acceptance.http_log import HttpExchange, Journal
 from acceptance.logging_setup import LoggingArtifacts, log_event, setup_logging
 from acceptance.paths import ensure_dirs
 from acceptance.session import (
@@ -492,3 +498,123 @@ def _error_text(exc: Exception) -> str:
     """Текст ошибки API, пригодный для показа оператору."""
     status = getattr(exc, "status_code", None)
     return f"[{status}] {exc}" if status else str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Переходы между экранами и доступ экранов к ядру (этап 3)
+# ---------------------------------------------------------------------------
+#: Ключ маршрута экрана в состоянии сессии (ключи — `acceptance/ui/nav.py`).
+KEY_SCREEN = "pult_screen"
+
+#: Наборы проверок — общие данные пульта (файл `acceptance_data/check_sets.json`),
+#: поэтому кэш короткий: правка на `SCR-101` видна сразу после сохранения.
+SETS_CACHE_TTL = 10.0
+
+
+def go_to(screen_key: str) -> None:
+    """Переводит пульт на другой экран и перерисовывает страницу (переходы макета)."""
+    st.session_state[KEY_SCREEN] = str(screen_key)
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Библиотека наборов проверок (`SCR-101`, файл `acceptance_data/check_sets.json`)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=SETS_CACHE_TTL, show_spinner="Загрузка библиотеки наборов…")
+def sets_library() -> sets_api.SetsLibrary:
+    """Библиотека наборов проверок (пустая, если файла ещё нет).
+
+    Пустая библиотека — нормальное состояние первого запуска: экран «Наборы проверок»
+    предлагает создать стартовые наборы из каталога (`seed_sets_library`), а не
+    создаёт их молча.
+    """
+    return sets_api.load_sets()
+
+
+def refresh_sets_library() -> None:
+    """Сбрасывает кэш библиотеки наборов (после правки или создания из каталога)."""
+    sets_library.clear()
+
+
+def save_sets_library(library: sets_api.SetsLibrary) -> Path:
+    """Сохраняет библиотеку наборов на диск и сбрасывает кэш чтения."""
+    path = sets_api.save_sets(library)
+    refresh_sets_library()
+    return path
+
+
+def seed_sets_library(*, author: str = "") -> sets_api.SetsLibrary:
+    """Создаёт стартовую библиотеку наборов из каталога (`sets.library_from_catalog`)."""
+    library = sets_api.library_from_catalog(author=author)
+    save_sets_library(library)
+    return library
+
+
+# ---------------------------------------------------------------------------
+# Программа сессии и очередь прогона (`SCR-102`, `SCR-301`)
+# ---------------------------------------------------------------------------
+def current_programme() -> programme_api.Programme:
+    """Программа текущей сессии (пустая, если сессии нет или программа не собрана)."""
+    session = current_session()
+    if session is None:
+        return programme_api.Programme()
+    return programme_api.load_programme(session)
+
+
+def store_programme(
+    value: programme_api.Programme,
+    *,
+    event: str = "",
+    message: str = "",
+) -> programme_api.Programme | None:
+    """Сохраняет программу в текущую сессию; None — если сессии нет.
+
+    Событие (`event`) попадает в историю сессии: по ней видно, кто и когда менял
+    состав программы (`FR-P-68`…`FR-P-70`).
+    """
+    session = current_session()
+    if session is None:
+        return None
+    programme_api.save_programme(session, value, event=event, message=message)
+    store_session(session)
+    return value
+
+
+def current_queue() -> queue_api.Queue:
+    """Очередь прогона текущей сессии (пустая, если прогон не начинался)."""
+    session = current_session()
+    if session is None:
+        return queue_api.Queue()
+    return queue_api.load_queue(session)
+
+
+def store_queue(
+    value: queue_api.Queue,
+    *,
+    event: str = "",
+    message: str = "",
+) -> queue_api.Queue | None:
+    """Сохраняет очередь прогона в текущую сессию; None — если сессии нет."""
+    session = current_session()
+    if session is None:
+        return None
+    queue_api.save_queue(session, value, event=event, message=message)
+    store_session(session)
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Результаты и журнал обмена: чтение для экранов «Прогон», «Протокол», «Журнал»
+# ---------------------------------------------------------------------------
+def results_state(check_ids: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Состояние проверок из `results.py` — **единственный** источник статуса (`DR-P-5`)."""
+    session = current_session()
+    if session is None:
+        return {}
+    return results_api.state(session, check_ids)
+
+
+def journal_records() -> tuple[HttpExchange, ...]:
+    """Записи журнала обмена с начала процесса пульта (пустой кортеж без стенда)."""
+    runtime = get_runtime()
+    return runtime.journal.records if runtime is not None else ()

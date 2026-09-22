@@ -52,7 +52,7 @@ GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = nav.GROUPS
 #: невидимой» страницы.
 nav.validate(SCREENS)
 
-SCREEN_KEY = "pult_screen"
+SCREEN_KEY = state.KEY_SCREEN
 
 if SCREEN_KEY not in st.session_state:
     st.session_state[SCREEN_KEY] = nav.DEFAULT_SCREEN
