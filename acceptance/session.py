@@ -46,8 +46,8 @@ TOOL_VERSION = "0.1.0"
 #:        объединение наборов по ИЛИ, ревизии, покрытие, утверждение), `queue`
 #:        (очередь прогона — снимок утверждённой ревизии) и `check_history` (история
 #:        повторов проверки); библиотека наборов живёт отдельным файлом
-#:        `acceptance_data/check_sets.json` (`acceptance/sets.py`). Поле `plan` —
-#:        legacy этапа v6: удаляется вместе со старым интерфейсом.
+#:        `acceptance_data/check_sets.json` (`acceptance/sets.py`). Прежнее поле `plan`
+#:        (v6) удалено на этапе 2 big bang — программа и очередь живут в `programme`/`queue`.
 #: Файлы v1–v5 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
@@ -139,7 +139,6 @@ class TestSession:
     console_calls: list[dict[str, Any]] = field(default_factory=list)
     tasks: list[dict[str, Any]] = field(default_factory=list)
     dataset_composition: list[dict[str, Any]] = field(default_factory=list)
-    plan: dict[str, Any] = field(default_factory=dict)
     programme: dict[str, Any] = field(default_factory=dict)
     queue: dict[str, Any] = field(default_factory=dict)
     check_history: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -210,7 +209,6 @@ class TestSession:
             "console_calls": self.console_calls,
             "tasks": self.tasks,
             "dataset_composition": self.dataset_composition,
-            "plan": self.plan,
             "programme": self.programme,
             "queue": self.queue,
             "check_history": self.check_history,
@@ -243,7 +241,6 @@ class TestSession:
             console_calls=[dict(item) for item in (data.get("console_calls") or [])],
             tasks=[dict(item) for item in (data.get("tasks") or [])],
             dataset_composition=[dict(item) for item in (data.get("dataset_composition") or [])],
-            plan=dict(data.get("plan") or {}),
             programme=dict(data.get("programme") or {}),
             queue=dict(data.get("queue") or {}),
             check_history={

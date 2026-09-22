@@ -332,7 +332,7 @@ def check_confirmation(
 ) -> tuple[bool, str, dict[str, Any]]:
     """Проверяет требования подтверждения для класса проверки.
 
-    Карточка запуска (`acceptance.ui.common.run_card.RunCard`) передаётся как
+    Карточка запуска передаётся как
     «утиная» структура: движок не зависит от Streamlit и проверяет только поля
     `missing`, `confirmed` и `to_dict()`.
 

@@ -229,7 +229,7 @@ def call_steps(spec: CheckSpec) -> list[CallStep]:
 
     Негативные пробы (`probe_paths`) шагами не являются: они подтверждают
     отсутствие маршрута и выполняются сценарием проверки, а вручную — консолью
-    (`SCR-501`). Так же вёл себя старый `plan_runner`.
+    (`SCR-501`). Так же вёл себя прежний планировщик (удалён на этапе 2 big bang).
     """
     steps: list[CallStep] = []
     for index, target in enumerate(spec.endpoints, start=1):

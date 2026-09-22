@@ -274,15 +274,23 @@ def test_current_schema_version_is_seven():
     assert payload["check_history"] == {}
 
 
-def test_plan_is_stored_in_session(tmp_path: Path):
-    """Программа испытаний живёт в сессии и переживает перезапись файла (схема v6)."""
+def test_programme_and_queue_are_stored_in_session(tmp_path: Path):
+    """Программа сессии и очередь прогона живут в сессии и переживают перезапись файла (v7).
+
+    Прежнее поле `plan` схемы v6 удалено на этапе 2 big bang вместе со старым планировщиком:
+    состав программы собирается из наборов (`acceptance/programme.py`), а очередь — снимок
+    утверждённой ревизии (`acceptance/queue.py`).
+    """
     session = _session(tmp_path)
-    session.plan = {"mode": "call", "items": [{"item_id": "TC-SYS-01"}]}
+    session.programme = {"revision": 2, "items": [{"item_id": "TC-SYS-01"}]}
+    session.queue = {"revision": 2, "items": [{"item_id": "TC-SYS-01"}]}
 
     restored = SessionModel.from_dict(session.to_dict())
 
-    assert restored.plan["mode"] == "call"
-    assert restored.plan["items"][0]["item_id"] == "TC-SYS-01"
+    assert restored.programme["revision"] == 2
+    assert restored.programme["items"][0]["item_id"] == "TC-SYS-01"
+    assert restored.queue["revision"] == 2
+    assert not hasattr(restored, "plan"), "legacy-поле `plan` удалено на этапе 2 big bang"
 
 
 # ---------------------------------------------------------------------------
