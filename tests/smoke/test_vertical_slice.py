@@ -6,8 +6,9 @@
 
     1. `SCR-203` — создать сессию и начать её;
     2. `SCR-102` — собрать программу из наборов, утвердить ревизию, собрать очередь прогона;
-    3. `SCR-301` — «▶ Следующая» и результат проверки (добавляется на шаге 3.5);
-    4. `SCR-401` — протокол с результатом (добавляется на шаге 3.6).
+    3. `SCR-301` — «▶ Следующая» и результат проверки;
+    4. `SCR-302` — карточка проверки с шагами, payload, доказательствами и отметкой;
+    5. `SCR-401` — протокол: вердикт, диапазон журнала, KPI и выгрузка выборки.
 
 Стенд подменён `httpx.MockTransport`, сессии пишутся во временный каталог, библиотека наборов
 собирается из каталога проверок: тест не зависит от живого стенда и не трогает `acceptance_data/`.
@@ -266,6 +267,34 @@ def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> N
     assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
         "карточка проверки не должна давать вторую команду запуска (IR-P-4)"
     )
+
+
+def test_vertical_slice_protocol_shows_result(pult: tuple[AppTest, Path]) -> None:
+    """Срез завершается протоколом: результат прогона виден в таблице, KPI и выгрузке."""
+    app, store = pult
+    app, session_id = _plan(app)
+    app = _open(app, "scr301_run")
+    labels = [item.label for item in app.button]
+    app = _click(app, next(label for label in labels if label.startswith("▶ Следующая:")))
+
+    app = _open(app, "scr401_protocol")
+    subheaders = [item.value for item in app.subheader]
+    table = app.dataframe[0].value
+
+    assert not app.exception
+    assert any(text.startswith("Протокол (") for text in subheaders), "нет таблицы протокола"
+    assert "KPI выборки" in subheaders, "нет панели KPI протокола"
+    assert "TC-SYS-01" in list(table["check_id"]), "результат прогона не попал в протокол"
+    row = table[table["check_id"] == "TC-SYS-01"].iloc[0]
+    assert str(row["status"]).endswith("успех")
+    assert str(row["journal_range"]).startswith("#"), "диапазон журнала потерян"
+    assert "Готовность протокола" in _captions(app)
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "протокол не должен давать вторую команду запуска (IR-P-4)"
+    )
+
+    session = _stored(store, session_id)
+    assert session.checks, "результат прогона потерялся до протокола"
 
     session = _stored(store, session_id)
     assert session.checks, "результат прогона потерялся при переходе между экранами"

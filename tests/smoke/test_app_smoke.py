@@ -227,3 +227,17 @@ def test_filled_screens_have_no_stage_badge(pult: tuple[AppTest, Path, Path]) ->
         assert not any("Каркас этапа 2" in item.value for item in app.info), (
             f"экран {key} всё ещё показывает заглушку каркаса"
         )
+
+
+def test_protocol_screen_without_session_says_so(pult: tuple[AppTest, Path, Path]) -> None:
+    """`SCR-401` без сессии объясняет состояние вместо пустой таблицы (`IR-P-8`)."""
+    app, _, _ = pult
+    app = _open(app, "scr401_protocol")
+    messages = " ".join(item.value for item in app.warning)
+
+    assert not app.exception
+    assert "Сессия испытаний не выбрана" in messages
+    assert "→ Карточка проверки (SCR-302)" not in [button.label for button in app.button], (
+        "без сессии протокол не показывает действия"
+    )
+    assert app.dataframe == [], "без сессии протокол не рисует пустую таблицу"
