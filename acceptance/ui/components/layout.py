@@ -13,6 +13,7 @@ unit-тестом; рисующие (`render_header`, `zones`, `kpi`, `rows_tabl
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, Literal
 
 import streamlit as st
@@ -60,6 +61,23 @@ def percent(done: int, total: int) -> str:
         return "нет пунктов"
     share = round(int(done) * 100 / int(total))
     return f"{int(done)} из {int(total)}{SEPARATOR}{share} %"
+
+
+def short_time(value: Any, format_text: str = "%d.%m %H:%M") -> str:
+    """Короткое время для интерфейса: `21.09 10:12` (иначе — исходный текст).
+
+    В таблицах и подписях нужен компактный вид времени, а в файлах сессии время
+    хранится полным ISO-момент; функция переводит одно в другое, а нераспознанный
+    текст возвращает как есть, чтобы событие не исчезло из-за формата.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return text
+    return f"{moment:{format_text}}"
 
 
 def render_header(key: str, subtitle: str = "") -> None:

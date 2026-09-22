@@ -18,6 +18,7 @@ from __future__ import annotations
 from acceptance.checks.registry import CLASS_LABELS, STATUS_ICONS, CheckClass, CheckStatus
 from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICONS, QUEUE_STATES
 from acceptance.results import ORIGIN_MANUAL, ORIGIN_RUN, ORIGIN_SUSPENDED
+from acceptance.session import TestSession
 
 #: Маркеры очереди: как они называются оператору (макет `docs/16` §0).
 MARKER_LABELS: dict[str, str] = {
@@ -119,3 +120,20 @@ def result_text(row: dict[str, object]) -> str:
     status = str(row.get("status") or "")
     verdict = str(row.get("verdict") or "")
     return f"{icon} {status}" + (f" · {verdict}" if verdict else "")
+
+
+def build_warning(session: TestSession, current_build: str = "") -> str:
+    """Предупреждение о расхождении сборок: испытываем не то, что записано в сессии.
+
+    Молчать об этом нельзя (`AC-P-1`): прогон на другой сборке делает результаты
+    неприменимыми к объекту испытаний, зафиксированному в реквизитах (`DR-P-1`).
+    Пустая строка — расхождения нет или сравнивать не с чем.
+    """
+    stored = str(getattr(session, "server_build", "") or "").strip()
+    actual = str(current_build or "").strip()
+    if not stored or not actual or stored == actual:
+        return ""
+    return (
+        f"Сборка стенда сейчас — {actual}, а в сессии зафиксирована {stored}: "
+        "проверьте объект испытаний и снимите снимок стенда (`SCR-202`)"
+    )

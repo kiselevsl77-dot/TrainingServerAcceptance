@@ -18,7 +18,7 @@ unit-тестами (`tests/unit/test_ui_components.py`), а не только �
 
 from __future__ import annotations
 
-from acceptance.ui.components import flash, journal, layout, run_card, status
+from acceptance.ui.components import flash, journal, layout, run_card, snapshots, status
 from acceptance.ui.components.screen import ScreenContent, render_screen
 
 __all__ = [
@@ -28,5 +28,6 @@ __all__ = [
     "layout",
     "render_screen",
     "run_card",
+    "snapshots",
     "status",
 ]

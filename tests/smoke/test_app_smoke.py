@@ -157,3 +157,45 @@ def test_pult_started_event_is_written_to_logs(pult: tuple[AppTest, Path, Path])
     assert started, "в JSONL сессии нет события pult_started"
     assert started[-1]["payload"]["screen"] == nav.DEFAULT_SCREEN
     assert started[-1]["payload"]["screen_code"] == nav.by_key(nav.DEFAULT_SCREEN).code
+
+
+# ---------------------------------------------------------------------------
+# Наполненные экраны (этап 3): экран показывает данные, а не скелет каркаса
+# ---------------------------------------------------------------------------
+def test_session_screen_offers_to_create_session(pult: tuple[AppTest, Path, Path]) -> None:
+    """`SCR-203` без сессии предлагает создать её — состояние «нет сессии» (`IR-P-8`)."""
+    app, _, _ = pult
+    app = _open(app, "scr203_session")
+
+    assert not app.exception
+    assert "Создать сессию" in [button.label for button in app.button]
+    assert any("Сессия не выбрана" in item.value for item in app.info), (
+        "экран не объясняет, зачем нужна сессия"
+    )
+    assert "Новая сессия" in [item.value for item in app.subheader]
+
+
+def test_stand_screen_shows_server_and_registries_blocks(pult: tuple[AppTest, Path, Path]) -> None:
+    """`SCR-202` показывает адрес стенда, кнопку проверки и блок реестров (макет `docs/16`)."""
+    app, _, _ = pult
+    app = _open(app, "scr202_stand")
+
+    assert not app.exception
+    subheaders = [item.value for item in app.subheader]
+    captions = " ".join(item.value for item in app.caption)
+
+    assert "Сервер и сборка" in subheaders
+    assert "Реестры стенда" in subheaders
+    assert "🔄 Проверить" in [button.label for button in app.button]
+    assert BASE_URL in captions, "экран не показывает адрес испытуемого стенда"
+
+
+def test_filled_screens_have_no_stage_badge(pult: tuple[AppTest, Path, Path]) -> None:
+    """Наполненный экран не показывает бейдж каркаса этапа 2: это признак заглушки."""
+    app, _, _ = pult
+
+    for key in ("scr202_stand", "scr203_session"):
+        app = _open(app, key)
+        assert not any("Каркас этапа 2" in item.value for item in app.info), (
+            f"экран {key} всё ещё показывает заглушку каркаса"
+        )
