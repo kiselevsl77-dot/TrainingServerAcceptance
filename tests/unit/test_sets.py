@@ -267,7 +267,7 @@ def test_suggested_set_id_avoids_collisions():
 
 
 def test_library_section_rows_show_volume(library: sets_api.SetsLibrary):
-    """Раздел библиотеки: наборы, проверки и объёмы каталога (`SCR-14`, `FR-P-69`)."""
+    """Раздел библиотеки: наборы, проверки и объёмы каталога (`SCR-101`, `FR-P-69`)."""
     rows = {row["section"]: row for row in library.section_rows()}
 
     assert set(rows) == set(sets_api.section_options())

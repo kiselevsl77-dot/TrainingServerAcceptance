@@ -232,7 +232,7 @@ def test_programme_notice_marks_draft(library: sets_api.SetsLibrary):
 
     assert "черновик" not in runner_api.programme_notice(approved_queue)
     assert "утверждена" in runner_api.programme_notice(approved_queue)
-    assert "SCR-15" in runner_api.programme_notice(queue_api.Queue())
+    assert "SCR-102" in runner_api.programme_notice(queue_api.Queue())
 
 
 # ---------------------------------------------------------------------------

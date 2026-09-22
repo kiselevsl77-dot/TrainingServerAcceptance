@@ -1,5 +1,5 @@
 /* ПУЛЬТ испытаний — кликабельный прототип целевого интерфейса.
-   Документы: docs/15 (ТЗ, требования FR-P/NFR-P/IR-P), docs/16 (макет, экраны SCR-01…SCR-13).
+   Документы: docs/15 (ТЗ, требования FR-P/NFR-P/IR-P), docs/16 (макет, экраны SCR-101…SCR-501).
    Прототип офлайн: без сети, без сборки, без внешних зависимостей. */
 
 (function () {
@@ -9,7 +9,7 @@
 
   /* ------------------------------------------------------------------ состояние */
   var ST = {
-    screen: "SCR-14",
+    screen: "SCR-101",
     ui: {
       state: "normal",                 // normal | empty | loading | error | nosession
       req: "сводка", res: "тело",      // подробность запроса и ответа (независимо)
@@ -23,7 +23,7 @@
       taskTab: "Наблюдение", dataTab: "Записи",
       toolsTab: "Консоль", notesTab: "Замечания",
       runCard: null,                   // пункт, ожидающий карточку запуска
-      setFor: null,                    // набор, открытый в редакторе SCR-14
+      setFor: null,                    // набор, открытый в редакторе SCR-101
       setSearch: "", setKlass: "", inSet: "all",
       reduction: ""                    // обоснование сокращения при утверждении программы
     },
@@ -34,13 +34,13 @@
     exchanges: DEMO.exchanges.slice(),
     selectedId: null,
     lastRunId: null,                   // «последняя» проверка — для чтения ленты
-    programmeOrder: null,              // ручной порядок пунктов программы (SCR-15)
+    programmeOrder: null,              // ручной порядок пунктов программы (SCR-102)
     programmeBaseline: null,           // состав предыдущей ревизии — для дельты
     seq: DEMO.exchanges.length ? DEMO.exchanges[DEMO.exchanges.length - 1].seq : 0,
     auto: { on: false, timer: null, pause: 3 }
   };
 
-  /* Наборы проверок (SCR-14): библиотека планирования. */
+  /* Наборы проверок (SCR-101): библиотека планирования. */
   function buildSets() {
     return DEMO.sets.map(function (s) {
       return {
@@ -77,7 +77,7 @@
   }
   function isDone(item) { return item.status !== "не выполнена"; }
 
-  /* ---------------------------- планирование: наборы, программа, очередь (SCR-14/15) */
+  /* ---------------------------- планирование: наборы, программа, очередь (SCR-101/15) */
   function setById(id) {
     for (var i = 0; i < ST.sets.length; i++) { if (ST.sets[i].id === id) { return ST.sets[i]; } }
     return null;
@@ -207,35 +207,35 @@
 
   /* ------------------------------------------------------- реестр экранов (docs/16) */
   var SCREENS = [
-    { id: "SCR-14", title: "Наборы проверок", group: "Планирование испытаний", phase: "Ф0",
+    { id: "SCR-101", title: "Наборы проверок", group: "Планирование испытаний", phase: "Ф0",
       req: "FR-P-65…FR-P-67, DR-P-13, IR-P-17, IR-P-18, IR-P-21", render: renderSets },
-    { id: "SCR-15", title: "Программа сессии", group: "Планирование испытаний", phase: "Ф0, Ф3",
+    { id: "SCR-102", title: "Программа сессии", group: "Планирование испытаний", phase: "Ф0, Ф3",
       req: "FR-P-41, FR-P-68…FR-P-70, DR-P-14, IR-P-19, IR-P-21", render: renderProgramme },
-    { id: "SCR-01", title: "Обзор испытаний", group: "Подготовка", phase: "Ф0–Ф4",
+    { id: "SCR-201", title: "Обзор испытаний", group: "Подготовка", phase: "Ф0–Ф4",
       req: "FR-P-11, FR-P-12, FR-P-48, IR-P-8", render: renderOverview },
-    { id: "SCR-02", title: "Стенд", group: "Подготовка", phase: "Ф0, Ф4",
+    { id: "SCR-202", title: "Стенд", group: "Подготовка", phase: "Ф0, Ф4",
       req: "FR-P-1, FR-P-6, FR-P-47, DR-P-8", render: renderStand },
-    { id: "SCR-03", title: "Сессия испытаний", group: "Подготовка", phase: "Ф0, Ф4",
+    { id: "SCR-203", title: "Сессия испытаний", group: "Подготовка", phase: "Ф0, Ф4",
       req: "FR-P-2…FR-P-5, FR-P-52, FR-P-55, DR-P-1", render: renderSession },
-    { id: "SCR-04", title: "Данные стенда", group: "Подготовка", phase: "Ф0",
+    { id: "SCR-204", title: "Данные стенда", group: "Подготовка", phase: "Ф0",
       req: "FR-P-7…FR-P-10, DR-P-9", render: renderData },
-    { id: "SCR-05", title: "Прогон (единое рабочее место)", group: "Испытания", phase: "Ф1–Ф2",
+    { id: "SCR-301", title: "Прогон (единое рабочее место)", group: "Испытания", phase: "Ф1–Ф2",
       req: "FR-P-13…FR-P-23, FR-P-27, FR-P-29, IR-P-3, IR-P-4, IR-P-13", render: renderRun },
-    { id: "SCR-06", title: "Карточка проверки", group: "Испытания", phase: "Ф1–Ф2",
+    { id: "SCR-302", title: "Карточка проверки", group: "Испытания", phase: "Ф1–Ф2",
       req: "FR-P-14, FR-P-20, FR-P-33, IR-P-5", render: renderCheckCard },
-    { id: "SCR-07", title: "$Задачи", group: "Испытания", phase: "Ф1–Ф2",
+    { id: "SCR-303", title: "$Задачи", group: "Испытания", phase: "Ф1–Ф2",
       req: "FR-P-24…FR-P-26, DR-P-10, IR-P-2", render: renderTasks },
-    { id: "SCR-08", title: "Протокол проверок", group: "Результаты", phase: "Ф2",
+    { id: "SCR-401", title: "Протокол проверок", group: "Результаты", phase: "Ф2",
       req: "FR-P-30, FR-P-32, FR-P-34…FR-P-36, FR-P-64, IR-P-4", render: renderProtocol },
-    { id: "SCR-09", title: "Журнал обмена", group: "Результаты", phase: "Ф1–Ф4",
+    { id: "SCR-402", title: "Журнал обмена", group: "Результаты", phase: "Ф1–Ф4",
       req: "FR-P-28, FR-P-57, DR-P-4", render: renderJournal },
-    { id: "SCR-10", title: "Замечания к API и перспективные требования", group: "Результаты", phase: "Ф2–Ф3",
+    { id: "SCR-403", title: "Замечания к API и перспективные требования", group: "Результаты", phase: "Ф2–Ф3",
       req: "FR-P-31, FR-P-37…FR-P-40, FR-P-44, DR-P-6", render: renderNotes },
-    { id: "SCR-11", title: "Отчёт испытаний", group: "Результаты", phase: "Ф4",
+    { id: "SCR-404", title: "Отчёт испытаний", group: "Результаты", phase: "Ф4",
       req: "FR-P-45…FR-P-56, DR-P-7", render: renderReport },
-    { id: "SCR-12", title: "Сравнение сессий и сборок", group: "Результаты", phase: "Ф3–Ф4",
+    { id: "SCR-405", title: "Сравнение сессий и сборок", group: "Результаты", phase: "Ф3–Ф4",
       req: "FR-P-42, FR-P-43", render: renderCompare },
-    { id: "SCR-13", title: "Инструменты: консоль, диагностика, настройки, справка", group: "Инструменты",
+    { id: "SCR-501", title: "Инструменты: консоль, диагностика, настройки, справка", group: "Инструменты",
       phase: "вне процесса", req: "FR-P-58…FR-P-63, IR-P-16", render: renderTools }
   ];
 
@@ -287,7 +287,7 @@
     }
     if (u === "nosession") {
       return '<div class="banner"><b>Сессия испытаний не выбрана.</b><p class="hint">Результаты прогона не попадут в протокол. ' +
-        'Откройте <a href="#scr-03">SCR-03 Сессия испытаний</a> и создайте сессию.</p></div>';
+        'Откройте <a href="#scr-203">SCR-203 Сессия испытаний</a> и создайте сессию.</p></div>';
     }
     return "";
   }
@@ -319,13 +319,13 @@
     var hash = (window.location.hash || "").replace("#", "").toUpperCase();
     var match = null;
     SCREENS.forEach(function (s) { if (s.id === hash) { match = s.id; } });
-    ST.screen = match || "SCR-14";
+    ST.screen = match || "SCR-101";
     ST.selectedId = nextItem() ? nextItem().id : (ST.queue.length ? ST.queue[0].id : null);
     ST.programmeBaseline = programmeIdList();
     render();
   }
 
-  /* ------------------- SCR-14. Наборы проверок (планирование: каталог ↔ состав набора) */
+  /* ------------------- SCR-101. Наборы проверок (планирование: каталог ↔ состав набора) */
   function currentSet() {
     return setById(ST.ui.setFor) || ST.sets[0] || null;
   }
@@ -416,13 +416,13 @@
       '<button class="act ghost" data-act="set-save">💾 Сохранить ревизию</button>' +
       '<button class="act ghost" data-act="set-new">＋ новый набор</button>' +
       '<button class="act ghost" data-act="set-copy">⧉ копировать</button>' +
-      '<button class="act ghost" data-act="nav" data-id="SCR-15">к программе →</button></div>' +
+      '<button class="act ghost" data-act="nav" data-id="SCR-102">к программе →</button></div>' +
       '<p class="hint">Команд запуска в разделе «Планирование» нет: запуск — только «Следующая» на «Прогоне» ' +
       "(IR-P-4, IR-P-18). Изменение утверждённого набора выпускает новую ревизию (FR-P-66).</p></div>";
     return '<div class="grid3"><div>' + left + "</div><div>" + right + "</div></div>";
   }
 
-  /* --------------------- SCR-15. Программа сессии (объединение наборов, покрытие) */
+  /* --------------------- SCR-102. Программа сессии (объединение наборов, покрытие) */
   function programmeOrder() {
     var base = programmeIdList();
     if (!ST.programmeOrder) { return base; }
@@ -501,15 +501,15 @@
       d.removed.length + " (" + esc(d.removed.slice(0, 6).join(", ") || "—") + ")</p>" +
       '<div class="row"><button class="act" data-act="prog-approve">✅ Утвердить программу</button>' +
       '<button class="act ghost" data-act="prog-revision">➕ Новая ревизия</button>' +
-      '<button class="act ghost" data-act="nav" data-id="SCR-05">к прогону →</button>' +
+      '<button class="act ghost" data-act="nav" data-id="SCR-301">к прогону →</button>' +
       '<button class="act ghost" data-act="toast" data-msg="Заглушка: программа выгружается в json/csv (FR-P-70)">⬇ json</button>' +
-      '<button class="act ghost" data-act="nav" data-id="SCR-14">✎ наборы</button></div>' +
+      '<button class="act ghost" data-act="nav" data-id="SCR-101">✎ наборы</button></div>' +
       '<p class="hint">Состав программы меняет только руководитель испытаний; в «Испытаниях» правка недоступна — ' +
       "только «снять с причиной» как результат прогона (FR-P-15, IR-P-18).</p></div>";
     return '<div class="grid3"><div>' + left + "</div><div>" + right + "</div></div>";
   }
 
-  /* ------------------------------------------------- SCR-01. Обзор испытаний */
+  /* ------------------------------------------------- SCR-201. Обзор испытаний */
   function renderOverview() {
     var s = stats(), r = readiness(), open = openNotes();
     var p0 = open.filter(function (n) { return n.priority === "P0"; }).length;
@@ -534,8 +534,8 @@
         (uncovered().length
           ? " · ⛔ не покрыты: " + esc(uncovered().map(function (g) { return g.group; }).join(", "))
           : "") + "</p>" +
-        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-15">К программе →</button>' +
-        '<button class="act ghost" data-act="nav" data-id="SCR-14">К наборам →</button></div>' +
+        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-102">К программе →</button>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-101">К наборам →</button></div>' +
       "</div>" +
       '<div class="card"><h3>Прогресс очереди</h3>' +
         '<div class="bar green"><span style="width:' + percent + '%"></span></div>' +
@@ -544,26 +544,26 @@
           cell("Успех", s.success) + cell("Отказ", s.fail) + cell("Блокировано", s.blocked) +
           cell("Пропущ./прерв.", s.skipped) + cell("Снято", s.off) +
         "</div>" +
-        '<div class="row"><button class="act" data-act="nav" data-id="SCR-05">К прогону →</button>' +
-        '<button class="act ghost" data-act="nav" data-id="SCR-08">К протоколу →</button></div>' +
+        '<div class="row"><button class="act" data-act="nav" data-id="SCR-301">К прогону →</button>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-401">К протоколу →</button></div>' +
       "</div>" +
       '<div class="card"><h3>Готовность отчёта: ' + r.percent + " %</h3>" +
         (r.missing.length
           ? '<ul class="list">' + r.missing.map(function (m) { return "<li>⛔ " + esc(m) + "</li>"; }).join("") + "</ul>"
           : '<p class="hint">✅ комплект можно формировать</p>') +
-        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-11">К отчёту →</button></div>' +
+        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-404">К отчёту →</button></div>' +
       "</div></div>" +
       '<div><div class="card"><h3>Стенд</h3><p>✅ ' + esc(DEMO.stand.baseUrl) + " · " + esc(DEMO.stand.build) +
         '</p><p class="hint">Контур: ' + esc(DEMO.stand.namespace) + " · health: " + esc(DEMO.stand.health) + "</p>" +
         '<p class="hint">Обменов за сессию: ' + ST.exchanges.length + " · ошибок: " +
         ST.exchanges.filter(function (x) { return x.s >= 400; }).length + "</p>" +
-        '<button class="act ghost" data-act="nav" data-id="SCR-02">Открыть стенд →</button></div>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-202">Открыть стенд →</button></div>' +
       '<div class="card"><h3>Внимание</h3>' +
         "<p>Открытые <b>P0</b>: " + p0 + " · <b>P1</b>: " + p1 + "</p>" +
         '<ul class="list">' + open.slice(0, 4).map(function (n) {
           return "<li>" + esc(n.priority + " · " + n.check + " — " + n.title) + "</li>";
         }).join("") + "</ul>" +
-        '<button class="act ghost" data-act="nav" data-id="SCR-10">К замечаниям →</button></div>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-403">К замечаниям →</button></div>' +
       '<div class="card"><h3>Уборка `__TEST__`</h3>' +
         "<p>Создано в сессии: 3 · удалено: 3 · хвостов нет</p>" +
         '<p class="hint">Контроль обязателен до формирования отчёта (FR-P-46).</p></div>' +
@@ -571,14 +571,14 @@
         "<li>Продолжить прогон очереди: следующий пункт — " + esc(nextItem() ? nextItem().id : "нет") + "</li>" +
         "<li>Обработать открытые замечания по приоритетам</li>" +
         "<li>Снять снимок «Окончание» и сформировать комплект</li></ol>" +
-        '<button class="act" data-act="nav" data-id="SCR-05">К прогону →</button></div></div></div>';
+        '<button class="act" data-act="nav" data-id="SCR-301">К прогону →</button></div></div></div>';
   }
 
   function cell(label, value) {
     return '<div class="cell"><b>' + esc(value) + "</b>" + esc(label) + "</div>";
   }
 
-  /* ------------------------------------------------------------- SCR-02. Стенд */
+  /* ------------------------------------------------------------- SCR-202. Стенд */
   function renderStand() {
     var snap = DEMO.snapshots, reg = DEMO.registries;
     var delta = snap.end
@@ -602,7 +602,7 @@
         reg.records.withoutMarkup + ", без RAW " + reg.records.withoutRaw + ")</p>" +
         "<p>`$Нагрузки`: " + reg.loads + " · `$Датасеты`: " + reg.datasets + " · `$Модели`: " + reg.models + "</p>" +
         "<p>`$Задачи`: " + reg.tasks.total + " (активных " + reg.tasks.active + ", архив " + reg.tasks.archive + ")</p>" +
-        '<button class="act ghost" data-act="nav" data-id="SCR-04">Открыть данные стенда →</button></div></div>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-204">Открыть данные стенда →</button></div></div>' +
       '<div><div class="card"><h3>Снимки и сравнение</h3>' +
         "<p><b>Начало:</b> " + esc(snap.begin.at) + " · файлы " + snap.begin.files + " · датасеты " +
         snap.begin.datasets + "</p>" +
@@ -612,11 +612,11 @@
         '<button class="act ghost" data-act="toast" data-msg="Заглушка: сравнение снимков выгружается в артефакты (FR-P-47)">Экспорт сравнения</button>' +
       "</div>" +
       '<div class="card"><h3>Что здесь не делается</h3>' +
-        '<p class="hint">Настройки подключения — в «Инструментах» (SCR-13), наблюдение за обменами — ' +
-        "в «Журнале обмена» (SCR-09). Этот экран подтверждает объект испытаний и фиксирует ресурсы.</p></div></div></div>";
+        '<p class="hint">Настройки подключения — в «Инструментах» (SCR-501), наблюдение за обменами — ' +
+        "в «Журнале обмена» (SCR-402). Этот экран подтверждает объект испытаний и фиксирует ресурсы.</p></div></div></div>";
   }
 
-  /* ---------------------------------------------------- SCR-03. Сессия испытаний */
+  /* ---------------------------------------------------- SCR-203. Сессия испытаний */
   function renderSession() {
     var s = DEMO.session;
     var history = [
@@ -659,7 +659,7 @@
     return "<p><b>" + esc(label) + "</b><br>" + esc(value) + "</p>";
   }
 
-  /* ------------------------------------------------------ SCR-04. Данные стенда */
+  /* ------------------------------------------------------ SCR-204. Данные стенда */
   function renderData() {
     var tabs = ["Записи", "$Файлы", "$Нагрузки", "$Датасеты", "$Модели"];
     var html = '<div class="tabs">' + tabs.map(function (t) {
@@ -684,11 +684,11 @@
           "(замечание P1; источник решения — сервер)</p>" +
           '<div class="row"><button class="act ghost" data-act="toast" data-msg="Заглушка: скачивание RAW (крупный файл — с подтверждением, NFR-P-6)">⬇ RAW</button>' +
           '<button class="act ghost" data-act="toast" data-msg="Заглушка: скачивание markup">⬇ markup</button>' +
-          '<button class="act ghost" data-act="nav" data-id="SCR-05">В прогон →</button></div></div>' +
+          '<button class="act ghost" data-act="nav" data-id="SCR-301">В прогон →</button></div></div>' +
         '<div class="card"><h3>Частичные данные</h3>' +
           '<p class="hint">108 записей с не-ASCII именами не разбираются из-за дефекта P0 — это видно ' +
           "здесь и зафиксировано замечанием.</p>" +
-          '<button class="act ghost" data-act="nav" data-id="SCR-10">Смотреть замечание P0 →</button></div></div></div>';
+          '<button class="act ghost" data-act="nav" data-id="SCR-403">Смотреть замечание P0 →</button></div></div></div>';
     } else if (ST.ui.dataTab === "$Датасеты") {
       html += tableCard("`$Датасеты` (9)", ["id", "Название", "Тип", "Состав", "Источник"],
         [["ds-12", "__TEST__dataset-12", "GENERAL", "6 записей (наполнено пультом)", "пульт"],
@@ -722,7 +722,7 @@
       '<span class="hint">Источник каждого факта подписан: сервер / пульт / оператор (IR-P-7).</span></div></div>';
   }
 
-  /* --------------------------------------------- SCR-05. Прогон (рабочее место) */
+  /* --------------------------------------------- SCR-301. Прогон (рабочее место) */
   function queueHtml() {
     var items = queueItems();
     var filtered = items.filter(function (i) {
@@ -746,7 +746,7 @@
     return '<div class="card"><h3>Очередь программы (' + filtered.length + " из " + items.length + ")</h3>" +
       '<p class="hint">Программа: ревизия ' + ST.programme.revision + " · " +
       (ST.programme.status === "утверждён" ? "утверждена" : "черновик") +
-      " (состав меняется на «Программе сессии», SCR-15 — здесь только чтение).</p>" +
+      " (состав меняется на «Программе сессии», SCR-102 — здесь только чтение).</p>" +
       '<div class="row">' +
         '<select data-set="group"><option value="">все разделы</option>' +
           ["TC-SYS", "TC-FILE", "TC-REC", "TC-LOAD", "TC-TASK", "TC-DS", "TC-MOD", "TC-TR", "TC-INF", "TC-CLEAN"].map(function (g) {
@@ -761,7 +761,7 @@
       '<div class="queue">' + (rows || '<p class="hint">Ничего не найдено — измените фильтры.</p>') + "</div>" +
       (ST.ui.offFor ? offForm() : "") +
       '<div class="row"><button class="act ghost" data-act="screenshot">снять с причиной</button>' +
-      '<button class="act ghost" data-act="nav" data-id="SCR-15">изменить программу →</button></div></div>';
+      '<button class="act ghost" data-act="nav" data-id="SCR-102">изменить программу →</button></div></div>';
   }
 
   function offForm() {
@@ -787,7 +787,7 @@
         '<div class="row"><button class="mini" data-act="curl" data-seq="' + x.seq + '">копировать curl</button>' +
         '<button class="mini" data-act="repeat" data-seq="' + x.seq + '">повторить с правками</button>' +
         '<button class="mini" data-act="note-from-exchange" data-seq="' + x.seq + '">замечание</button>' +
-        '<button class="mini" data-act="nav" data-id="SCR-09">в журнал</button></div>' +
+        '<button class="mini" data-act="nav" data-id="SCR-402">в журнал</button></div>' +
         (ST.ui.repeatFor === x.seq ? repeatForm(x) : "") + "</div>";
     }).join("");
     return html || '<p class="hint">Обменов пока нет: нажмите «Пуск» — в ленте появится запрос и ответ (FR-P-21).</p>';
@@ -850,7 +850,7 @@
     }
     if (selected) {
       html += '<p class="hint">Выбран пункт: <b>' + esc(selected.id) + '</b> — «' + esc(selected.title) +
-        '». Открыть подробности: <button class="mini" data-act="nav" data-id="SCR-06">карточка проверки</button></p>';
+        '». Открыть подробности: <button class="mini" data-act="nav" data-id="SCR-302">карточка проверки</button></p>';
     }
     return html + "</div>";
   }
@@ -876,7 +876,7 @@
       "</div></div></div>";
   }
 
-  /* --------------------------------------------- SCR-06. Карточка проверки */
+  /* --------------------------------------------- SCR-302. Карточка проверки */
   function renderCheckCard() {
     var item = byId(ST.selectedId) || nextItem() || ST.queue[0];
     if (!item) { return '<div class="banner">Каталог проверок пуст.</div>'; }
@@ -893,8 +893,8 @@
         "<p>Ожидаемый результат: " + esc(item.expected) + "</p>" +
         "<p>Используется в программе: <b>" + (sourcesOf(item.id).length ? esc(sourcesOf(item.id).join(", ")) : "вне программы") +
         "</b> · ревизия программы: " + ST.programme.revision + "</p>" +
-        '<p class="hint">Команда запуска — «Следующая» на экране «Прогон» (SCR-05): правило одной команды (IR-P-4).</p>' +
-        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-05">К прогону →</button>' +
+        '<p class="hint">Команда запуска — «Следующая» на экране «Прогон» (SCR-301): правило одной команды (IR-P-4).</p>' +
+        '<div class="row"><button class="act ghost" data-act="nav" data-id="SCR-301">К прогону →</button>' +
         '<button class="act ghost" data-act="next-check">→ следующий пункт</button></div></div>' +
       '<div class="card"><h3>Шаги проверки</h3><ol class="list">' + steps + "</ol>" +
         '<p class="hint">Каждый вызов помечается меткой ' + esc(item.id) + " и виден в журнале обмена.</p></div></div>" +
@@ -912,7 +912,7 @@
         '<button class="act ghost" data-act="toast" data-msg="Заглушка: доказательства выгружаются в артефакты сессии">💾 В артефакты</button></div></div></div>';
   }
 
-  /* ------------------------------------------------------- SCR-07. $Задачи */
+  /* ------------------------------------------------------- SCR-303. $Задачи */
   function renderTasks() {
     var tabs = ["Наблюдение", "Список", "Архив", "Диагностика"];
     var html = '<div class="tabs">' + tabs.map(function (t) {
@@ -928,7 +928,7 @@
             esc(t.actions.length ? t.actions.join(", ") : "—") + "</td></tr>";
         }).join("") + "</table>" +
         '<div class="row"><button class="act ghost" data-act="poll">⟳ опросить все сейчас</button>' +
-        '<span class="hint">интервал опроса 2.0 с (настройка — SCR-13)</span></div>' +
+        '<span class="hint">интервал опроса 2.0 с (настройка — SCR-501)</span></div>' +
         '<p class="hint">Команды берутся только из списка, разрешённого сервером (FR-P-25).</p></div>' +
         '<div><div class="card"><h3>Команды: задача 5f1d (training)</h3>' +
           "<p>Статус: <b>running</b> · доступно: pause, interrupt</p>" +
@@ -959,7 +959,7 @@
     return html;
   }
 
-  /* ---------------------------------------------------- SCR-08. Протокол */
+  /* ---------------------------------------------------- SCR-401. Протокол */
   function filteredQueue() {
     return ST.queue.filter(function (i) {
       if (ST.ui.group && i.group !== ST.ui.group) { return false; }
@@ -1003,7 +1003,7 @@
         '<p class="hint">Готовность протокола: ' + Math.round(100 * s.done / (s.total || 1)) + " %</p>" +
         '<div class="row"><button class="act" data-act="mark-start" data-id="' + esc(ST.selectedId || (nextItem() ? nextItem().id : "")) +
         '">🖐 Ручная отметка</button>' +
-        '<button class="act ghost" data-act="nav" data-id="SCR-15">Программа: ревизия ' + ST.programme.revision + " →</button></div></div>" +
+        '<button class="act ghost" data-act="nav" data-id="SCR-102">Программа: ревизия ' + ST.programme.revision + " →</button></div></div>" +
       '<div class="card"><h3>Правила протокола</h3><ul class="list">' +
         "<li>Ручная отметка без заключения не принимается (FR-P-32).</li>" +
         "<li>Снятые с причиной и «вне программы» видны раздельно (FR-P-35).</li>" +
@@ -1023,7 +1023,7 @@
       '<button class="act ghost" data-act="mark-cancel">отмена</button></div></div>';
   }
 
-  /* ----------------------------------------------------- SCR-09. Журнал обмена */
+  /* ----------------------------------------------------- SCR-402. Журнал обмена */
   function renderJournal() {
     var list = ST.exchanges.filter(function (x) { return !ST.ui.onlyErrors || x.s >= 400; });
     return '<div class="grid3"><div class="card"><h3>Журнал обмена (' + list.length + " из " + ST.exchanges.length + ")</h3>" +
@@ -1044,7 +1044,7 @@
       '<p class="hint">Тела усечены лимитом 4 096 символов с пометкой (NFR-P-4).</p></div></div>';
   }
 
-  /* ------------------------------------------- SCR-10. Замечания к API */
+  /* ------------------------------------------- SCR-403. Замечания к API */
   function renderNotes() {
     var tabNotes = ST.ui.notesTab === "Перспективные";
     var html = '<div class="tabs">' + ["Замечания", "Перспективные"].map(function (t) {
@@ -1087,14 +1087,14 @@
         "<p>Доказательства: обмены " + esc(DEMO.notes[0].evidence) + " · блокирует проверок: " + DEMO.notes[0].blocks + "</p>" +
         '<div class="row"><button class="act" data-act="regress" data-id="N-01">🔁 Проверить исправление (перепрогон)</button>' +
         '<button class="act ghost" data-act="note-close" data-id="N-01">✅ Закрыть (с подтверждением)</button>' +
-        '<button class="act ghost" data-act="nav" data-id="SCR-12">Сравнить сессии →</button></div></div>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-405">Сравнить сессии →</button></div></div>' +
       '<div class="card"><h3>Правила</h3><ul class="list">' +
         "<li>Замечание содержит факт, ожидание и воспроизведение (FR-P-37).</li>" +
         "<li>Связи «замечание ↔ проверка ↔ обмены» сохраняются (FR-P-38).</li>" +
         "<li>Закрытие требует подтверждения воспроизведением (FR-P-44).</li></ul></div></div></div>";
   }
 
-  /* ------------------------------------------------- SCR-11. Отчёт испытаний */
+  /* ------------------------------------------------- SCR-404. Отчёт испытаний */
   function renderReport() {
     var r = readiness(), s = stats();
     var sections = [
@@ -1129,7 +1129,7 @@
         '<button class="act ghost" data-act="toast" data-msg="Заглушка: решение и подписи фиксируются в сессии (FR-P-51)">✍ Внести подписи</button></div></div></div>';
   }
 
-  /* ---------------------------------------- SCR-12. Сравнение сессий и сборок */
+  /* ---------------------------------------- SCR-405. Сравнение сессий и сборок */
   function renderCompare() {
     var changed = ST.queue.filter(function (i) {
       return DEMO.initialStatus[i.id] && DEMO.initialStatus[i.id][0] !== i.status;
@@ -1155,13 +1155,13 @@
         "<li>⏳ TC-FILE-10: остаётся открытым (P0)</li>" +
         "<li>⏳ TC-DS-03: остаётся открытым (P1)</li>" +
         "<li>➕ Замечание P2 по формату ошибок (новое)</li></ul>" +
-        '<button class="act ghost" data-act="nav" data-id="SCR-10">К замечаниям →</button></div>' +
+        '<button class="act ghost" data-act="nav" data-id="SCR-403">К замечаниям →</button></div>' +
       '<div class="card"><h3>Дельта реестров</h3>' +
         "<p>`$Файлы` +6 · `$Датасеты` +2 · `$Модели` +1 · `$Задачи` +7</p>" +
         '<p class="hint">Изменение объясняется созданными `__TEST__`-сущностями и задачами прогона (FR-P-47).</p></div></div></div>';
   }
 
-  /* ----------------------------------------------------- SCR-13. Инструменты */
+  /* ----------------------------------------------------- SCR-501. Инструменты */
   function renderTools() {
     var tabs = ["Консоль", "Диагностика", "Настройки", "Журналы запусков", "Справка", "Словарь"];
     var html = '<div class="tabs">' + tabs.map(function (t) {
@@ -1217,11 +1217,11 @@
          ["applog_20260918-140006.log", "2.8 МБ", "18.09 14:00", "скачать"]]);
     } else if (ST.ui.toolsTab === "Справка") {
       html += '<div class="card"><h3>Как работать с пультом</h3><ol class="list">' +
-        "<li>Подготовка: стенд, сессия, данные (SCR-01…SCR-04).</li>" +
-        "<li>Прогон: очередь и «Пуск», наблюдение запроса и ответа (SCR-05).</li>" +
-        "<li>Оценка: вердикты, доказательства, протокол (SCR-06, SCR-08).</li>" +
-        "<li>Разбор: замечания и регресс (SCR-10, SCR-12).</li>" +
-        "<li>Финализация: уборка, снимок, отчёт, решение (SCR-11).</li></ol>" +
+        "<li>Подготовка: стенд, сессия, данные (SCR-201…SCR-204).</li>" +
+        "<li>Прогон: очередь и «Пуск», наблюдение запроса и ответа (SCR-301).</li>" +
+        "<li>Оценка: вердикты, доказательства, протокол (SCR-302, SCR-401).</li>" +
+        "<li>Разбор: замечания и регресс (SCR-403, SCR-405).</li>" +
+        "<li>Финализация: уборка, снимок, отчёт, решение (SCR-404).</li></ol>" +
         '<p class="hint">Правила гигиены: только `__TEST__`-сущности, подтверждения, «дефект = результат испытаний».</p></div>';
     } else {
       html += '<div class="card"><h3>Словарь терминов</h3>' +
@@ -1520,8 +1520,8 @@
     "task-tab": function (el) { ST.ui.taskTab = el.dataset.id; render(); },
     "notes-tab": function (el) { ST.ui.notesTab = el.dataset.id; render(); },
     "tools-tab": function (el) { ST.ui.toolsTab = el.dataset.id; render(); },
-    /* ------------------------------- планирование: наборы (SCR-14) и программа (SCR-15) */
-    "set-open": function (el) { ST.ui.setFor = el.dataset.id; go("SCR-14"); },
+    /* ------------------------------- планирование: наборы (SCR-101) и программа (SCR-102) */
+    "set-open": function (el) { ST.ui.setFor = el.dataset.id; go("SCR-101"); },
     "set-add": function (el) {
       var set = currentSet();
       if (set && set.items.indexOf(el.dataset.id) < 0) { set.items.push(el.dataset.id); }
@@ -1700,12 +1700,12 @@
     if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); runNext(); return; }
     if (event.altKey && (event.key === "n" || event.key === "N")) {
       event.preventDefault();
-      go("SCR-14");
+      go("SCR-101");
       return;
     }
     if (event.altKey && (event.key === "p" || event.key === "P")) {
       event.preventDefault();
-      go("SCR-15");
+      go("SCR-102");
       return;
     }
     if (event.altKey && /^[1-9]$/.test(event.key)) {

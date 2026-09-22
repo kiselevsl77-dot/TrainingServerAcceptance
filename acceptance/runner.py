@@ -229,7 +229,7 @@ def call_steps(spec: CheckSpec) -> list[CallStep]:
 
     Негативные пробы (`probe_paths`) шагами не являются: они подтверждают
     отсутствие маршрута и выполняются сценарием проверки, а вручную — консолью
-    (`SCR-13`). Так же вёл себя старый `plan_runner`.
+    (`SCR-501`). Так же вёл себя старый `plan_runner`.
     """
     steps: list[CallStep] = []
     for index, target in enumerate(spec.endpoints, start=1):
@@ -355,12 +355,12 @@ def can_run(queue: Queue, programme: Programme) -> tuple[bool, str]:
     if programme.size == 0 or queue.is_empty:
         return False, (
             "программа не собрана: выберите наборы и утвердите программу "
-            "(«Программа сессии», SCR-15)"
+            "(«Программа сессии», SCR-102)"
         )
     if not queue.is_current(programme):
         return False, (
             f"очередь собрана по ревизии {queue.revision}, а программа — ревизия "
-            f"{programme.revision}: пересоберите очередь на SCR-15"
+            f"{programme.revision}: пересоберите очередь на SCR-102"
         )
     if queue.next_item() is None:
         return False, "очередь пройдена: осталось оформить протокол и отчёт"
@@ -370,7 +370,9 @@ def can_run(queue: Queue, programme: Programme) -> tuple[bool, str]:
 def programme_notice(queue: Queue) -> str:
     """Баннер программы для экрана «Прогон»: чем помечен текущий прогон (`A1`)."""
     if queue.is_empty:
-        return "Очередь пуста: соберите и утвердите программу на экране «Программа сессии» (SCR-15)"
+        return (
+            "Очередь пуста: соберите и утвердите программу на экране «Программа сессии» (SCR-102)"
+        )
     if queue.draft:
         return (
             f"Прогон идёт по черновику программы (ревизия {queue.revision}): "

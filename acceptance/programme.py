@@ -518,7 +518,7 @@ class Programme:
 
     # -- представление --------------------------------------------------------
     def summary(self) -> dict[str, Any]:
-        """KPI программы для шапки `SCR-15` и отчёта."""
+        """KPI программы для шапки `SCR-102` и отчёта."""
         classes: dict[str, int] = {}
         for item in self.items:
             key = item.check_class or "?"
@@ -547,7 +547,7 @@ class Programme:
         }
 
     def rows(self, results: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-        """Строки программы для таблицы `SCR-15`, отчёта и выгрузки `csv`.
+        """Строки программы для таблицы `SCR-102`, отчёта и выгрузки `csv`.
 
         Args:
             results: состояние проверок из `results.py` (`check_id` → словарь со
@@ -586,7 +586,7 @@ class Programme:
         return rows
 
     def delta(self, revision_number: int | None = None) -> dict[str, Any]:
-        """Дельта с предыдущей ревизией: что добавилось и что ушло (`SCR-15`).
+        """Дельта с предыдущей ревизией: что добавилось и что ушло (`SCR-102`).
 
         Args:
             revision_number: ревизия для сравнения; по умолчанию — предыдущая

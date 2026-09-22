@@ -7,7 +7,7 @@
     * непрерывность нумерации требований (`FR-P`, `DR-P`, `IR-P`, `AR-P`, `NFR-P`, `AC-P`) —
       §1.5 ТЗ требует непрерывную нумерацию: удаление ID запрещено, новое требование
       добавляется в конец;
-    * совпадение перечня экранов `SCR-01…SCR-13` в трёх местах: таблица §6.1 ТЗ, разделы
+    * совпадение перечня экранов `SCR-101…SCR-501` в трёх местах: таблица §6.1 ТЗ, разделы
       макета и реестр экранов прототипа (`mockup/app.js`);
     * наличие требований у каждого экрана макета (трассировка не разорвана);
     * офлайн-пригодность прототипа: без внешних ресурсов, сборки и сетевых вызовов;
@@ -32,11 +32,11 @@ INDEX_HTML = MOCKUP_DIR / "index.html"
 DEMO_JS = MOCKUP_DIR / "demo-data.js"
 STYLES_CSS = MOCKUP_DIR / "styles.css"
 
-SCREEN_ID = re.compile(r"SCR-\d{2}")
+SCREEN_ID = re.compile(r"SCR-\d{3}")
 REQUIREMENT_ID = re.compile(r"\b(FR-P|DR-P|IR-P|AR-P|NFR-P|AC-P)-(\d+)\b")
-SCREEN_HEADING = re.compile(r"^## (SCR-\d{2})\.", re.MULTILINE)
-SCREEN_REGISTRY = re.compile(r'id:\s*"(SCR-\d{2})"')
-SCREEN_SECTION = re.compile(r"^## (SCR-\d{2})\..*?(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+SCREEN_HEADING = re.compile(r"^## (SCR-\d{3})\.", re.MULTILINE)
+SCREEN_REGISTRY = re.compile(r'id:\s*"(SCR-\d{3})"')
+SCREEN_SECTION = re.compile(r"^## (SCR-\d{3})\..*?(?=^## |\Z)", re.MULTILINE | re.DOTALL)
 
 #: Ожидаемый состав требований: префикс → последний номер (нумерация 1..N без пропусков).
 EXPECTED_TOTALS: dict[str, int] = {
@@ -48,11 +48,28 @@ EXPECTED_TOTALS: dict[str, int] = {
     "AC-P": 27,
 }
 
-#: Экраны целевого макета: планирование (`SCR-14`, `SCR-15`) + экраны `SCR-01`…`SCR-13`.
-SCREEN_TOTAL = 15
+#: Экраны целевого макета в порядке навигации: `SCR-<раздел><порядок>` (раздел = сотни).
+SCREEN_CODES: tuple[str, ...] = (
+    "SCR-101",
+    "SCR-102",
+    "SCR-201",
+    "SCR-202",
+    "SCR-203",
+    "SCR-204",
+    "SCR-301",
+    "SCR-302",
+    "SCR-303",
+    "SCR-401",
+    "SCR-402",
+    "SCR-403",
+    "SCR-404",
+    "SCR-405",
+    "SCR-501",
+)
+SCREEN_TOTAL = len(SCREEN_CODES)
 
 #: Экраны раздела «Планирование испытаний»: команд запуска в них быть не должно (`IR-P-18`).
-PLANNING_SCREENS = ("SCR-14", "SCR-15")
+PLANNING_SCREENS = ("SCR-101", "SCR-102")
 PLANNING_RENDERERS = ("renderSets", "renderProgramme")
 
 #: Локальные ресурсы прототипа: всё остальное в разметке считается внешним.
@@ -117,14 +134,35 @@ def test_requirement_groups_are_documented(tz: str) -> None:
 
 
 def test_screen_ids_match_in_all_three_parts(tz: str, mockup_doc: str, app_js: str) -> None:
-    """Экраны `SCR-01…SCR-15` совпадают в ТЗ (§6.1), макете и прототипе."""
+    """Экраны `SCR-101…SCR-501` совпадают в ТЗ (§6.1), макете и прототипе."""
     from_tz = sorted(set(SCREEN_ID.findall(tz)))
     from_doc = sorted(set(SCREEN_ID.findall(mockup_doc)))
     from_js = sorted(set(SCREEN_REGISTRY.findall(app_js)))
 
     assert from_doc == from_js, "макет и прототип расходятся в перечне экранов"
     assert from_doc == from_tz, "ТЗ и макет расходятся в перечне экранов"
-    assert from_doc == [f"SCR-{number:02d}" for number in range(1, SCREEN_TOTAL + 1)]
+    assert from_doc == list(SCREEN_CODES)
+
+
+def test_screen_codes_follow_group_order(mockup_doc: str, app_js: str) -> None:
+    """Коды экранов идут по порядку навигации: раздел = сотни, порядок в разделе = единицы.
+
+    Версия 1.2 ТЗ (§1.5): перенумерация выполнена однократно, дальше новый экран получает
+    первый свободный номер своего раздела. Тест держит порядок: реестр прототипа и описания
+    макета перечисляют экраны ровно в том же порядке, что и `SCREEN_CODES`.
+    """
+    registry = SCREEN_REGISTRY.findall(app_js)
+    headings = SCREEN_HEADING.findall(mockup_doc)
+
+    assert registry == list(SCREEN_CODES), "реестр прототипа не в порядке навигации"
+    assert headings == list(SCREEN_CODES), "описания макета не в порядке нумерации"
+
+    sections = [code[4] for code in registry]
+    assert sections == sorted(sections), "разделы экранов идут не по порядку навигации"
+    for code in registry:
+        digits = code.removeprefix("SCR-")
+        assert len(digits) == 3, f"{code}: код экрана — три цифры"
+        assert digits[0] in "123456", f"{code}: раздел экрана — 1xx…5xx (6xx — задел T6–T11)"
 
 
 def test_every_screen_is_described_in_mockup(mockup_doc: str) -> None:
@@ -186,7 +224,7 @@ def test_planning_screens_have_no_launch_command(mockup_doc: str, app_js: str) -
 
 
 def test_prototype_has_single_launch_command(app_js: str) -> None:
-    """В прототипе ровно одна команда запуска — «Следующая» на `SCR-05` (`IR-P-4`)."""
+    """В прототипе ровно одна команда запуска — «Следующая» на `SCR-301` (`IR-P-4`)."""
     assert app_js.count('data-act="run-next"') == 1, "команд запуска больше одной"
     assert "▶ Следующая" in app_js, "команда запуска не названа «Следующая»"
 
