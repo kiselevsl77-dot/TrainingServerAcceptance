@@ -190,33 +190,42 @@ def is_server_label(label: str) -> bool:
 # Подписи экранов: единственный источник для страницы и навигации
 # ---------------------------------------------------------------------------
 #: Заголовок экрана (без пиктограммы) — он же `st.title` страницы.
+#: Ключи — ключи маршрутов из `acceptance/ui/nav.py` (`SCR-101` → `scr101_sets`).
 SCREEN_LABELS: dict[str, str] = {
-    "stand": "Стенд",
-    "session": "Сессия испытаний",
-    "records": "Записи (RAW + markup)",
-    "tasks": f"{SERVER_PREFIX}Задачи",
-    "datasets": f"{SERVER_PREFIX}Датасеты",
-    "checks": "Чек-лист проверок",
-    "monitor": "Монитор обмена",
-    "console": "Консоль запросов",
-    "notes": "Реестр замечаний к API",
-    "logs": "Журнал",
-    "report": "Отчёт испытаний",
+    "scr101_sets": "Наборы проверок",
+    "scr102_programme": "Программа сессии",
+    "scr201_overview": "Обзор испытаний",
+    "scr202_stand": "Стенд",
+    "scr203_session": "Сессия испытаний",
+    "scr204_data": "Данные стенда",
+    "scr301_run": "Прогон",
+    "scr302_check": "Карточка проверки",
+    "scr303_tasks": f"{SERVER_PREFIX}Задачи",
+    "scr401_protocol": "Протокол проверок",
+    "scr402_journal": "Журнал обмена",
+    "scr403_notes": "Замечания к API",
+    "scr404_report": "Отчёт испытаний",
+    "scr405_compare": "Сравнение сессий",
+    "scr501_tools": "Консоль и настройки",
 }
 
-#: Пиктограмма экрана (для кнопки в боковой панели).
+#: Пиктограмма экрана (для кнопки в боковой панели) — как в макете `docs/16` §0.
 SCREEN_ICONS: dict[str, str] = {
-    "stand": "🖥️",
-    "session": "🧪",
-    "records": "🧩",
-    "tasks": "⏱️",
-    "datasets": "🗂️",
-    "checks": "✅",
-    "monitor": "🔄",
-    "console": "📡",
-    "notes": "✍️",
-    "logs": "🧾",
-    "report": "📄",
+    "scr101_sets": "🧭",
+    "scr102_programme": "🎯",
+    "scr201_overview": "📊",
+    "scr202_stand": "🖥️",
+    "scr203_session": "🧪",
+    "scr204_data": "🗃️",
+    "scr301_run": "▶",
+    "scr302_check": "🔎",
+    "scr303_tasks": "⏱️",
+    "scr401_protocol": "📋",
+    "scr402_journal": "🧾",
+    "scr403_notes": "✍️",
+    "scr404_report": "📄",
+    "scr405_compare": "🔁",
+    "scr501_tools": "🛠️",
 }
 
 

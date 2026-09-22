@@ -28,8 +28,8 @@ APP_PATH = Path(__file__).resolve().parents[2] / "acceptance" / "app.py"
 TABLE_BEGIN = "### 1.4."
 TABLE_END = "## 2."
 
-#: «Голые» подписи экранов, которые запрещены: сущность стенда без префикса `$`.
-FORBIDDEN_NAV = ('"tasks": ("⏱️ Задачи"', '"datasets": ("🗂️ Датасеты"')
+#: Подписи экранов, которые запрещены: `$Задачи` — сущность стенда, префикс обязателен.
+FORBIDDEN_NAV = ('"scr303_tasks": "Задачи"', '"scr303_tasks": ("⏱️ Задачи"')
 
 
 @pytest.fixture(scope="module")
@@ -111,17 +111,17 @@ def test_application_navigation_uses_glossary() -> None:
     """Подписи экранов берутся из глоссария, а не набираются в `app.py` руками."""
     source = APP_PATH.read_text(encoding="utf-8")
 
-    for key in glossary.SCREEN_LABELS:
-        assert f'glossary.nav_label("{key}")' in source, f"экран {key} не использует глоссарий"
+    assert "glossary.nav_label(" in source, "app.py собирает подписи не из глоссария"
+    assert "RENDERERS" in source, "реестр экранов должен собираться из acceptance/ui/screens"
     for forbidden in FORBIDDEN_NAV:
         assert forbidden not in source, f"устаревшая подпись экрана: {forbidden}"
 
 
 def test_screens_of_server_entities_are_prefixed() -> None:
     """Экраны сущностей стенда названы с префиксом `$`, экраны пульта — без."""
-    assert glossary.is_server_label(glossary.screen_label("tasks"))
-    assert glossary.is_server_label(glossary.screen_label("datasets"))
-    for key in ("stand", "session", "records", "checks", "monitor", "console", "notes", "logs"):
+    assert glossary.is_server_label(glossary.screen_label("scr303_tasks"))
+
+    for key in ("scr101_sets", "scr301_run", "scr402_journal", "scr501_tools"):
         assert not glossary.is_server_label(glossary.screen_label(key)), key
 
 
@@ -132,3 +132,14 @@ def test_every_screen_has_icon_and_label() -> None:
         label = glossary.nav_label(key)
         assert label.startswith(glossary.SCREEN_ICONS[key])
         assert glossary.SCREEN_LABELS[key] in label
+
+
+def test_screen_keys_match_navigation_registry() -> None:
+    """Глоссарий и реестр экранов описывают один и тот же набор экранов.
+
+    Подписи экранов — единственный источник для меню и заголовков: расхождение глоссария и
+    `acceptance/ui/nav.py` дало бы экран без подписи (или подпись без экрана).
+    """
+    from acceptance.ui import nav
+
+    assert set(glossary.SCREEN_LABELS) == set(nav.screens())

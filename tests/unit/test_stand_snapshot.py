@@ -9,7 +9,7 @@ import httpx
 from acceptance.api import Apis, build_client, take_stand_snapshot
 from acceptance.config import PultConfig
 from acceptance.http_log import Journal
-from acceptance.ui.common.labels import build_label
+from acceptance.labels import build_label
 from client.settings import TrainingServerSettings
 
 FILES = [

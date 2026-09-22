@@ -1,4 +1,4 @@
-"""Тесты компактных подписей интерфейса (`acceptance.ui.common.labels`).
+"""Тесты компактных подписей интерфейса (`acceptance.labels`).
 
 Таблицы пульта показывают «хвост» идентификатора и первые символы текста: колонки
 «Задача», «Название» и «Описание» иначе выдавливают друг друга (например, имя задачи
@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from acceptance.ui.common.labels import (
+from acceptance.labels import (
     ELLIPSIS,
     HEAD_TEXT_LIMIT,
     SHORT_ID_KEEP,
