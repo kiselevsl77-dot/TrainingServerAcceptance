@@ -263,13 +263,15 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_six():
-    """Схема сессии — v6: добавлен план программы испытаний (этап «Монитор обмена»)."""
-    assert SCHEMA_VERSION == 6
+def test_current_schema_version_is_seven():
+    """Схема сессии — v7: программа сессии, очередь прогона и история повторов."""
+    assert SCHEMA_VERSION == 7
     payload = _session(Path(".")).to_dict()
 
-    assert payload["schema_version"] == 6
-    assert payload["plan"] == {}
+    assert payload["schema_version"] == 7
+    assert payload["programme"] == {}
+    assert payload["queue"] == {}
+    assert payload["check_history"] == {}
 
 
 def test_plan_is_stored_in_session(tmp_path: Path):

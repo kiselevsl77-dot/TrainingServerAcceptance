@@ -27,7 +27,7 @@ from uuid import uuid4
 from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -42,6 +42,12 @@ TOOL_VERSION = "0.1.0"
 #:        факт наполнения пультом, гипотеза по реестру файлов) — этап T5;
 #:   v6 — добавлен `plan` (программа испытаний: план вызовов с галочками, режим
 #:        исполнения, пауза, статусы и вердикты пунктов) — этап «Монитор обмена».
+#:   v7 — планирование вынесено в отдельные сущности: `programme` (программа сессии:
+#:        объединение наборов по ИЛИ, ревизии, покрытие, утверждение), `queue`
+#:        (очередь прогона — снимок утверждённой ревизии) и `check_history` (история
+#:        повторов проверки); библиотека наборов живёт отдельным файлом
+#:        `acceptance_data/check_sets.json` (`acceptance/sets.py`). Поле `plan` —
+#:        legacy этапа v6: удаляется вместе со старым интерфейсом.
 #: Файлы v1–v5 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
@@ -134,6 +140,9 @@ class TestSession:
     tasks: list[dict[str, Any]] = field(default_factory=list)
     dataset_composition: list[dict[str, Any]] = field(default_factory=list)
     plan: dict[str, Any] = field(default_factory=dict)
+    programme: dict[str, Any] = field(default_factory=dict)
+    queue: dict[str, Any] = field(default_factory=dict)
+    check_history: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -202,6 +211,9 @@ class TestSession:
             "tasks": self.tasks,
             "dataset_composition": self.dataset_composition,
             "plan": self.plan,
+            "programme": self.programme,
+            "queue": self.queue,
+            "check_history": self.check_history,
             "history": self.history,
         }
 
@@ -232,6 +244,12 @@ class TestSession:
             tasks=[dict(item) for item in (data.get("tasks") or [])],
             dataset_composition=[dict(item) for item in (data.get("dataset_composition") or [])],
             plan=dict(data.get("plan") or {}),
+            programme=dict(data.get("programme") or {}),
+            queue=dict(data.get("queue") or {}),
+            check_history={
+                str(key): [dict(item) for item in (value or [])]
+                for key, value in (data.get("check_history") or {}).items()
+            },
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
