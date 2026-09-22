@@ -294,6 +294,33 @@ def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> N
     )
 
 
+def test_vertical_slice_overview_shows_phase_and_attention(pult: tuple[AppTest, Path]) -> None:
+    """Обзор показывает фазу процесса, прогресс и панель «Внимание» (`SCR-201`)."""
+    app, _store = pult
+    app, _session_id = _plan(app)
+    app = _open(app, "scr301_run")
+    labels = [item.label for item in app.button]
+    app = _click(app, next(label for label in labels if label.startswith("▶ Следующая:")))
+
+    app = _open(app, "scr201_overview")
+    subheaders = [item.value for item in app.subheader]
+    frames = [item.value for item in app.dataframe]
+
+    assert not app.exception
+    assert any(text.startswith("Фаза Ф2") for text in subheaders), "обзор не называет текущую фазу"
+    assert "Прогресс очереди" in subheaders, "нет прогресса очереди"
+    assert "Внимание" in subheaders, "нет панели «Внимание»"
+    phases = next(frame for frame in frames if "phase" in frame.columns)
+    assert list(phases["phase"]) == ["Ф0", "Ф1", "Ф2", "Ф3", "Ф4"]
+    progress = next(frame for frame in frames if "value" in frame.columns)
+    assert any("%" in str(value) for value in progress["value"]), (
+        "прогресс не показывает процент выполнения"
+    )
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "обзор не даёт команды запуска (IR-P-4)"
+    )
+
+
 def test_vertical_slice_report_and_solution(pult: tuple[AppTest, Path]) -> None:
     """Срез завершается отчётом: комплект собирается, решение и обоснование зафиксированы."""
     app, store = pult
