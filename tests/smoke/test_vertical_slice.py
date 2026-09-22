@@ -119,6 +119,31 @@ def _captions(app: AppTest) -> str:
     return " | ".join(item.value for item in app.caption)
 
 
+def test_vertical_slice_sets_catalog_and_membership(pult: tuple[AppTest, Path]) -> None:
+    """Срез начинается с наборов: каталог слева, состав набора справа (`SCR-101`)."""
+    app, _store = pult
+    app = _open(app, "scr101_sets")
+    app.selectbox[0].set_value(sets_api.SMOKE_SET_ID)
+    app = app.run()
+    frames = [item.value for item in app.dataframe]
+    subheaders = [item.value for item in app.subheader]
+
+    assert not app.exception
+    assert any(text.startswith("Каталог проверок") for text in subheaders), "нет каталога проверок"
+    catalog_table = next(frame for frame in frames if "member" in frame.columns)
+    members_table = next(frame for frame in frames if "order" in frame.columns)
+
+    assert len(catalog_table) > len(members_table), "каталог шире состава набора"
+    assert members_table["check_id"].iloc[0] == "TC-SYS-01", "порядок состава потерян"
+    assert str(members_table["mark"].iloc[0]) == "★", "смоук-пункт обязан быть обязательным"
+    assert any(item.label.startswith("→ К программе сессии (SCR-102)") for item in app.button), (
+        "нет перехода к сборке программы"
+    )
+    assert not any("Следующая" in item.label for item in app.button), (
+        "в планировании нет команды запуска (IR-P-18)"
+    )
+
+
 def _messages(app: AppTest) -> str:
     """Сообщения экрана (успех/внимание/ошибка/подсказка) одной строкой."""
     groups = (app.success, app.warning, app.error, app.info)
