@@ -32,6 +32,7 @@ from uuid import UUID
 
 import streamlit as st
 
+from acceptance import glossary
 from acceptance.dataset_composition import (
     COMPOSITION_MODES,
     MODE_AUTO,
@@ -112,14 +113,16 @@ REGISTRY_COLUMNS: tuple[str, ...] = (
 
 
 def render() -> None:
-    """Экран «Датасеты»: реестр, создание, состав, наполнение и уборка (FR-4)."""
+    """Экран «$Датасеты»: реестр, создание, состав, наполнение и уборка (FR-4)."""
     render_flash()
-    st.title("🗂️ Датасеты")
+    st.title(glossary.screen_label("datasets"))
     st.caption(
-        "Модуль «Datasets» (FR-4, UC-09…UC-14). Состав датасета сервер не отдаёт "
-        "(замечание P1), поэтому пульт ведёт его учёт сам: факт наполнения, гипотеза по "
-        "реестру файлов и сверка с серверным составом, когда тот появится."
+        "Модуль «Datasets» (FR-4, UC-09…UC-14). Экран работает с $Датасетами испытуемого "
+        "сервера: состав датасета сервер не отдаёт (замечание P1), поэтому пульт ведёт его "
+        "учёт сам — факт наполнения, гипотеза по реестру $файлов и сверка с серверным "
+        "составом, когда тот появится."
     )
+    st.caption(glossary.PREFIX_HINT)
 
     runtime = state.get_runtime()
     if runtime is None:

@@ -827,7 +827,7 @@ def _render_task_block(
         "⏱️ Открыть в мониторе",
         key=f"console_monitor_{spec.key}",
         use_container_width=True,
-        help="Переход на экран «Задачи»: карточка задачи, история FSM-1, команды.",
+        help="Переход на экран «$Задачи»: карточка $задачи, история FSM-1, команды.",
     ):
         st.session_state["tasks_focus"] = task_id
         st.session_state["pult_screen"] = "tasks"

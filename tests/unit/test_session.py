@@ -263,9 +263,24 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_five():
-    assert SCHEMA_VERSION == 5
-    assert _session(Path(".")).to_dict()["schema_version"] == 5
+def test_current_schema_version_is_six():
+    """Схема сессии — v6: добавлен план программы испытаний (этап «Монитор обмена»)."""
+    assert SCHEMA_VERSION == 6
+    payload = _session(Path(".")).to_dict()
+
+    assert payload["schema_version"] == 6
+    assert payload["plan"] == {}
+
+
+def test_plan_is_stored_in_session(tmp_path: Path):
+    """Программа испытаний живёт в сессии и переживает перезапись файла (схема v6)."""
+    session = _session(tmp_path)
+    session.plan = {"mode": "call", "items": [{"item_id": "TC-SYS-01"}]}
+
+    restored = SessionModel.from_dict(session.to_dict())
+
+    assert restored.plan["mode"] == "call"
+    assert restored.plan["items"][0]["item_id"] == "TC-SYS-01"
 
 
 # ---------------------------------------------------------------------------

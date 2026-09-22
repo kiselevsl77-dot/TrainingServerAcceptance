@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
@@ -25,7 +26,7 @@ from acceptance.api import Apis
 from acceptance.checks import catalog
 from acceptance.config import PultConfig
 from acceptance.exchange import build_console_client
-from acceptance.http_log import Journal, LoggingTransport
+from acceptance.http_log import HttpExchange, Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
 from acceptance.overrides import OVERRIDES_FILENAME, Overrides
 from acceptance.records import record_id_for
@@ -417,12 +418,12 @@ def test_report_screen_saves_kit_to_artifacts(
 # Экран «Задачи» — монитор задач (FR-8, FR-T11) — этап T4
 # ---------------------------------------------------------------------------
 def test_tasks_screen_renders_kpi_list_and_observation(pult_with_session):
-    """Экран «Задачи»: KPI монитора, список сервера со статусами и вкладка наблюдения."""
+    """Экран «$Задачи»: KPI монитора, список сервера со статусами и вкладка наблюдения."""
     app, journal, _store = pult_with_session
     app = _open(app, "tasks")
 
     assert not app.exception
-    assert app.title[0].value == "Задачи"
+    assert app.title[0].value == "$Задачи"
     values = _metric_values(app)
     assert values["Наблюдаемых"] == "0"
     assert values["Активных"] == "0"
@@ -884,7 +885,7 @@ def test_console_task_response_offers_monitor(pult_with_session):
 
     assert not app.exception
     assert app.session_state["pult_screen"] == "tasks"
-    assert app.title[0].value == "Задачи"
+    assert app.title[0].value == "$Задачи"
 
 
 # ---------------------------------------------------------------------------
@@ -1227,7 +1228,7 @@ def test_datasets_screen_shows_registry_and_controls(pult_with_session):
     app = _open(app, "datasets")
 
     assert not app.exception
-    assert app.title[0].value == "🗂️ Датасеты"
+    assert app.title[0].value == "$Датасеты"
     values = _metric_values(app)
     assert values["Датасетов в реестре"] == "0"
     assert values["Создано пультом (`__TEST__`)"] == "0"
@@ -1259,3 +1260,198 @@ def test_datasets_screen_requires_confirmation_for_fill(pult_with_session):
 
     assert not app.exception
     assert any("Подтвердите наполнение" in box.value for box in app.warning)
+
+
+# ---------------------------------------------------------------------------
+# Экран «Монитор обмена» (этапы К3/M1): лента вызовов и ответов
+# ---------------------------------------------------------------------------
+def _journal_record(seq: int = 1) -> HttpExchange:
+    """Запись журнала для ленты монитора (без обращения к сети)."""
+    return HttpExchange(
+        seq=seq,
+        started_at="2026-09-21T10:00:00",
+        method="GET",
+        path="/api/data/files",
+        query="file_name=Antminer",
+        status=200,
+        duration_ms=42.0,
+        request_bytes=0,
+        response_bytes=64,
+        content_type="application/json",
+        label="TC-FILE-01",
+        response_body='{"count": 1}',
+        request_headers=(("accept", "*/*"),),
+        response_headers=(("content-type", "application/json"),),
+    )
+
+
+def _add_record(journal: Journal, record: HttpExchange) -> HttpExchange:
+    """Кладёт запись в журнал с уникальным номером (в фикстуре уже есть обмены стенда)."""
+    return journal.add(replace(record, seq=journal.next_seq()))
+
+
+def test_monitor_screen_renders_feed_and_detail_controls(pult_with_session):
+    """Экран «Монитор обмена»: лента вызовов, подробность запроса/ответа, `curl`."""
+    app, journal, _store = pult_with_session
+    _add_record(journal, _journal_record())
+
+    app = _open(app, "monitor")
+
+    assert not app.exception
+    assert app.title[0].value == "Монитор обмена"
+    labels = [box.label for box in app.selectbox]
+    assert "Подробность запроса" in labels
+    assert "Подробность ответа" in labels
+    # лента показывает запись: строка вызова и команда `curl` для копирования
+    markdown = " ".join(block.value for block in app.markdown)
+    assert "GET /api/data/files?file_name=Antminer" in markdown
+    codes = " ".join(block.value for block in app.code)
+    assert "curl -X GET" in codes
+    assert not app.error
+
+
+def test_monitor_screen_filters_and_orders_the_feed(pult_with_session):
+    """Фильтры ленты: «только ошибки» и метка проверки; порядок переключается."""
+    app, journal, _store = pult_with_session
+    journal.clear()
+    _add_record(journal, _journal_record())
+    _add_record(
+        journal,
+        HttpExchange(
+            seq=0,
+            started_at="2026-09-21T10:00:01",
+            method="POST",
+            path="/api/datasets/",
+            query="",
+            status=422,
+            duration_ms=8.0,
+            request_bytes=10,
+            response_bytes=90,
+            content_type="application/json",
+            label="TC-DS-01",
+            response_body='{"detail": "validation"}',
+        ),
+    )
+
+    app = _open(app, "monitor")
+    app = app.checkbox(key="monitor_only_errors").set_value(True).run()
+
+    assert not app.exception
+    markdown = " ".join(block.value for block in app.markdown)
+    # лента использует путь с query (`record.url`), поэтому строка успешного чтения
+    # отличается от строки плана с той же операцией
+    assert "POST /api/datasets/" in markdown
+    assert "GET /api/data/files?file_name=Antminer" not in markdown
+
+
+def test_monitor_screen_shows_empty_feed_message(pult_with_session):
+    """Пустая лента объясняет оператору, что вызовов ещё не было."""
+    app, journal, _store = pult_with_session
+    journal.clear()
+
+    app = _open(app, "monitor")
+
+    assert not app.exception
+    assert any("Лента пуста" in box.value for box in app.info)
+
+
+def test_monitor_plan_executes_one_call_at_a_time(pult_with_session):
+    """Пожелание п. 2: «Выполнить следующую» отправляет **один** вызов и оценивает его."""
+    app, journal, _store = pult_with_session
+    app = _open(app, "monitor")
+    headers = " ".join(block.value for block in app.subheader)
+    markdown = " ".join(block.value for block in app.markdown)
+    assert "Программа испытаний" in headers
+    assert "Лента обмена" in headers
+    assert "TC-SYS-01#1" in markdown, "в программе видны запланированные вызовы"
+
+    app = app.radio(key="plan_mode").set_value("выполнять по вызовам").run()
+    before = len(journal.records)
+    app = app.button(key="plan_next").click().run()
+
+    assert not app.exception
+    assert len(journal.records) > before, "вызов ушёл на стенд"
+    holder = app.session_state["pult_plan"]
+    item = holder["plan"].find("TC-SYS-01#1")
+    assert item is not None
+    assert item.status != "ожидает", "пункт плана получил результат"
+    assert item.verdict, "у вызова есть вердикт соответствия ожиданию"
+    assert item.journal_from is not None
+
+
+def test_monitor_plan_checkbox_and_reset_work(pult_with_session):
+    """Галочку пункта можно снять, а результаты — сбросить кнопкой «↺ Сброс»."""
+    app, _journal, _store = pult_with_session
+    app = _open(app, "monitor")
+
+    app = app.checkbox(key="plan_chk_TC-SYS-01").set_value(False).run()
+
+    assert not app.exception
+    plan_state = app.session_state["pult_plan"]["plan"]
+    assert plan_state.find("TC-SYS-01").enabled is False
+    assert all(call.enabled is False for call in plan_state.calls_of("TC-SYS-01"))
+
+    app = app.button(key="plan_reset").click().run()
+
+    assert not app.exception
+    assert app.session_state["pult_plan"]["plan"].summary()["done"] == 0
+
+
+def test_monitor_repeat_with_corrections_sends_request(pult_with_session):
+    """Пожелание п. 1: вызов из ленты можно повторить с правками, не уходя в консоль."""
+    app, journal, _store = pult_with_session
+    journal.clear()
+    record = _add_record(journal, _journal_record())
+    app = _open(app, "monitor")
+    before = len(journal.records)
+
+    app = app.button(key=f"monitor_repeat_{record.seq}_send").click().run()
+
+    assert not app.exception
+    assert len(journal.records) > before, "повтор ушёл на стенд"
+    assert journal.records[-1].method == record.method
+    assert journal.records[-1].label == record.label, "повтор помечен той же меткой"
+
+
+def test_monitor_note_from_record_goes_to_session(pult_with_session):
+    """Замечание к API создаётся прямо из записи ленты (факт и `curl` уже подставлены)."""
+    app, journal, store = pult_with_session
+    journal.clear()
+    record = _add_record(journal, _journal_record())
+    app = _open(app, "monitor")
+
+    app = app.button(key=f"monitor_note_{record.seq}_create").click().run()
+
+    assert not app.exception
+    assert store.session.notes, "замечание попало в сессию"
+    note = store.session.notes[-1]
+    assert note["endpoint"] == f"{record.method} {record.path}"
+    assert "curl" in str(note["reproduction"])
+
+
+def test_every_registered_screen_renders(pult_with_session):
+    """Каждый экран пульта открывается без исключений — включая новый «Монитор обмена».
+
+    Список повторяет `acceptance.app.SCREENS` (импортировать модуль в тесте нельзя: он
+    выполняет вызовы Streamlit на импорте), поэтому при добавлении экрана его нужно
+    внести и сюда — тест сразу покажет, что новый экран падает при открытии.
+    """
+    app, _journal, _store = pult_with_session
+    screens = (
+        "stand",
+        "session",
+        "records",
+        "tasks",
+        "datasets",
+        "checks",
+        "monitor",
+        "console",
+        "notes",
+        "logs",
+        "report",
+    )
+
+    for screen in screens:
+        app = _open(app, screen)
+        assert not app.exception, f"экран {screen} упал при открытии"
+        assert app.title, f"экран {screen} не показал заголовок"

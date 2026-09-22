@@ -36,6 +36,9 @@ from acceptance.logging_setup import (
 
 TEXT_CONTENT_MARKERS = ("json", "text", "csv", "xml", "javascript", "urlencoded")
 
+#: Сколько заголовков запроса/ответа сохранять в записи журнала (защита от «простыней»).
+MAX_HEADERS = 40
+
 _check_label: ContextVar[str | None] = ContextVar("pult_check_label", default=None)
 
 
@@ -56,7 +59,12 @@ def current_label() -> str | None:
 
 @dataclass(frozen=True)
 class HttpExchange:
-    """Один обмен с сервером: запрос + ответ (или ошибка соединения)."""
+    """Один обмен с сервером: запрос + ответ (или ошибка соединения).
+
+    Заголовки хранятся кортежами пар (запись неизменяемая и должна оставаться
+    хешируемой); для показа и выгрузки есть словари `request_header_map` и
+    `response_header_map`.
+    """
 
     seq: int
     started_at: str
@@ -73,6 +81,18 @@ class HttpExchange:
     request_body: str | None = None
     response_body: str | None = None
     body_truncated: bool = False
+    request_headers: tuple[tuple[str, str], ...] = ()
+    response_headers: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def request_header_map(self) -> dict[str, str]:
+        """Заголовки запроса словарём (для интерфейса и отчёта)."""
+        return dict(self.request_headers)
+
+    @property
+    def response_header_map(self) -> dict[str, str]:
+        """Заголовки ответа словарём (для интерфейса и отчёта)."""
+        return dict(self.response_headers)
 
     @property
     def url(self) -> str:
@@ -104,6 +124,8 @@ class HttpExchange:
             "request_body": self.request_body,
             "response_body": self.response_body,
             "body_truncated": self.body_truncated,
+            "request_headers": self.request_header_map,
+            "response_headers": self.response_header_map,
         }
 
     @property
@@ -277,6 +299,7 @@ class LoggingTransport(httpx.BaseTransport):
         )
 
         request_bytes, request_body, request_truncated = self._request_body(request)
+        request_headers = _headers(request.headers)
         log_event(
             EVENT_HTTP_REQUEST,
             f"{request.method} {path}",
@@ -292,6 +315,7 @@ class LoggingTransport(httpx.BaseTransport):
                 "request_bytes": request_bytes,
                 "request_body": request_body,
                 "content_type": request.headers.get("content-type"),
+                "headers": dict(request_headers),
             },
         )
 
@@ -315,6 +339,7 @@ class LoggingTransport(httpx.BaseTransport):
                     label=label,
                     request_body=request_body,
                     body_truncated=request_truncated,
+                    request_headers=request_headers,
                 ),
                 level="ERROR",
                 event=EVENT_HTTP_ERROR,
@@ -323,6 +348,7 @@ class LoggingTransport(httpx.BaseTransport):
 
         duration_ms = (time.perf_counter() - started) * 1000
         response_bytes, response_body, response_truncated = self._response_body(response)
+        response_headers = _headers(response.headers)
         self._record(
             HttpExchange(
                 seq=seq,
@@ -340,6 +366,8 @@ class LoggingTransport(httpx.BaseTransport):
                 request_body=request_body,
                 response_body=response_body,
                 body_truncated=request_truncated or response_truncated,
+                request_headers=request_headers,
+                response_headers=response_headers,
             ),
             level="WARNING" if response.status_code >= 400 else "DEBUG",
             event=EVENT_HTTP_RESPONSE,
@@ -349,6 +377,11 @@ class LoggingTransport(httpx.BaseTransport):
     def close(self) -> None:
         """Закрывает вложенный транспорт."""
         self._inner.close()
+
+
+def _headers(headers: httpx.Headers) -> tuple[tuple[str, str], ...]:
+    """Снимок заголовков для записи журнала (не больше `MAX_HEADERS` пар)."""
+    return tuple((str(key).lower(), str(value)) for key, value in headers.items())[:MAX_HEADERS]
 
 
 def _is_text(content_type: str) -> bool:

@@ -48,7 +48,7 @@ import pandas as pd
 import streamlit as st
 
 from acceptance import endpoints as ep
-from acceptance import notes, task_snapshot
+from acceptance import glossary, notes, task_snapshot
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
 from acceptance.logging_setup import log_event
@@ -136,13 +136,14 @@ CARD_SCENARIOS: tuple[str, ...] = (
 
 
 def render() -> None:
-    """Отрисовывает экран «Задачи»."""
-    st.title("Задачи")
+    """Отрисовывает экран «$Задачи» (монитор $задач, FR-T11)."""
+    st.title(glossary.screen_label("tasks"))
     st.caption(
-        "Монитор асинхронных задач: список (фильтры и пагинация), наблюдение с историей "
-        "переходов FSM-1, карточка с прогонами, диагностика `celery-test` и наблюдение "
+        "Монитор $задач: список $задач сервера (фильтры и пагинация), наблюдение с историей "
+        "переходов FSM-1, карточка $задачи с прогонами, диагностика `celery-test` и наблюдение "
         "за внешними задачами. Команды выполняются только по `available_actions`."
     )
+    st.caption(glossary.PREFIX_HINT)
     render_flash()
 
     runtime = state.get_runtime()
@@ -248,9 +249,9 @@ def _render_tabs(
     )
     tabs = st.tabs(
         [
-            "📋 Список задач",
+            "📋 Список $задач",
             "⏱️ Наблюдение",
-            "🔎 Карточка задачи",
+            f"🔎 {glossary.term('task_card')}",
             "🩺 Диагностика",
             "🔗 Внешняя задача",
         ]
@@ -571,7 +572,7 @@ def _render_server_list(*, session: TestSession | None, monitor: TaskMonitor) ->
     """Вкладка «Список сервера»: фильтры, виды, статусы, архив и действия (TC-TASK-02)."""
     st.caption(
         "`GET /api/tasks/` — фильтры `task_type`, `status` и период создания (TC-TASK-02). "
-        "Статуса в ответе списка нет: он берётся из карточки задачи (`GET /api/tasks/{id}`, "
+        "Статуса в ответе списка нет: он берётся из карточки $задачи (`GET /api/tasks/{id}`, "
         "N+1) и запоминается в снимке `acceptance_data/task_snapshot.json`, поэтому после "
         "перезапуска пульта статусы видны сразу. Список читается целиком (`limit` стенда не "
         f"ограничен, пульт режет его на {state.LOAD_TASK_CAP} задач) и сортируется по "
@@ -807,8 +808,8 @@ def _render_server_list(*, session: TestSession | None, monitor: TaskMonitor) ->
         },
     )
     st.caption(
-        "«Источник»: `карточка` — статус получен запросом сейчас, `снимок` — последний "
-        "известный из `task_snapshot.json`, `опрос` — из наблюдения текущей сессии. "
+        "«Источник»: `карточка` — статус получен запросом карточки $задачи сейчас, `снимок` — "
+        "последний известный из `task_snapshot.json`, `опрос` — из наблюдения текущей сессии. "
         "Колонка «Статус» раскрашена: зелёный — исполняется или завершена, жёлтый — пауза, "
         "красный — ошибка, оранжевый — прервана, серый — нет данных. Статусы строк "
         f"получены: {st.session_state.get(KEY_CARDS_AT) or '—'} (кэш карточек "
@@ -866,9 +867,12 @@ def _render_server_list(*, session: TestSession | None, monitor: TaskMonitor) ->
             state.store_session(session)
             set_flash("success", f"Задача {selected.id} поставлена на наблюдение.")
         st.rerun()
-    if col_card.button("🔎 Открыть карточку", key="tasks_open"):
+    if col_card.button("🔎 Открыть карточку $задачи", key="tasks_open"):
         st.session_state[KEY_CARD_TASK] = str(selected.id)
-        set_flash("info", f"Задача {selected.id}: открывается на вкладке «Карточка задачи».")
+        set_flash(
+            "info",
+            f"$Задача {selected.id}: открывается на вкладке «{glossary.term('task_card')}».",
+        )
         st.rerun()
     if col_console.button("📡 Открыть в консоли", key="tasks_open_console"):
         _open_console("get /api/tasks/{task_id}", str(selected.id))
@@ -1136,11 +1140,11 @@ def _render_command_panel(
 
 
 def _save_card_artifact(*, session: TestSession, monitor: TaskMonitor, task_id: str) -> None:
-    """Сохраняет карточку задачи (JSON) в артефакты сессии как доказательство."""
+    """Сохраняет карточку $задачи (JSON) в артефакты сессии как доказательство."""
     try:
         card = monitor.card(task_id)
     except ClientError as exc:
-        set_flash("warning", f"Карточка задачи не получена: {exc}")
+        set_flash("warning", f"Карточка $задачи не получена: {exc}")
         st.rerun()
         return
 
@@ -1148,9 +1152,9 @@ def _save_card_artifact(*, session: TestSession, monitor: TaskMonitor, task_id: 
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     path = ARTIFACT_DIR / f"task_{task_id}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    add_artifact(session, kind="task_card", path=path, note=f"карточка задачи {task_id}")
+    add_artifact(session, kind="task_card", path=path, note=f"карточка $задачи {task_id}")
     state.store_session(session)
-    set_flash("success", f"Карточка задачи сохранена в артефакты: {path.name}.")
+    set_flash("success", f"Карточка $задачи сохранена в артефакты: {path.name}.")
     st.rerun()
 
 
@@ -1276,7 +1280,7 @@ def _render_card(*, session: TestSession | None, monitor: TaskMonitor) -> None:
     manual = col_manual.text_input(
         "task_id задачи (вручную, например для внешней)", value="", key="tasks_card_manual"
     )
-    if col_load.button("⟳ Загрузить карточку", key="tasks_card_load"):
+    if col_load.button("⟳ Загрузить карточку $задачи", key="tasks_card_load"):
         st.session_state[KEY_CARD_TASK] = (manual.strip() or selected).strip()
         st.rerun()
 
@@ -1556,10 +1560,13 @@ def _render_external(*, session: TestSession | None, monitor: TaskMonitor) -> No
                 else f"Внешняя задача {task_id}: {poll.error}",
             )
         st.rerun()
-    if col_card.button("🔎 Открыть карточку", key="tasks_ext_card"):
+    if col_card.button("🔎 Открыть карточку $задачи", key="tasks_ext_card"):
         if task_id:
             st.session_state[KEY_CARD_TASK] = task_id
-            set_flash("info", "Карточка внешней задачи открывается на вкладке «Карточка задачи».")
+            set_flash(
+                "info",
+                f"Карточка внешней $задачи открывается на вкладке «{glossary.term('task_card')}».",
+            )
         st.rerun()
 
     st.divider()

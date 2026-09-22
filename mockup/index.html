@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ПУЛЬТ испытаний — прототип целевого интерфейса</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🧪 ПУЛЬТ испытаний <span class="muted">прототип целевого интерфейса</span></div>
+  <div class="topinfo">
+    <span id="top-stand">Стенд: —</span>
+    <span id="top-session">Сессия: —</span>
+    <span id="top-build">Сборка: —</span>
+    <span id="top-programme">Программа: —</span>
+    <label class="topctl">Состояние UI
+      <select id="ui-state">
+        <option value="normal">обычное</option>
+        <option value="empty">пусто</option>
+        <option value="loading">загрузка</option>
+        <option value="error">ошибка</option>
+        <option value="nosession">нет сессии</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="screen" id="screen"></main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<footer class="footer">
+  Прототип к <code>docs/15</code> (ТЗ) и <code>docs/16</code> (макет): 13 экранов,
+  демонстрационные данные, без внешних зависимостей и сети.
+</footer>
+
+<script src="demo-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -34,7 +34,7 @@ from typing import Any
 import streamlit as st
 
 from acceptance import endpoints as ep
-from acceptance import notes
+from acceptance import notes, test_payloads
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
 from acceptance.checks.registry import CheckClass, CheckSpec, CheckStatus
@@ -509,11 +509,32 @@ def _render_card(session: TestSession | None, row: dict[str, Any] | None) -> Non
         with st.expander("Доказательства"):
             st.json(result.evidence)
 
+    _render_payload_block(session, spec)
+
     _render_run(session, spec)
     st.divider()
     _render_manual_marks(session, spec, result)
     st.divider()
     _render_note_block(session, spec, result)
+
+
+def _render_payload_block(session: TestSession | None, spec: CheckSpec) -> None:
+    """Блок «что будет отправлено»: `__TEST__`-данные, которые создаст проверка.
+
+    Пожелание заказчика (21.09.2026, п. 5): тела и имена `__TEST__`-сущностей
+    генерирует код сценария, поэтому оператор должен видеть их **до** запуска, а не
+    искать в журнале после. Правила берутся из `acceptance.test_payloads` (единый
+    источник с константами сценариев).
+    """
+    previews = test_payloads.payload_previews(spec, session)
+    title = f"📤 Что будет отправлено (`{test_payloads.TEST_PREFIX}`-данные)"
+    with st.expander(f"{title} — {test_payloads.summary(previews)}", expanded=False):
+        for line in test_payloads.preview_lines(previews):
+            st.markdown(line)
+        st.caption(
+            "Имена и идентификаторы с пометкой «генерируется при выполнении» создаются "
+            "в момент запуска; всё созданное пульт убирает за собой и учитывает в сессии."
+        )
 
 
 def _render_run(session: TestSession, spec: CheckSpec) -> None:

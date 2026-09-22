@@ -500,6 +500,7 @@ def test_bundle_saves_full_kit(tmp_path: Path):
         "checks.csv",
         "notes.csv",
         "test_entities.csv",
+        "plan.csv",
         "journal.jsonl",
     }
     stem = bundle.file_stem
@@ -513,7 +514,7 @@ def test_bundle_saves_full_kit(tmp_path: Path):
         .read_text(encoding="utf-8-sig")
         .startswith("# Протокол испытаний сервера обучения")
     )
-    assert json.loads(written["report_json"].read_text(encoding="utf-8-sig"))["report_version"] == 1
+    assert json.loads(written["report_json"].read_text(encoding="utf-8-sig"))["report_version"] == 2
     assert "logs/x.jsonl" in bundle.markdown  # meta попала в шапку комплекта
 
 
@@ -615,3 +616,89 @@ def test_datasets_section_notes_absence_of_composition():
     assert "## 7. Датасеты и состав" in bundle.markdown
     assert "Состав датасетов в этой сессии не фиксировался" in bundle.markdown
     assert bundle.payload["datasets"]["compositions"] == []
+
+
+# ---------------------------------------------------------------------------
+# Программа испытаний в отчёте (этап «Монитор обмена»)
+# ---------------------------------------------------------------------------
+def _plan_session():
+    """Сессия с использованной программой испытаний: снятая галочка и прогон вызова."""
+    from acceptance import plan as plan_api
+
+    session = full_session()
+    state = plan_api.load_plan(session)
+    state.mode = plan_api.MODE_CALL
+    state.pause_seconds = 5.0
+    state.set_enabled("TC-LOAD-07", False)
+    call = state.find("TC-FILE-01#1")
+    state.replace_item(
+        call.mark(
+            plan_api.STATUS_PASSED,
+            verdict=plan_api.VERDICT_MATCH,
+            journal_from=3,
+            journal_to=4,
+            duration_ms=12.5,
+        )
+    )
+    plan_api.save_plan(session, state)
+    return session, state
+
+
+def test_plan_section_reports_program_and_results():
+    """Раздел отчёта показывает состав программы и вердикты вызовов."""
+    session, state = _plan_session()
+
+    markdown = report.report_markdown(session)
+
+    assert "## 12. Программа испытаний (план вызовов)" in markdown
+    assert "Режим исполнения" in markdown
+    assert "пауза авто-прогона: 5 с" in markdown
+    assert "TC-FILE-01#1" in markdown
+    assert "TC-LOAD-07#1" in markdown
+    assert "## 13. Приложения" in markdown
+
+
+def test_plan_annex_lists_every_item():
+    """Приложение `plan.csv` содержит все пункты плана с колонками отчёта."""
+    session, state = _plan_session()
+
+    text = report.plan_csv(session)
+    lines = text.strip().splitlines()
+    header = lines[0].split(",")
+    rows = list(lines[1:])
+
+    assert header == list(report.PLAN_COLUMNS)
+    assert len(rows) == len(state.items)
+    assert any(line.startswith("TC-FILE-01#1,") for line in rows)
+    assert any('"нет"' in line or ",нет," in line for line in rows), "снятая галочка видна"
+
+
+def test_plan_payload_is_machine_readable():
+    """JSON-копия отчёта содержит план целиком (для автоматической проверки)."""
+    session, state = _plan_session()
+    payload = json.loads(report.report_json(session))
+
+    assert payload["plan"]["mode"] == "call"
+    assert len(payload["plan"]["items"]) == len(state.items)
+    assert payload["readiness"]["plan"]["done"] == 1
+    assert "plan.csv" in payload["annexes"]
+
+
+def test_readiness_warns_about_unfinished_program():
+    """Программа с невыполненными пунктами не даёт подписать отчёт молча."""
+    session, _state = _plan_session()
+
+    ready = report.readiness(session)
+
+    assert any("невыполненные включённые пункты" in warning for warning in ready["warnings"])
+    assert any("сняты галочками" in warning for warning in ready["warnings"])
+    assert ready["ready"] is False
+
+
+def test_readiness_is_quiet_without_program_usage():
+    """Сессия без обращений к программе испытаний не получает предупреждений о плане."""
+    session = full_session()
+
+    ready = report.readiness(session)
+
+    assert not any("программе испытаний" in warning for warning in ready["warnings"])

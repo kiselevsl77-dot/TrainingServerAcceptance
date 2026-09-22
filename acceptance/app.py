@@ -22,14 +22,16 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from acceptance import glossary  # noqa: E402
 from acceptance.config import LOG_LEVELS  # noqa: E402
 from acceptance.logging_setup import log_event  # noqa: E402
-from acceptance.ui import state  # noqa: E402
+from acceptance.ui import nav, state  # noqa: E402
 from acceptance.ui.pages import (  # noqa: E402
     checks,
     console,
     datasets,
     logs,
+    monitor,
     notes,
     records,
     report,
@@ -40,30 +42,35 @@ from acceptance.ui.pages import (  # noqa: E402
 
 st.set_page_config(page_title="Пульт испытаний · сервер обучения", page_icon="🧪", layout="wide")
 
-# Экраны пульта: FR-T1…FR-T9.
+# Экраны пульта: FR-T1…FR-T9. Подписи берутся из глоссария (`acceptance/glossary.py`),
+# поэтому сущности стенда во всех экранах названы одинаково — с префиксом `$`.
 SCREENS: dict[str, tuple[str, Callable[[], None]]] = {
-    "stand": ("🖥️ Стенд", stand.render),
-    "session": ("🧪 Сессия испытаний", session.render),
-    "records": ("🧩 Записи", records.render),
-    "tasks": ("⏱️ Задачи", tasks.render),
-    "datasets": ("🗂️ Датасеты", datasets.render),
-    "checks": ("✅ Чек-лист проверок", checks.render),
-    "console": ("📡 Консоль запросов", console.render),
-    "notes": ("✍️ Замечания к API", notes.render),
-    "logs": ("🧾 Журнал", logs.render),
-    "report": ("📄 Отчёт испытаний", report.render),
+    "stand": (glossary.nav_label("stand"), stand.render),
+    "session": (glossary.nav_label("session"), session.render),
+    "records": (glossary.nav_label("records"), records.render),
+    "tasks": (glossary.nav_label("tasks"), tasks.render),
+    "datasets": (glossary.nav_label("datasets"), datasets.render),
+    "checks": (glossary.nav_label("checks"), checks.render),
+    "monitor": (glossary.nav_label("monitor"), monitor.render),
+    "console": (glossary.nav_label("console"), console.render),
+    "notes": (glossary.nav_label("notes"), notes.render),
+    "logs": (glossary.nav_label("logs"), logs.render),
+    "report": (glossary.nav_label("report"), report.render),
 }
 
-GROUPS: list[tuple[str, list[str]]] = [
-    ("", ["stand", "session"]),
-    ("Испытания", ["records", "tasks", "datasets", "checks", "console"]),
-    ("Результаты", ["notes", "logs", "report"]),
-]
+# Порядок навигации — часть бизнес-процесса испытаний (docs/14): подготовка → прогон →
+# данные стенда → инфраструктура → инструменты → результаты. Данные вынесены в `ui/nav.py`
+# (без Streamlit), чтобы порядок проверялся unit-тестом (`tests/unit/test_nav.py`).
+GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = nav.GROUPS
+
+#: Навигация обязана перечислять все экраны ровно один раз (новый экран, забытый здесь,
+#: сразу даёт понятную ошибку вместо «молча невидимой» страницы).
+nav.validate(SCREENS)
 
 SCREEN_KEY = "pult_screen"
 
 if SCREEN_KEY not in st.session_state:
-    st.session_state[SCREEN_KEY] = "stand"
+    st.session_state[SCREEN_KEY] = nav.DEFAULT_SCREEN
 
 
 def _render_sidebar() -> None:
@@ -82,6 +89,8 @@ def _render_sidebar() -> None:
     else:
         st.sidebar.caption(f"Сессия: {current.session_id} · {current.status}")
         st.sidebar.caption(f"Сборка: {current.server_build}")
+
+    st.sidebar.caption(glossary.PREFIX_HINT)
 
     level = state.log_level()
     chosen = st.sidebar.selectbox(
@@ -111,7 +120,7 @@ def _render_sidebar() -> None:
                 st.rerun()
 
     st.sidebar.divider()
-    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T5")
+    st.sidebar.caption("Временный UI для испытаний текущего API · этапы T0–T5 и M1")
 
 
 artifacts = state.ensure_logging(state.log_level(), state.current_session_id())

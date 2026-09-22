@@ -8,7 +8,8 @@
 Файлы журналов:
     * `acceptance_data/logs/session_<id>.jsonl` — структурный журнал сессии
       (машинный след испытаний, попадает в отчёт);
-    * `acceptance_data/logs/app.log` — текстовый журнал приложения (с ротацией).
+    * `acceptance_data/logs/applog/applog_<запуск>.log` — текстовый журнал приложения
+      (свой файл на каждый запуск пульта, ротация 10 МБ × 10).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from typing import Any
 import streamlit as st
 
 from acceptance.http_log import HttpExchange
-from acceptance.logging_setup import list_session_logs, log_event, tail_log
+from acceptance.logging_setup import list_app_logs, list_session_logs, log_event, tail_log
 from acceptance.session import TestSession, now_iso
 from acceptance.ui import state
 
@@ -164,7 +165,7 @@ def _render_details(record: HttpExchange) -> None:
 
 
 def _render_files(session: TestSession | None, runtime: state.Runtime) -> None:
-    """Файлы журналов: структурный журнал сессии и текстовый журнал приложения."""
+    """Файлы журналов: структурный журнал сессии, журнал запуска и прошлые запуски."""
     st.subheader("Файлы журналов")
 
     logs = state.ensure_logging(state.log_level(), session.session_id if session else None)
@@ -199,9 +200,52 @@ def _render_files(session: TestSession | None, runtime: state.Runtime) -> None:
             key="logs_file_download",
         )
 
-    st.markdown(f"**Хвост `app.log` (последние {APP_LOG_TAIL_LINES} строк)**")
-    lines = tail_log(logs.app_log, lines=APP_LOG_TAIL_LINES)
+    _render_app_logs(logs.app_log)
+
+
+def _render_app_logs(current: Path) -> None:
+    """Текстовые журналы запусков пульта: текущий запуск и предыдущие.
+
+    Каждый запуск сервера пульта пишет свой файл (`logs/applog/applog_<запуск>.log`),
+    поэтому фрагмент ищется внутри одного запуска, а не в общей ленте. Текущий запуск
+    показывается хвостом сразу, прошлые — выбираются из списка.
+    """
+    st.markdown(
+        f"**Текстовый журнал запуска (последние {APP_LOG_TAIL_LINES} строк): `{current.name}`**"
+    )
+    st.caption(f"Файл запуска: {current.as_posix()}")
+    lines = tail_log(current, lines=APP_LOG_TAIL_LINES)
     st.code("\n".join(lines) if lines else "(журнал пуст)", language="text")
+    if current.exists():
+        st.download_button(
+            "⬇ Журнал текущего запуска",
+            data=current.read_bytes(),
+            file_name=current.name,
+            mime="text/plain",
+            key="logs_app_run_download",
+        )
+
+    others = [path for path in list_app_logs() if path != current]
+    if not others:
+        st.caption(
+            "Журналов прошлых запусков пока нет: они появятся в `logs/applog/` "
+            "после следующего запуска пульта."
+        )
+        return
+
+    st.markdown(f"**Прошлые запуски ({len(others)})**")
+    run_options = {path.name: path for path in others}
+    chosen_run = st.selectbox("Журнал запуска", list(run_options), key="logs_app_log_choice")
+    chosen_path = run_options[chosen_run]
+    previous = tail_log(chosen_path, lines=APP_LOG_TAIL_LINES)
+    st.code("\n".join(previous) if previous else "(журнал пуст)", language="text")
+    st.download_button(
+        "⬇ Выбранный журнал запуска",
+        data=chosen_path.read_bytes(),
+        file_name=chosen_run,
+        mime="text/plain",
+        key="logs_app_log_download",
+    )
 
 
 def _label_filter(column: Any, available: Sequence[str]) -> str:

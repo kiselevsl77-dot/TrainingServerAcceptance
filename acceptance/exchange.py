@@ -27,12 +27,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 import httpx
 
 from acceptance.config import DEFAULT_BODY_LIMIT, PultConfig
-from acceptance.http_log import Journal, LoggingTransport, label_context
+from acceptance.http_log import HttpExchange, Journal, LoggingTransport, label_context
 from client.files import guess_content_type
 from client.http import error_detail, filename_from_content_disposition
 from client.settings import TrainingServerSettings
@@ -261,14 +261,51 @@ class ExchangeResult:
 
     def as_curl(self, base_url: str = "") -> str:
         """Команда `curl` для воспроизведения запроса (в замечание к API, в отчёт)."""
-        target = f"{base_url.rstrip('/')}{self.url}"
-        parts = [f"curl -X {self.method} '{target}'"]
-        if self.request_body.startswith("<multipart"):
-            parts.append(f"-F 'file=@<файл>'  # {self.request_body.strip('<>')}")
-        elif self.request_body:
-            parts.append("-H 'Content-Type: application/json'")
-            parts.append(f"-d '{self.request_body}'")
-        return " \\\n  ".join(parts)
+        return curl_command(
+            method=self.method,
+            path=self.path,
+            query=urlencode(self.query) if self.query else "",
+            body=self.request_body,
+            base_url=base_url,
+            content_type=self.headers.get("content-type", ""),
+        )
+
+
+def curl_command(
+    *,
+    method: str,
+    path: str,
+    query: str = "",
+    body: str = "",
+    base_url: str = "",
+    content_type: str = "",
+) -> str:
+    """Команда `curl` для воспроизведения запроса средствами командной строки.
+
+    Используется монитором обмена (копирование запроса из ленты), консолью и
+    замечаниями к API — требование заказчика: любой вызов должен воспроизводиться
+    вне пульта. Три случая:
+
+        * запрос без тела — только метод и URL с query;
+        * JSON-тело — заголовок `Content-Type` и `-d '<тело>'`;
+        * multipart — placeholder `-F 'file=@<файл>'`: содержимое файла в журнал
+          не пишется (только имя, размер и поля формы), поэтому файл выбирается
+          оператором заново.
+    """
+    target = f"{base_url.rstrip('/')}{path}"
+    if query:
+        separator = "&" if "?" in target else "?"
+        target = f"{target}{separator}{query}"
+
+    parts = [f"curl -X {method.strip().upper()} '{target}'"]
+    text = str(body or "")
+    if text.startswith("<multipart"):
+        parts.append(f"-F 'file=@<файл>'  # {text.strip('<>')}")
+    elif text:
+        media = content_type.split(";")[0].strip() or "application/json"
+        parts.append(f"-H 'Content-Type: {media}'")
+        parts.append(f"-d '{text}'")
+    return " \\\n  ".join(parts)
 
 
 def build_console_client(
@@ -446,6 +483,18 @@ def _request_body_text(
     return ""
 
 
+def exchange_curl(record: HttpExchange, base_url: str = "") -> str:
+    """Команда `curl` для записи журнала (копирование запроса из монитора обмена)."""
+    return curl_command(
+        method=record.method,
+        path=record.path,
+        query=record.query,
+        body=record.request_body or "",
+        base_url=base_url,
+        content_type=record.request_header_map.get("content-type", ""),
+    )
+
+
 def _last_seq(journal: Journal | None, method: str, path: str) -> int | None:
     """Номер последней записи журнала по этому запросу (привязка к отчёту)."""
     if journal is None:
@@ -454,3 +503,112 @@ def _last_seq(journal: Journal | None, method: str, path: str) -> int | None:
         if record.method == method and record.path == path:
             return record.seq
     return None
+
+
+#: Уровни подробности запроса/ответа в мониторе обмена (выбираются по раздельности).
+DETAIL_LEVELS: tuple[str, ...] = ("кратко", "сводка", "заголовки", "тело", "полностью")
+
+DETAIL_HINTS: dict[str, str] = {
+    "кратко": "одна строка: метод, путь, статус, длительность",
+    "сводка": "метод, путь, query, статус, размеры, тип, метка, ошибка",
+    "заголовки": "сводка + заголовки запроса/ответа",
+    "тело": "сводка + сохранённое тело (в пределах `PULT_BODY_LIMIT`)",
+    "полностью": "все поля записи журнала (включая служебные и JSON-дамп)",
+}
+
+
+@dataclass(frozen=True)
+class RepeatRequest:
+    """Запрос, восстановленный из записи журнала (повтор с подкорректированными параметрами).
+
+    Требование заказчика: оператор должен уметь повторить **любой** вызов, увиденный в
+    мониторе обмена, поправив параметры перед отправкой. Запись журнала хранит метод,
+    путь, query, тело и заголовки запроса, поэтому запрос восстанавливается полностью —
+    кроме multipart: содержимое файла в журнал не пишется, и файл выбирается заново
+    (`multipart=True`).
+    """
+
+    method: str
+    path: str
+    query: dict[str, str] = field(default_factory=dict)
+    json_body: dict[str, Any] | None = None
+    body_text: str = ""
+    content_type: str = ""
+    multipart: bool = False
+    label: str = ""
+
+    @property
+    def editable_body(self) -> str:
+        """Тело для редактора: JSON-текст или пустая строка (для multipart — пусто)."""
+        if self.multipart:
+            return ""
+        if self.json_body is not None:
+            return json.dumps(self.json_body, ensure_ascii=False, indent=2)
+        return self.body_text
+
+    @property
+    def url(self) -> str:
+        """Путь с query-строкой."""
+        if not self.query:
+            return self.path
+        return f"{self.path}?{urlencode(self.query)}"
+
+    def as_curl(self, base_url: str = "") -> str:
+        """Команда `curl` для повтора запроса вне пульта."""
+        return curl_command(
+            method=self.method,
+            path=self.path,
+            query=urlencode(self.query) if self.query else "",
+            body=self.body_text,
+            base_url=base_url,
+            content_type=self.content_type,
+        )
+
+
+def repeat_from_exchange(record: HttpExchange) -> RepeatRequest:
+    """Восстанавливает отправленный запрос из записи журнала (для повтора в мониторе)."""
+    body_text = record.request_body or ""
+    multipart = body_text.startswith("<multipart")
+    json_body: dict[str, Any] | None = None
+    if not multipart and body_text:
+        parsed = parse_json(body_text)
+        if isinstance(parsed, dict):
+            json_body = parsed
+    return RepeatRequest(
+        method=record.method,
+        path=record.path,
+        query=dict(parse_qsl(record.query, keep_blank_values=True)),
+        json_body=json_body,
+        body_text="" if json_body is not None else body_text,
+        content_type=record.request_header_map.get("content-type", ""),
+        multipart=multipart,
+        label=record.label or "",
+    )
+
+
+def execute_repeat(
+    client: httpx.Client,
+    request: RepeatRequest,
+    *,
+    body_limit: int = DEFAULT_BODY_LIMIT,
+    journal: Journal | None = None,
+    timeout: float | None = None,
+    keep_content: bool = True,
+) -> ExchangeResult:
+    """Повторяет запрос монитора обмена (возможно, с правками оператора).
+
+    Multipart-запросы так не повторяются (содержимое файла в журнале не хранится):
+    для них монитор предлагает перейти в консоль и выбрать файл заново.
+    """
+    return execute_request(
+        client,
+        method=request.method,
+        path=request.path,
+        query=request.query,
+        json_body=request.json_body,
+        label=request.label,
+        timeout=timeout,
+        body_limit=body_limit,
+        journal=journal,
+        keep_content=keep_content,
+    )

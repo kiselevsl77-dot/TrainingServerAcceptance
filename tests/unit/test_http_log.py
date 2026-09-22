@@ -97,6 +97,25 @@ def test_label_context_marks_exchange_with_check_id(wired):
     assert payload["payload"]["label"] == "TC-FILE-01"
 
 
+def test_headers_are_journaled_for_both_directions(wired):
+    """Заголовки запроса и ответа попадают в запись журнала и в его выгрузку.
+
+    Без них «полная» подробность монитора обмена невозможна: комиссия должна видеть
+    заголовки так, как их отдал сервер (важно для дефектов вида «нет Content-Length»).
+    """
+    journal, client, _jsonl = wired
+
+    client.get("/api/data/files", headers={"X-Pult-Probe": "1"})
+
+    record = journal.records[0]
+    assert record.request_header_map.get("x-pult-probe") == "1"
+    assert "accept" in record.request_header_map
+    assert record.response_header_map.get("content-type") == "application/json"
+    payload = record.as_dict()
+    assert payload["request_headers"]["x-pult-probe"] == "1"
+    assert "content-type" in payload["response_headers"]
+
+
 def test_connection_error_is_journaled_and_logged(wired):
     journal, client, jsonl = wired
 

@@ -2,8 +2,11 @@
 
 Три назначения (sinks) loguru:
     * консоль — короткий формат для оператора;
-    * `acceptance_data/logs/app.log` — текстовый журнал приложения
-      (ротация 10 МБ, хранение 10 файлов, UTF-8);
+    * `acceptance_data/logs/applog/applog_<запуск>.log` — текстовый журнал приложения
+      **по одному файлу на запуск** сервера пульта (ротация 10 МБ, хранение 10 файлов,
+      UTF-8). Имя запуска — момент старта процесса (`RUN_ID`), поэтому в ленте журнала
+      всегда видно, к какому запуску относится фрагмент, а поиск не идёт по одной
+      длинной ленте за все прогоны;
     * `acceptance_data/logs/session_<id>.jsonl` — **структурный** журнал сессии
       (`serialize=True`): именно он служит машинным следом испытаний и основой
       для отчёта (воспроизводимость: по нему повторяется любой шаг).
@@ -26,13 +29,29 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from acceptance.config import DEFAULT_LOG_LEVEL
-from acceptance.paths import DEFAULT_APP_LOG, LOG_DIR, ensure_dirs, session_log_path
+from acceptance.paths import (
+    APP_LOG_DIR,
+    APP_LOG_PATTERN,
+    LOG_DIR,
+    app_log_path,
+    ensure_dirs,
+    session_log_path,
+)
+
+#: Идентификатор запуска сервера пульта (`ГГГГММДД-ЧЧММСС` момента старта процесса).
+#: Именно по нему называется файл текстового журнала, поэтому одна сессия отладки
+#: отделена от предыдущих запусков.
+RUN_ID = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+#: Путь текстового журнала текущего запуска (по умолчанию — для `setup_logging`).
+DEFAULT_APP_LOG = app_log_path(RUN_ID)
 
 CONSOLE_FORMAT = (
     "<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | "
@@ -97,7 +116,8 @@ def setup_logging(
     Args:
         level: уровень записи (`DEBUG`…`ERROR`) — задаётся оператором.
         session_id: сессия испытаний; для неё создаётся отдельный JSONL-журнал.
-        app_log: путь текстового журнала (по умолчанию `logs/app.log`).
+        app_log: путь текстового журнала (по умолчанию — журнал текущего запуска,
+            `logs/applog/applog_<RUN_ID>.log`).
         session_log: путь структурного журнала (по умолчанию `logs/session_<id>.jsonl`).
         console: дублировать ли записи в консоль.
         enqueue: асинхронная запись в файлы (в тестах выключается для синхронности).
@@ -106,7 +126,7 @@ def setup_logging(
         Фактические пути журналов и уровень.
     """
     ensure_dirs()
-    resolved_app_log = Path(app_log) if app_log is not None else DEFAULT_APP_LOG
+    resolved_app_log = Path(app_log) if app_log is not None else app_log_path(RUN_ID)
     resolved_session_log = (
         Path(session_log)
         if session_log is not None
@@ -223,6 +243,23 @@ def list_session_logs(directory: Path | None = None) -> list[Path]:
         return []
     return sorted(
         base.glob("session_*.jsonl"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def list_app_logs(directory: Path | None = None) -> list[Path]:
+    """Файлы текстовых журналов запусков пульта (новые — первыми).
+
+    Каждый запуск сервера пульта пишет свой файл `applog_<ГГГГММДД-ЧЧММСС>.log`
+    в `logs/applog/`, поэтому оператор выбирает нужный запуск, а не ищет фрагмент
+    в одной длинной ленте.
+    """
+    base = Path(directory) if directory is not None else APP_LOG_DIR
+    if not base.exists():
+        return []
+    return sorted(
+        base.glob(APP_LOG_PATTERN),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )

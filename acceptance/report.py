@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from acceptance import notes as notes_api
+from acceptance import plan as plan_api
 from acceptance.checks import engine as checks_engine
 from acceptance.dataset_composition import (
     composition_rows,
@@ -40,7 +41,7 @@ from acceptance.paths import REPORT_DIR, ensure_dirs
 from acceptance.session import TestSession, now_iso, pending_test_entities, test_entities
 
 #: Версия формата отчёта (растёт при изменении состава разделов/приложений).
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 
 #: Колонки приложения «Таблица проверок» (совпадают с выгрузкой экрана чек-листа).
 CHECK_COLUMNS: tuple[str, ...] = (
@@ -62,6 +63,22 @@ CHECK_COLUMNS: tuple[str, ...] = (
 #: Колонки приложения «Перечень `__TEST__`-сущностей» (NFR-T4, TC-CLEAN-02).
 ENTITY_COLUMNS: tuple[str, ...] = ("id", "type", "action", "at", "check_id", "note")
 
+#: Колонки приложения «Программа испытаний» (план вызовов, этап «Монитор обмена»).
+PLAN_COLUMNS: tuple[str, ...] = (
+    "item_id",
+    "level",
+    "group",
+    "operation",
+    "title",
+    "expected",
+    "enabled",
+    "status",
+    "verdict",
+    "journal_from",
+    "journal_to",
+    "duration_ms",
+)
+
 #: Префикс вида артефакта с манифестом записей (`records.save_manifest`).
 MANIFEST_KIND_PREFIX = "records_manifest"
 
@@ -78,6 +95,7 @@ SECTION_TITLES: tuple[str, ...] = (
     "Замечания к API",
     "Перспективные требования",
     "Итог и подписи",
+    "Программа испытаний (план вызовов)",
     "Приложения",
 )
 
@@ -150,6 +168,20 @@ def readiness(session: TestSession) -> dict[str, Any]:
             str(note.get("check_id") or "") == str(row["check_id"]) for note in session.notes
         )
     ]
+    plan = plan_api.load_plan(session)
+    plan_summary = plan.summary()
+    # План, собранный «по умолчанию» (оператор не заходил в программу испытаний),
+    # не должен давать предупреждений о полноте отчёта: считается, что программа
+    # использовалась, если оператор её правил или выполнял из неё пункты.
+    plan_used = bool(getattr(session, "plan", None)) or plan_summary["done"] > 0
+    plan_pending = [
+        item.item_id
+        for item in plan.items
+        if item.enabled and item.status == plan_api.STATUS_PENDING
+    ]
+    plan_disabled_checks = [
+        item.item_id for item in plan.items if item.is_check and not item.enabled
+    ]
 
     warnings: list[str] = []
     if not session.info.is_filled:
@@ -174,6 +206,22 @@ def readiness(session: TestSession) -> dict[str, Any]:
     if pending:
         remaining = ", ".join(str(item.get("id")) for item in pending[:5])
         warnings.append(f"не удалены созданные `__TEST__`-сущности: {remaining}")
+    if plan_used and plan_pending:
+        sample = ", ".join(plan_pending[:5])
+        warnings.append(
+            f"в программе испытаний остались невыполненные включённые пункты: "
+            f"{len(plan_pending)} (например, {sample})"
+        )
+    if plan_used and plan_disabled_checks:
+        warnings.append(
+            f"из программы испытаний сняты галочками проверки: {len(plan_disabled_checks)} "
+            f"({', '.join(plan_disabled_checks[:5])}) — они не выполнялись"
+        )
+    if plan_summary["failed"]:
+        warnings.append(
+            f"пунктов программы с отказом: {plan_summary['failed']} — см. раздел "
+            "«Программа испытаний (план вызовов)»"
+        )
     if not str(session.info.conclusion or "").strip():
         warnings.append(
             "не зафиксировано итоговое решение сессии (годен / годен с замечаниями / …)"
@@ -189,6 +237,7 @@ def readiness(session: TestSession) -> dict[str, Any]:
             "auto": sum(1 for note in session.notes if str(note.get("source")) == "авто"),
         },
         "tasks": {"observed": len(tasks)},
+        "plan": plan_summary,
         "artifacts": {"total": len(artifacts), "kinds": _count_keys(artifacts, "kind")},
         "test_entities": {"total": len(entities), "pending": len(pending)},
         "session": {
@@ -616,7 +665,7 @@ def _conclusion_section(session: TestSession, ready: Mapping[str, Any]) -> str:
 
 
 def _annexes_section(annexes: Mapping[str, str]) -> str:
-    """Раздел 12: приложения комплекта отчёта (файлы, которые сохраняются рядом)."""
+    """Раздел 13: приложения комплекта отчёта (файлы, которые сохраняются рядом)."""
     rows = [
         {
             "annex": name,
@@ -625,7 +674,84 @@ def _annexes_section(annexes: Mapping[str, str]) -> str:
         }
         for name, content in annexes.items()
     ]
-    return _section(12, SECTION_TITLES[11], [_md_table(rows, ("annex", "lines", "size_bytes"))])
+    return _section(13, SECTION_TITLES[12], [_md_table(rows, ("annex", "lines", "size_bytes"))])
+
+
+def plan_rows(session: TestSession) -> list[dict[str, Any]]:
+    """Строки приложения «Программа испытаний»: пункты плана с результатами."""
+    state = plan_api.load_plan(session)
+    rows: list[dict[str, Any]] = []
+    for item in state.items:
+        rows.append(
+            {
+                "item_id": item.item_id,
+                "level": item.level,
+                "group": item.group,
+                "operation": item.operation,
+                "title": item.title,
+                "expected": item.expected,
+                "enabled": "да" if item.enabled else "нет",
+                "status": item.status,
+                "verdict": item.verdict,
+                "journal_from": item.journal_from,
+                "journal_to": item.journal_to,
+                "duration_ms": item.duration_ms,
+            }
+        )
+    return rows
+
+
+def plan_csv(session: TestSession) -> str:
+    """Приложение «Программа испытаний» (CSV) — состав плана и результаты прогона."""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(PLAN_COLUMNS), lineterminator="\n")
+    writer.writeheader()
+    for row in plan_rows(session):
+        writer.writerow({key: row.get(key, "") for key in PLAN_COLUMNS})
+    return buffer.getvalue()
+
+
+def _plan_section(session: TestSession, state: Any) -> str:
+    """Раздел 12: программа испытаний — что планировалось и чем закончилось.
+
+    Раздел закрывает пожелание заказчика «показывать список запланированных вызовов»:
+    в отчёте видно не только результат проверок, но и **какие вызовы** были включены,
+    каким ожиданиям они должны были соответствовать и что получилось фактически
+    (статус, вердикт, диапазон записей журнала). Подробная лента обмена с телами и
+    заголовками — приложение `journal.jsonl`.
+    """
+    summary = state.summary()
+    lines = [
+        f"* Режим исполнения: **{plan_api.MODE_LABELS.get(summary['mode'], summary['mode'])}**; "
+        f"пауза авто-прогона: {summary['pause_seconds']:g} с.",
+        f"* Пунктов в программе: {summary['total']} "
+        f"(проверок — {summary['checks']}, отдельных вызовов — {summary['calls']}); "
+        f"включено галочками: {summary['enabled']}, снято: {summary['disabled']}.",
+        f"* Выполнено пунктов: {summary['done']}; успех — {summary['passed']}, "
+        f"отказ — {summary['failed']}, блокировано API — {summary['blocked']}, "
+        f"пропущено — {summary['skipped']}.",
+    ]
+    if summary["enabled"] == 0:
+        lines.append("* ⚠️ Все пункты сняты галочками: выполнять нечего.")
+    calls = [item for item in state.items if item.is_call and item.is_done]
+    if calls:
+        passed = sum(1 for item in calls if item.status == plan_api.STATUS_PASSED)
+        lines.append(
+            f"* Вызовов исполнено: {len(calls)}; из них соответствуют ожиданию — "
+            f"{sum(1 for item in calls if item.verdict == plan_api.VERDICT_MATCH)} "
+            f"(успешных ответов: {passed})."
+        )
+    mismatched = [item for item in calls if item.verdict == plan_api.VERDICT_MISMATCH]
+    if mismatched:
+        lines.append(
+            "* Отличия от ожиданий: "
+            + ", ".join(f"`{item.item_id}` ({item.verdict})" for item in mismatched[:8])
+        )
+    lines.append("")
+    lines.append("**Пункты программы** *(галочка «включено» — что пойдёт на стенд)*")
+    lines.append("")
+    lines.append(_md_table(plan_rows(session), PLAN_COLUMNS))
+    return _section(12, SECTION_TITLES[11], lines)
 
 
 def _group_summary(session: TestSession) -> list[dict[str, Any]]:
@@ -784,7 +910,9 @@ def build(
         "checks.csv": checks_csv(session),
         "notes.csv": notes_csv(session),
         "test_entities.csv": entities_csv(session),
+        "plan.csv": plan_csv(session),
     }
+    plan = plan_api.load_plan(session)
     manifests, manifest_warnings = manifest_annexes(session)
     annexes.update(manifests)
     if manifest_warnings:
@@ -822,6 +950,7 @@ def build(
         _notes_section(session),
         _prospective_section(),
         _conclusion_section(session, ready),
+        _plan_section(session, plan),
         _annexes_section(annexes),
     ]
     markdown = "\n".join([*header_lines, *sections]).rstrip() + "\n"
@@ -846,6 +975,7 @@ def build(
         },
         "readiness": ready,
         "checks": checks_engine.checklist_rows(session),
+        "plan": plan.to_dict(),
         "groups": groups,
         "snapshots": comparison,
         "tasks": list(session.tasks or []),

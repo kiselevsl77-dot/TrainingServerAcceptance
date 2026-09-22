@@ -13,19 +13,25 @@ import httpx
 
 from acceptance.config import PultConfig
 from acceptance.exchange import (
+    DETAIL_LEVELS,
     ERROR_API,
     ERROR_NETWORK,
     ERROR_NOT_FOUND,
     ERROR_REQUEST,
     ERROR_VALIDATION,
     MultipartPayload,
+    RepeatRequest,
     build_console_client,
     charset_from_content_type,
+    curl_command,
     decode_body,
+    exchange_curl,
+    execute_repeat,
     execute_request,
     is_text_content,
+    repeat_from_exchange,
 )
-from acceptance.http_log import Journal
+from acceptance.http_log import HttpExchange, Journal
 from client.settings import TrainingServerSettings
 
 BODY_LIMIT = 120
@@ -381,3 +387,171 @@ def test_result_helpers_for_history_and_filters():
     assert json.dumps(result.as_dict(), ensure_ascii=False)
     assert result.as_dict()["journal_seq"] == result.journal_seq
     client.close()
+
+
+# ---------------------------------------------------------------------------
+# Монитор обмена: curl, повтор с правками, уровни подробности
+# ---------------------------------------------------------------------------
+def test_curl_command_covers_three_request_shapes():
+    """`curl` собирается для запроса без тела, с JSON-телом и для multipart."""
+    plain = curl_command(
+        method="get", path="/api/data/files", query="limit=5", base_url="https://stand.local"
+    )
+    assert plain == "curl -X GET 'https://stand.local/api/data/files?limit=5'"
+
+    json_request = curl_command(
+        method="post",
+        path="/api/datasets/",
+        body='{"name": "__TEST__dataset"}',
+        base_url="https://stand.local",
+        content_type="application/json",
+    )
+    assert "-H 'Content-Type: application/json'" in json_request
+    assert '-d \'{"name": "__TEST__dataset"}\'' in json_request
+
+    multipart = curl_command(
+        method="post",
+        path="/api/data/file",
+        body="<multipart: __TEST__.csv, 12 байт>",
+        base_url="https://stand.local",
+    )
+    assert "-F 'file=@<файл>'" in multipart
+
+
+def test_curl_command_keeps_multiple_query_parameters():
+    """Query-строка добавляется целиком, повторная подстановка не ломает URL."""
+    command = curl_command(
+        method="get",
+        path="/api/tasks/",
+        query="limit=100&offset=0",
+        base_url="https://stand.local/",
+    )
+
+    assert command == "curl -X GET 'https://stand.local/api/tasks/?limit=100&offset=0'"
+
+
+def test_repeat_from_exchange_restores_json_request():
+    """Повтор восстанавливает запрос из записи журнала: путь, query, тело, метку."""
+    record = HttpExchange(
+        seq=7,
+        started_at="2026-09-21T10:00:00",
+        method="POST",
+        path="/api/datasets/",
+        query="dry_run=1",
+        status=201,
+        duration_ms=12.0,
+        request_bytes=40,
+        response_bytes=10,
+        content_type="application/json",
+        label="TC-DS-01",
+        request_body='{"name": "__TEST__dataset"}',
+        request_headers=(("content-type", "application/json"),),
+    )
+
+    repeat = repeat_from_exchange(record)
+
+    assert repeat.method == "POST"
+    assert repeat.path == "/api/datasets/"
+    assert repeat.query == {"dry_run": "1"}
+    assert repeat.json_body == {"name": "__TEST__dataset"}
+    assert repeat.multipart is False
+    assert repeat.label == "TC-DS-01"
+    assert json.loads(repeat.editable_body) == {"name": "__TEST__dataset"}
+    assert repeat.url == "/api/datasets/?dry_run=1"
+    assert "curl -X POST" in repeat.as_curl("https://stand.local")
+
+
+def test_repeat_from_exchange_marks_multipart_and_plain_bodies():
+    """Multipart помечается (файл выбирается заново), текст без JSON сохраняется как есть."""
+    multipart = repeat_from_exchange(
+        HttpExchange(
+            seq=1,
+            started_at="",
+            method="POST",
+            path="/api/data/file",
+            query="",
+            status=202,
+            duration_ms=1.0,
+            request_bytes=100,
+            response_bytes=1,
+            content_type=None,
+            request_body="<multipart: __TEST__.csv, 100 байт>",
+        )
+    )
+    plain = repeat_from_exchange(
+        HttpExchange(
+            seq=2,
+            started_at="",
+            method="PUT",
+            path="/api/loads/1",
+            query="",
+            status=200,
+            duration_ms=1.0,
+            request_bytes=10,
+            response_bytes=1,
+            content_type=None,
+            request_body="raw text",
+        )
+    )
+
+    assert multipart.multipart is True
+    assert multipart.editable_body == ""
+    assert plain.multipart is False
+    assert plain.body_text == "raw text"
+    assert plain.editable_body == "raw text"
+
+
+def test_exchange_curl_uses_recorded_request():
+    """Команда `curl` для записи журнала берёт метод, путь, query и тело из записи."""
+    record = HttpExchange(
+        seq=3,
+        started_at="",
+        method="GET",
+        path="/api/data/files",
+        query="file_name=Antminer",
+        status=200,
+        duration_ms=5.0,
+        request_bytes=0,
+        response_bytes=10,
+        content_type="application/json",
+    )
+
+    command = exchange_curl(record, "https://stand.local")
+
+    assert command == "curl -X GET 'https://stand.local/api/data/files?file_name=Antminer'"
+
+
+def test_execute_repeat_sends_edited_request():
+    """Повтор уходит с подкорректированными параметрами и попадает в журнал."""
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["body"] = request.content.decode()
+        return httpx.Response(200, json={"ok": True})
+
+    client, journal = _console(handler)
+    request = RepeatRequest(
+        method="POST",
+        path="/api/datasets/",
+        query={"dry_run": "1"},
+        json_body={"name": "__TEST__repeat"},
+        label="TC-DS-01",
+    )
+
+    result = execute_repeat(client, request, journal=journal, body_limit=BODY_LIMIT)
+
+    assert result.status == 200
+    assert "dry_run=1" in str(seen["url"])
+    assert "__TEST__repeat" in str(seen["body"])
+    assert result.journal_seq is not None
+    # повтор помечен той же меткой — его видно в ленте рядом с исходным вызовом
+    assert journal.records[-1].label == "TC-DS-01"
+    client.close()
+
+
+def test_detail_levels_are_ordered_from_short_to_full():
+    """Уровни подробности монитора идут от «кратко» к «полностью»."""
+    assert DETAIL_LEVELS[0] == "кратко"
+    assert DETAIL_LEVELS[-1] == "полностью"
+    assert "заголовки" in DETAIL_LEVELS and "тело" in DETAIL_LEVELS
