@@ -367,7 +367,7 @@ def _render_transfer(session: TestSession) -> None:
                 file_name=f"{session.session_id}.json",
                 mime="application/json",
                 key=f"{KEY}_download",
-                use_container_width=True,
+                width="stretch",
             )
             st.caption(
                 layout.join_parts(
@@ -445,11 +445,11 @@ def _lifecycle_controls(session: TestSession) -> None:
         if st.button(
             ACTION_LABELS[action],
             key=f"{KEY}_action_{action}",
-            use_container_width=True,
+            width="stretch",
             type="primary" if action == "close" else "secondary",
         ):
             _apply_action(session, action, conclusion=conclusion)
-    if st.button("→ К прогону (SCR-301)", key=f"{KEY}_goto_run", use_container_width=True):
+    if st.button("→ К прогону (SCR-301)", key=f"{KEY}_goto_run", width="stretch"):
         state.go_to("scr301_run")
 
 

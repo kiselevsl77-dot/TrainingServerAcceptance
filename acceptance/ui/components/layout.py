@@ -123,7 +123,7 @@ def rows_table(
         column_config=config,
         column_order=list(columns),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         height=size,
         key=key,
     )

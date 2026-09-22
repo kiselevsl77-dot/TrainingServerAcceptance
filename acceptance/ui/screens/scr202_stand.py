@@ -133,7 +133,7 @@ def _render_server() -> None:
         )
     )
     button, summary = st.columns(list(CHECK_COLUMN_RATIO))
-    if button.button("🔄 Проверить", key=f"{KEY}_check", type="primary", use_container_width=True):
+    if button.button("🔄 Проверить", key=f"{KEY}_check", type="primary", width="stretch"):
         _check_stand()
     summary.caption(check_caption(state.stand_status()))
 
@@ -283,9 +283,7 @@ def _download_log_button(session: TestSession) -> None:
 def _render_links() -> None:
     """Переходы экрана: данные стенда и настройки подключения (макет `SCR-202`)."""
     st.divider()
-    if st.button("→ Данные стенда (SCR-204)", key=f"{KEY}_goto_data", use_container_width=True):
+    if st.button("→ Данные стенда (SCR-204)", key=f"{KEY}_goto_data", width="stretch"):
         state.go_to("scr204_data")
-    if st.button(
-        "→ Консоль и настройки (SCR-501)", key=f"{KEY}_goto_tools", use_container_width=True
-    ):
+    if st.button("→ Консоль и настройки (SCR-501)", key=f"{KEY}_goto_tools", width="stretch"):
         state.go_to("scr501_tools")

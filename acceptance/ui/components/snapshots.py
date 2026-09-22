@@ -172,7 +172,7 @@ def controls(session: TestSession, *, key: str) -> None:
         horizontal=True,
         key=f"{key}_phase",
     )
-    if st.button("📸 Снять снимок", key=f"{key}_take", use_container_width=True):
+    if st.button("📸 Снять снимок", key=f"{key}_take", width="stretch"):
         capture(session, phase)
 
 

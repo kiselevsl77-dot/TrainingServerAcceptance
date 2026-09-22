@@ -108,7 +108,7 @@ def _render_sidebar() -> None:
                 label,
                 key=f"nav_{key}",
                 type="primary" if active else "secondary",
-                use_container_width=True,
+                width="stretch",
                 help=f"{nav.by_key(key).code} · фаза {nav.by_key(key).phase}",
             ):
                 st.session_state[SCREEN_KEY] = key
