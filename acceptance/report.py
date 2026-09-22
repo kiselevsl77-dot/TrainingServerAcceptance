@@ -145,6 +145,11 @@ def readiness(session: TestSession) -> dict[str, Any]:
     stats = checks_engine.overall_stats(session)
     summary = notes_api.notes_by_priority(session.notes)
     notes_total = sum(len(items) for items in summary.values())
+    incomplete_notes = [
+        note
+        for note in notes_api.sorted_notes(session.notes)
+        if not str(note.reproduction or "").strip()
+    ]
     tasks = list(session.tasks or [])
     artifacts = list(session.artifacts or [])
     entities = test_entities(session)
@@ -176,6 +181,12 @@ def readiness(session: TestSession) -> dict[str, Any]:
         warnings.append(
             "статус «блокировано API» без замечания: " + ", ".join(blocked_without_note[:5])
         )
+    if incomplete_notes:
+        warnings.append(
+            "замечания без воспроизведения: "
+            + ", ".join(f"{note.priority} · {note.note_id}" for note in incomplete_notes[:5])
+            + " — передать разработчику нечего (`FR-P-48`)"
+        )
     if pending:
         remaining = ", ".join(str(item.get("id")) for item in pending[:5])
         warnings.append(f"не удалены созданные `__TEST__`-сущности: {remaining}")
@@ -192,6 +203,7 @@ def readiness(session: TestSession) -> dict[str, Any]:
             "p1": len(summary.get("P1", [])),
             "p2": len(summary.get("P2", [])),
             "auto": sum(1 for note in session.notes if str(note.get("source")) == "авто"),
+            "incomplete": len(incomplete_notes),
         },
         "tasks": {"observed": len(tasks)},
         "artifacts": {"total": len(artifacts), "kinds": _count_keys(artifacts, "kind")},

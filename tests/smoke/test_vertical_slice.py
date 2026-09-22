@@ -294,6 +294,35 @@ def test_vertical_slice_check_card_shows_result(pult: tuple[AppTest, Path]) -> N
     )
 
 
+def test_vertical_slice_report_and_solution(pult: tuple[AppTest, Path]) -> None:
+    """Срез завершается отчётом: комплект собирается, решение и обоснование зафиксированы."""
+    app, store = pult
+    app, session_id = _plan(app)
+    app = _open(app, "scr301_run")
+    labels = [item.label for item in app.button]
+    app = _click(app, next(label for label in labels if label.startswith("▶ Следующая:")))
+
+    app = _open(app, "scr404_report")
+    subheaders = [item.value for item in app.subheader]
+
+    assert not app.exception
+    assert "Разделы комплекта" in subheaders, "нет состава комплекта"
+    assert "Итоговое решение" in subheaders, "нет блока решения"
+    assert "Готовность отчёта" in _captions(app), "нет подписи готовности (FR-P-48)"
+    assert "Комплект" in subheaders, "нет блока комплекта файлов"
+
+    app.text_area[0].set_value("P0 нет, регресс чистый")
+    app = _click(app, "Зафиксировать решение")
+    session = _stored(store, session_id)
+
+    assert session.info.conclusion == session_api.CONCLUSIONS[0], "решение не записано в сессию"
+    assert session.status == session_api.STATUS_CLOSED, "сессия не завершена решением"
+    assert session.info.notes == "P0 нет, регресс чистый", "обоснование не сохранено"
+    assert not any(item.label.startswith("▶ Следующая") for item in app.button), (
+        "отчёт не даёт команды запуска (IR-P-4)"
+    )
+
+
 def test_vertical_slice_note_from_known_defect(pult: tuple[AppTest, Path]) -> None:
     """Замечание из известного дефекта попадает в реестр сессии (`SCR-403`, `FR-P-38`)."""
     app, store = pult

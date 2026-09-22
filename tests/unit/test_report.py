@@ -341,6 +341,7 @@ def test_blocked_check_is_listed_with_auto_note():
         "p1": 0,
         "p2": 0,
         "auto": 1,
+        "incomplete": 0,
     }
     assert [item["check_id"] for item in bundle.payload["notes"]] == ["TC-FILE-10"]
 
