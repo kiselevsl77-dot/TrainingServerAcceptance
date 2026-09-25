@@ -433,12 +433,87 @@ def test_data_reads_empty_registries(pult: PultApp) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Планирование: наборы (массовый выбор, порядок, ревизии) и программа
+# ---------------------------------------------------------------------------
+def _set_row(payload: Any, *, set_id: str = "", title: str = "") -> Any:
+    """Строка набора из ответа `POST /api/sets`: по идентификатору или по названию."""
+    rows = payload["library"]["rows"]
+    if set_id:
+        return next(item for item in rows if item["set_id"] == set_id)
+    return next(item for item in rows if item["title"] == title)
+
+
+def _programme(pult: PultApp) -> dict[str, Any]:
+    """Вид программы текущей сессии (`GET /api/programme`)."""
+    return get(pult, "/api/programme")["programme"]
+
+
+def _open_session(pult: PultApp, title: str) -> str:
+    """Создаёт и выбирает сессию: действия планирования пишут автора из её реквизитов."""
+    created = post(
+        pult,
+        "/api/sessions",
+        info={"title": title, "object_of_test": "Объект", "operator_fio": AUTHOR},
+    )
+    return str(created["id"])
+
+
+def test_sets_action_edits_composition(pult: PultApp) -> None:
+    """Массовый выбор, обязательность, порядок и удаление проверок набора (`UC-05`)."""
+    _open_session(pult, "Наборы")
+    created = post(
+        pult,
+        "/api/sets",
+        action="save",
+        title="Приёмка файлов",
+        section="TC-FILE",
+        check_ids=["TC-FILE-01", "TC-FILE-02"],
+    )
+    set_id = _set_row(created, title="Приёмка файлов")["set_id"]
+    assert _set_row(created, set_id=set_id)["checks"] == 2
+    assert _set_row(created, set_id=set_id)["approved"] is False
+
+    added = post(
+        pult, "/api/sets", action="save", set_id=set_id, check_ids=["TC-FILE-03"], mandatory=True
+    )
+    assert _set_row(added, set_id=set_id)["mandatory"] == 1
+
+    marked = post(
+        pult, "/api/sets", action="mandatory", set_id=set_id, check_id="TC-FILE-02", mandatory=True
+    )
+    assert _set_row(marked, set_id=set_id)["mandatory"] == 2
+
+    moved = post(pult, "/api/sets", action="move", set_id=set_id, check_id="TC-FILE-03", delta=-1)
+    assert _set_row(moved, set_id=set_id)["check_ids"] == ["TC-FILE-01", "TC-FILE-03", "TC-FILE-02"]
+
+    reordered = post(
+        pult, "/api/sets", action="reorder", set_id=set_id, check_ids=["TC-FILE-02", "TC-FILE-01"]
+    )
+    assert _set_row(reordered, set_id=set_id)["check_ids"] == [
+        "TC-FILE-02",
+        "TC-FILE-01",
+        "TC-FILE-03",
+    ]
+
+    removed = post(pult, "/api/sets", action="remove", set_id=set_id, check_ids=["TC-FILE-01"])
+    assert _set_row(removed, set_id=set_id)["check_ids"] == ["TC-FILE-02", "TC-FILE-03"]
+
+    with pytest.raises(ApiError) as no_set:
+        post(pult, "/api/sets", action="move", set_id="SET-NOPE", check_id="TC-FILE-01")
+    assert no_set.value.status == 404
+    with pytest.raises(ApiError) as unknown:
+        post(pult, "/api/sets", action="сшить")
+    assert unknown.value.status == 422
+
+
+# ---------------------------------------------------------------------------
 # Настоящий HTTP: конверт, статика и ошибки тела запроса
 # ---------------------------------------------------------------------------
 def test_http_layer_envelope_static_and_bad_body(pult: PultApp) -> None:
     """Через живой сервер: `{ok, data}`, HTML страницы и 400 на нечитаемом теле."""
     server = serve(pult, host="127.0.0.1", port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
+
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
     try:
@@ -467,6 +542,39 @@ def test_http_layer_envelope_static_and_bad_body(pult: PultApp) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_sets_action_approve_revise_and_restore(pult: PultApp) -> None:
+    """Утверждённый набор правится только новой ревизией, архив возвращается (`FR-P-66`)."""
+    _open_session(pult, "Ревизии")
+    created = post(
+        pult, "/api/sets", action="save", title="Смоук", section="TC-SYS", check_ids=["TC-SYS-01"]
+    )
+    set_id = _set_row(created, title="Смоук")["set_id"]
+
+    approved = post(pult, "/api/sets", action="approve", set_id=set_id, comment="к работе")
+    assert _set_row(approved, set_id=set_id)["approved"] is True
+
+    with pytest.raises(ApiError) as locked:
+        post(pult, "/api/sets", action="remove", set_id=set_id, check_ids=["TC-SYS-01"])
+    assert locked.value.status == 409
+    assert "ревизи" in locked.value.message
+
+    revised = post(pult, "/api/sets", action="revise", set_id=set_id, comment="уточнение состава")
+    assert _set_row(revised, set_id=set_id)["approved"] is False
+    assert _set_row(revised, set_id=set_id)["revision"] >= 2
+
+    emptied = post(pult, "/api/sets", action="remove", set_id=set_id, check_ids=["TC-SYS-01"])
+    assert _set_row(emptied, set_id=set_id)["checks"] == 0
+
+    restored = post(
+        pult, "/api/sets", action="restore", set_id=set_id, revision=1, comment="вернуть состав"
+    )
+    assert _set_row(restored, set_id=set_id)["check_ids"] == ["TC-SYS-01"]
+
+    with pytest.raises(ApiError) as no_revision:
+        post(pult, "/api/sets", action="restore", set_id=set_id, revision=99)
+    assert no_revision.value.status == 409
 
 
 def test_static_is_served_for_rendering_not_download(pult: PultApp) -> None:
@@ -498,6 +606,60 @@ def test_static_is_served_for_rendering_not_download(pult: PultApp) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_programme_order_and_mandatory_are_editable_in_draft(pult: PultApp) -> None:
+    """Порядок и обязательность правятся в черновике, а не в утверждённой (`FR-P-13`)."""
+    _ready_session(pult)
+    approved = _programme(pult)
+    assert approved["approved"] is True
+    order = [row["check_id"] for row in approved["rows"]]
+    assert len(order) >= 2, "в программе должно быть не меньше двух пунктов"
+
+    for payload in (
+        {"action": "move", "check_id": order[-1], "delta": -1},
+        {"action": "reorder", "check_ids": list(reversed(order))},
+        {"action": "mandatory", "check_id": order[0], "mandatory": True},
+    ):
+        with pytest.raises(ApiError) as refused:
+            post(pult, "/api/programme", **payload)
+        assert refused.value.status == 409
+        assert "ревизи" in refused.value.message
+    assert [row["check_id"] for row in _programme(pult)["rows"]] == order
+
+    revised = post(pult, "/api/programme", action="revise", comment="уточнение порядка")
+    assert revised["programme"]["approved"] is False
+    assert revised["programme"]["revision"] > approved["revision"]
+    rows = revised["programme"]["rows"]
+    mandatory_ids = [row["check_id"] for row in rows if row["mandatory"]]
+    optional_ids = [row["check_id"] for row in rows if not row["mandatory"]]
+    if mandatory_ids and optional_ids:
+        with pytest.raises(ApiError) as boundary:
+            post(pult, "/api/programme", action="move", check_id=optional_ids[0], delta=-1)
+        assert boundary.value.status == 409
+
+    reordered = post(
+        pult,
+        "/api/programme",
+        action="reorder",
+        check_ids=[*reversed(optional_ids), *reversed(mandatory_ids)],
+    )
+    assert [row["check_id"] for row in reordered["programme"]["rows"]] == [
+        *reversed(mandatory_ids),
+        *reversed(optional_ids),
+    ]
+
+    target = optional_ids[0] if optional_ids else mandatory_ids[0]
+    marked = post(pult, "/api/programme", action="mandatory", check_id=target, mandatory=True)
+    row = next(item for item in marked["programme"]["rows"] if item["check_id"] == target)
+    assert row["mandatory"] is True
+
+    with pytest.raises(ApiError) as missing:
+        post(pult, "/api/programme", action="mandatory", check_id="TC-NO-SUCH")
+    assert missing.value.status == 404
+    with pytest.raises(ApiError) as unknown:
+        post(pult, "/api/programme", action="пересобрать")
+    assert unknown.value.status == 422
 
 
 def test_protocol_csv_is_served_as_attachment(pult: PultApp) -> None:

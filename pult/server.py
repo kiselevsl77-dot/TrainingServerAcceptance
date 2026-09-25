@@ -452,18 +452,22 @@ class PultApp:
     def api_sets_action(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """`POST /api/sets` — `save|approve|delete|import` (`FR-P-65`…`FR-P-67`)."""
+        """`POST /api/sets` — действия с библиотекой наборов (`FR-P-65`…`FR-P-67`).
+
+        Кроме `save|approve|delete|import` поддерживаются правки состава и ревизии:
+        `remove|reorder|move|mandatory|revise|restore`. Правка утверждённого набора
+        запрещена правилом `FR-P-66`: сервер отвечает `409` и подсказывает выпустить
+        новую ревизию, а не меняет документ молча.
+        """
         action = str(payload.get("action") or "").strip()
         library = self.state.sets_library(refresh=True)
         author = str(payload.get("author") or self._author()).strip()
+        comment = str(payload.get("comment") or "")
         try:
             if action == "save":
                 self._save_set(library, payload, author=author)
             elif action == "approve":
-                item = library.find(str(payload.get("set_id") or ""))
-                if item is None:
-                    raise ApiError("набор не найден в библиотеке", status=404)
-                item.approve(author=author, comment=str(payload.get("comment") or ""))
+                self._set_of(library, payload).approve(author=author, comment=comment)
             elif action == "delete":
                 removed = library.remove(
                     str(payload.get("set_id") or ""), force=bool(payload.get("force"))
@@ -474,6 +478,24 @@ class PultApp:
                 imported = sets_api.SetsLibrary.from_dict(dict(payload.get("library") or {}))
                 for item in imported.sets:
                     library.upsert(item)
+            elif action == "remove":
+                self._set_of(library, payload).remove(self._check_list(payload))
+            elif action == "reorder":
+                self._set_of(library, payload).reorder(self._check_list(payload))
+            elif action == "move":
+                self._set_of(library, payload).move(
+                    str(payload.get("check_id") or ""), self._delta(payload)
+                )
+            elif action == "mandatory":
+                self._set_of(library, payload).set_mandatory(
+                    str(payload.get("check_id") or ""), bool(payload.get("mandatory", True))
+                )
+            elif action == "revise":
+                self._set_of(library, payload).revise(author=author, comment=comment)
+            elif action == "restore":
+                self._set_of(library, payload).restore_revision(
+                    self._revision(payload), author=author, comment=comment
+                )
             else:
                 raise ApiError(f"неизвестное действие с наборами: {action}", status=422)
         except ValueError as exc:
@@ -485,9 +507,42 @@ class PultApp:
             "library": self.api_sets(query={}, payload={}),
         }
 
+    def _set_of(self, library: Any, payload: Mapping[str, Any]) -> Any:
+        """Набор из запроса или ошибка `404` (действия библиотеки адресуются `set_id`)."""
+        item = library.find(str(payload.get("set_id") or ""))
+        if item is None:
+            raise ApiError("набор не найден в библиотеке", status=404)
+        return item
+
+    @staticmethod
+    def _check_list(payload: Mapping[str, Any], key: str = "check_ids") -> list[str]:
+        """Список идентификаторов проверок из запроса: строка — один элемент, иначе пусто."""
+        value = payload.get(key)
+        if isinstance(value, str):
+            return [value] if value.strip() else []
+        if isinstance(value, (list, tuple, set)):
+            return [str(item) for item in value if str(item).strip()]
+        return []
+
+    @staticmethod
+    def _delta(payload: Mapping[str, Any]) -> int:
+        """Сдвиг порядка из запроса: пустое или нечисловое значение — 0 (сдвига нет)."""
+        try:
+            return int(payload.get("delta") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _revision(payload: Mapping[str, Any]) -> int:
+        """Номер ревизии из запроса: нечисловое значение — 0 («ревизия не найдена»)."""
+        try:
+            return int(payload.get("revision") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def _save_set(self, library: Any, payload: Mapping[str, Any], *, author: str) -> Any:
         """Создаёт набор или дополняет существующий составом из запроса (`FR-P-65`)."""
-        check_ids = [str(item) for item in (payload.get("check_ids") or [])]
+        check_ids = self._check_list(payload)
         set_id = str(payload.get("set_id") or "").strip()
         found = library.find(set_id) if set_id else None
         if found is not None:
@@ -525,47 +580,79 @@ class PultApp:
     def api_programme_action(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """`POST /api/programme` — `rebuild|approve|revise|restore` (`FR-P-9`…`FR-P-14`)."""
+        """`POST /api/programme` — `rebuild|approve|revise|restore|reorder|move|mandatory`.
+
+        Правки порядка и обязательности (`reorder|move|mandatory`) доступны только в
+        черновике: утверждённая ревизия — документ испытаний, её меняют новой ревизией
+        (`FR-P-13`), поэтому сервер отвечает `409` с подсказкой, а не правит молча.
+        """
         action = str(payload.get("action") or "").strip()
         session = self.session()
         library = self.state.sets_library()
         programme = self.programme(session)
         author = str(payload.get("author") or self._author()).strip()
         comment = str(payload.get("comment") or "").strip()
-        if action == "rebuild":
-            set_ids = [
-                str(item) for item in (payload.get("set_ids") or programme.selected_set_ids())
-            ]
-            if not set_ids:
-                raise ApiError("не выбран ни один набор: программу не из чего собрать", status=422)
-            result = programme.rebuild(library, set_ids)
-            self.state.store_programme(
-                programme,
-                event="programme_rebuilt",
-                message=str(result.get("summary") or "программа пересобрана"),
-            )
-        elif action == "approve":
-            revision = programme.approve(
-                by=author, comment=comment, reduction=payload.get("reduction")
-            )
-            # прогон идёт по утверждённой ревизии: номер фиксируется в сессии (`FR-P-13`)
-            session.run_revision = int(revision.revision or programme.revision)
-            self.state.store_programme(
-                programme,
-                event="programme_approved",
-                message=f"ревизия {programme.revision} утверждена",
-            )
-        elif action == "revise":
-            programme.revise(author=author, comment=comment)
-            self.state.store_programme(programme, event="programme_revised", message=comment)
-        elif action == "restore":
-            number = int(payload.get("revision") or 0)
-            programme.restore_revision(number, author=author, comment=comment)
-            self.state.store_programme(
-                programme, event="programme_restored", message=f"ревизия {number}"
-            )
-        else:
-            raise ApiError(f"неизвестное действие с программой: {action}", status=422)
+        try:
+            if action == "rebuild":
+                set_ids = [
+                    str(item) for item in (payload.get("set_ids") or programme.selected_set_ids())
+                ]
+                if not set_ids:
+                    raise ApiError(
+                        "не выбран ни один набор: программу не из чего собрать", status=422
+                    )
+                result = programme.rebuild(library, set_ids)
+                self.state.store_programme(
+                    programme,
+                    event="programme_rebuilt",
+                    message=str(result.get("summary") or "программа пересобрана"),
+                )
+            elif action == "approve":
+                revision = programme.approve(
+                    by=author, comment=comment, reduction=payload.get("reduction")
+                )
+                # прогон идёт по утверждённой ревизии: номер фиксируется в сессии (`FR-P-13`)
+                session.run_revision = int(revision.revision or programme.revision)
+                self.state.store_programme(
+                    programme,
+                    event="programme_approved",
+                    message=f"ревизия {programme.revision} утверждена",
+                )
+            elif action == "revise":
+                programme.revise(author=author, comment=comment)
+                self.state.store_programme(programme, event="programme_revised", message=comment)
+            elif action == "restore":
+                number = self._revision(payload)
+                programme.restore_revision(number, author=author, comment=comment)
+                self.state.store_programme(
+                    programme, event="programme_restored", message=f"ревизия {number}"
+                )
+            elif action == "reorder":
+                programme.reorder(self._check_list(payload))
+                self.state.store_programme(
+                    programme, event="programme_reordered", message="порядок пунктов задан вручную"
+                )
+            elif action == "move":
+                if not programme.move(str(payload.get("check_id") or ""), self._delta(payload)):
+                    raise ApiError(
+                        "пункт не сдвинут: он на границе порядка (обязательные идут первыми)",
+                        status=409,
+                    )
+                self.state.store_programme(
+                    programme, event="programme_reordered", message="пункт сдвинут вручную"
+                )
+            elif action == "mandatory":
+                if not programme.set_mandatory(
+                    str(payload.get("check_id") or ""), bool(payload.get("mandatory", True))
+                ):
+                    raise ApiError("пункта нет в программе", status=404)
+                self.state.store_programme(
+                    programme, event="programme_mandatory", message="признак «обязательная» изменён"
+                )
+            else:
+                raise ApiError(f"неизвестное действие с программой: {action}", status=422)
+        except ValueError as exc:
+            raise ApiError(str(exc), status=409) from exc
         return self.api_programme(query={}, payload={})
 
     def _author(self) -> str:
