@@ -20,7 +20,7 @@ from acceptance import queue as queue_api
 from acceptance import results as results_api
 from acceptance import runner as runner_api
 from acceptance import sets as sets_api
-from acceptance.api import build_client
+from acceptance.api import Apis, build_client
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
 from acceptance.checks.engine import CheckResult
@@ -29,8 +29,8 @@ from acceptance.config import PultConfig
 from acceptance.exchange import build_console_client
 from acceptance.http_log import HttpExchange, Journal
 from acceptance.session import new_session
-from acceptance.ui.state import Apis, Runtime
 from client.settings import TrainingServerSettings
+from pult.state import Runtime
 
 LABEL = "https://stand.local"
 
@@ -51,8 +51,8 @@ def _handler(request: httpx.Request) -> httpx.Response:
 def wired() -> Any:
     """Рантайм пульта: API-слой и «сырой» клиент консоли на подменённом стенде.
 
-    Собирается так же, как в приложении (`acceptance.ui.state`): `Runtime.client` и
-    `Apis` строятся из `acceptance.api.build_client`, а «сырой» клиент консоли
+    Собирается так же, как в пульте (`pult.state.Runtime`): `client` и `Apis`
+    строятся из `acceptance.api.build_client`, а «сырой» клиент консоли
     (`build_console_client`) уходит в пробу негативных маршрутов.
     """
     journal = Journal(max_records=200)

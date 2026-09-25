@@ -48,7 +48,7 @@ if not exist ".env" (
     )
 )
 
-rem 4) Run the acceptance console.
-echo [run] Starting acceptance console: http://localhost:%PORT%
-"%PYTHON%" -m streamlit run acceptance\app.py --server.port %PORT% %*
+rem 4) Run the acceptance pult (web interface: http://127.0.0.1:8502).
+echo [run] Starting acceptance pult: http://127.0.0.1:%PORT%
+"%PYTHON%" -m pult.server --port %PORT% --browser %*
 exit /b %errorlevel%

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Запуск пульта испытаний (Linux/macOS): создаёт .venv, ставит зависимости, стартует Streamlit.
+# Запуск пульта испытаний (Linux/macOS): создаёт .venv, ставит зависимости, стартует сервер пульта.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -26,5 +26,5 @@ if [ ! -f ".env" ] && [ -f ".env.example" ]; then
     echo "[setup] Created .env from .env.example - check TRAINING_SERVER_BASE_URL."
 fi
 
-echo "[run] Starting acceptance console: http://localhost:$PORT"
-exec "$PYTHON" -m streamlit run acceptance/app.py --server.port "$PORT" "$@"
+echo "[run] Starting acceptance pult: http://127.0.0.1:$PORT"
+exec "$PYTHON" -m pult.server --port "$PORT" --browser "$@"

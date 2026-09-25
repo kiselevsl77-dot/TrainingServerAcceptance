@@ -1,1 +1,1 @@
-"""Тесты пульта испытаний: unit (без сети), smoke (Streamlit AppTest), integration (живой стенд)."""
+"""Тесты пульта испытаний: unit (без сети), smoke (сервер и API), integration (живой стенд)."""

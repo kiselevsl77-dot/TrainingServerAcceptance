@@ -8,8 +8,10 @@
     * «карточка», «программа» и «монитор» всегда уточняются (иначе теряется различие
       между карточкой проверки, карточкой запуска и карточкой $задачи).
 
-Тест связывает три места, которые иначе разъезжаются: код глоссария, таблицу §1.4
-руководства (`docs/12`) и подписи экранов (`acceptance/app.py`).
+Тест связывает два места, которые иначе разъезжаются: код глоссария и таблицу §1.4
+руководства (`docs/12`). Подписи экранов остаются в глоссарии как справочный слой
+(`docs/17`): интерфейс пульта теперь веб-страница, и её подписи берутся из view-моделей
+(`pult/view.py`), а не из реестра экранов макета.
 """
 
 from __future__ import annotations
@@ -23,13 +25,9 @@ from acceptance import glossary
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
 DOC_PATH = DOCS_DIR / "12. Руководство пользователя пульта испытаний (функционал и правила).md"
-APP_PATH = Path(__file__).resolve().parents[2] / "acceptance" / "app.py"
 
 TABLE_BEGIN = "### 1.4."
 TABLE_END = "## 2."
-
-#: Подписи экранов, которые запрещены: `$Задачи` — сущность стенда, префикс обязателен.
-FORBIDDEN_NAV = ('"scr303_tasks": "Задачи"', '"scr303_tasks": ("⏱️ Задачи"')
 
 
 @pytest.fixture(scope="module")
@@ -107,16 +105,6 @@ def test_rules_disambiguate_card_program_and_monitor() -> None:
     assert "монитор обмена" in text
 
 
-def test_application_navigation_uses_glossary() -> None:
-    """Подписи экранов берутся из глоссария, а не набираются в `app.py` руками."""
-    source = APP_PATH.read_text(encoding="utf-8")
-
-    assert "glossary.nav_label(" in source, "app.py собирает подписи не из глоссария"
-    assert "RENDERERS" in source, "реестр экранов должен собираться из acceptance/ui/screens"
-    for forbidden in FORBIDDEN_NAV:
-        assert forbidden not in source, f"устаревшая подпись экрана: {forbidden}"
-
-
 def test_screens_of_server_entities_are_prefixed() -> None:
     """Экраны сущностей стенда названы с префиксом `$`, экраны пульта — без."""
     assert glossary.is_server_label(glossary.screen_label("scr303_tasks"))
@@ -126,20 +114,9 @@ def test_screens_of_server_entities_are_prefixed() -> None:
 
 
 def test_every_screen_has_icon_and_label() -> None:
-    """У каждого экрана есть и заголовок, и пиктограмма (иначе навигация сломается)."""
+    """У каждого экрана есть и заголовок, и пиктограмма (подписи идут в справочник `docs/17`)."""
     assert set(glossary.SCREEN_LABELS) == set(glossary.SCREEN_ICONS)
     for key in glossary.SCREEN_LABELS:
         label = glossary.nav_label(key)
         assert label.startswith(glossary.SCREEN_ICONS[key])
         assert glossary.SCREEN_LABELS[key] in label
-
-
-def test_screen_keys_match_navigation_registry() -> None:
-    """Глоссарий и реестр экранов описывают один и тот же набор экранов.
-
-    Подписи экранов — единственный источник для меню и заголовков: расхождение глоссария и
-    `acceptance/ui/nav.py` дало бы экран без подписи (или подпись без экрана).
-    """
-    from acceptance.ui import nav
-
-    assert set(glossary.SCREEN_LABELS) == set(nav.screens())

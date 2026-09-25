@@ -64,7 +64,7 @@ __all__ = [
 DEFAULT_UNKNOWN_TASK = "00000000-0000-4000-8000-000000000000"
 
 #: Предел `limit` в пробе «список целиком» (пульт читает список полностью:
-#: `acceptance.ui.state.LOAD_TASK_CAP`; спецификация верхнюю границу не объявляет).
+#: `pult.state.TASK_LIMIT`; спецификация верхнюю границу не объявляет).
 LIST_PROBE_LIMIT = 500
 
 
@@ -293,8 +293,8 @@ def _list_tasks(context: AutomationContext) -> CheckOutcome:
             problems.append("offset=1 вернул ту же задачу, что limit=1 — смещение не работает")
 
     # верхняя граница `limit` не объявлена спецификацией: пульт читает список целиком
-    # (`acceptance.ui.state.LOAD_TASK_CAP`) и сортирует его сам — на этом держатся
-    # виды «Активные | Архив | Все» и клиентская пагинация экрана «Задачи»
+    # (`pult.state.TASK_LIMIT`) и сортирует его сам — на этом держатся виды
+    # «Активные | Архив | Все» и клиентская пагинация списка $Задач
     big_page = context.tasks_api().list_tasks(limit=LIST_PROBE_LIMIT)
     facts["limit_uncapped"] = (
         f"limit={LIST_PROBE_LIMIT} → {len(big_page.tasks)} из {big_page.count}"
