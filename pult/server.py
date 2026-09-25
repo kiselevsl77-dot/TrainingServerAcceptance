@@ -49,10 +49,8 @@ from acceptance import sets as sets_api
 from acceptance.checks import catalog
 from acceptance.exchange import execute_request
 from acceptance.runner import (
-    can_run,
     execute_call,
     execute_next,
-    needs_confirmation,
     next_label,
     run_batch_tech,
 )
@@ -212,11 +210,23 @@ class PultApp:
         """Программа сессии (пустая — если сессия без программы)."""
         return programme_api.load_programme(session)
 
-    def queue(self, session: TestSession, *, mode: str = "") -> queue_api.Queue:
-        """Очередь прогона по ревизии сессии с восстановлением состояния (схема v8)."""
+    def queue(
+        self, session: TestSession, *, run_mode: str = "", queue_mode: str = ""
+    ) -> queue_api.Queue:
+        """Очередь прогона по ревизии сессии с восстановлением состояния (схема v8).
+
+        Args:
+            run_mode: режим прогона («only-remaining» / «all»); пусто — из сессии
+                (`session.skip_done`, решение 7 ТЗ).
+            queue_mode: режим исполнения («сценарием» / «по вызовам», задел M1/M2).
+        """
         programme = self.programme(session)
         return run_state.run_queue(
-            session, programme, self.state.journal_records(), mode=mode or None
+            session,
+            programme,
+            self.state.journal_records(),
+            mode=queue_mode or None,
+            run_mode=run_mode or None,
         )
 
     def stand_snapshot(self) -> dict[str, Any]:
@@ -661,6 +671,23 @@ class PultApp:
         session = self.state.current_session()
         return "" if session is None else str(session.info.operator_fio or "")
 
+    def _mark_values(self, payload: Mapping[str, Any], *, check_id: str) -> dict[str, Any]:
+        """Поля ручной отметки: статус, заключение и вердикт (`FR-P-32`).
+
+        Заключение обязательно: «выполнена вручную» — это суждение о соответствии
+        требованиям, и без текста его нельзя проверить ни в протоколе, ни в отчёте
+        (`FR-P-32`, `AC-P-13`). Статус ограничен списком отметок: «успех» и «отказ»
+        ставятся либо прогоном, либо явной отметкой оператора с заключением.
+        """
+        note = str(payload.get("note") or "").strip()
+        if not note:
+            raise ApiError("Отметка не принята: нужно заключение оператора (`FR-P-32`)", status=422)
+        status = str(payload.get("status") or "").strip() or view.MARK_STATUSES[0]
+        if status not in {str(value) for value in view.MARK_STATUSES}:
+            raise ApiError(f"статус отметки «{status}» не поддерживается", status=422)
+        verdict = str(payload.get("verdict") or "").strip() or f"отметка оператора: {status}"
+        return {"check_id": check_id, "status": status, "verdict": verdict, "operator_note": note}
+
     # -- прогон --------------------------------------------------------------
     def api_run(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
         """`GET /api/run` — пункты ревизии: маркер, состояние, результат, «что дальше» (`SCR-301`).
@@ -702,37 +729,55 @@ class PultApp:
     def _run_view(
         self, session: TestSession, *, written: Sequence[str] | None = None, mode: str = ""
     ) -> dict[str, Any]:
-        """Готовый вид прогона: строки, прогресс, «▶ Следующая» и требования пункта."""
+        """Готовый вид прогона: строки, прогресс, «▶ Следующая» и требования пункта.
+
+        `mode` — режим прогона («только невыполненное» / «всё подряд», `IR-P-8`); режим
+        исполнения очереди («сценарием» / «по вызовам») живёт отдельно (`queue_mode`).
+        """
         written_ids = [str(check_id) for check_id in (written or self.confirm_requests(session))]
         programme = self.programme(session)
-        queue = self.queue(session, mode=mode)
+        queue = self.queue(session, run_mode=mode)
         results = results_api.state(session)
-        runnable, reason = can_run(queue, programme)
+        ready = view.readiness_view(session, programme, queue)
         following = queue.next_item()
         next_id = "" if following is None else following.check_id
         item = programme.find(next_id) if next_id else None
-        confirm_required, confirm_note = (
-            needs_confirmation(item) if item is not None else (False, "")
-        )
+        card = self.run_cards.get(next_id) if next_id else None
+        modes = view.modes_view(session)
         return {
             "session": {"id": session.session_id, "status": session.status},
             "revision": queue.revision,
-            "mode": queue.mode,
-            "mode_label": queue.mode_label,
+            "mode": modes["current"],
+            "mode_label": modes["current_label"],
+            "modes": modes,
+            "queue_mode": queue.mode,
+            "queue_mode_label": queue.mode_label,
             "pause": queue.pause_seconds,
             "skip_done": bool(session.skip_done),
             "progress": run_state.progress(queue, results),
+            "readiness": ready,
             "next": {
                 "check_id": next_id,
                 "label": next_label(queue),
-                "runnable": bool(runnable and following is not None),
-                "reason": reason
-                if following is not None
-                else "Прогон завершён: все пункты закрыты",
-                "confirm_required": bool(confirm_required),
-                "confirm_note": str(confirm_note),
+                "runnable": bool(ready["runnable"]),
+                "reason": str(ready["reason"]),
+                "blocked_by": str(ready["blocked_by"]),
+                "fix": dict(ready["fix"]),
+                "done": next_label(queue),
+                "item": view.run_next_view(
+                    item, values=card, session=session, author=self._author()
+                ),
             },
-            "card_ready": bool(self.run_cards.get(next_id)),
+            "batch": view.batch_view(queue, programme),
+            "card_ready": bool(card),
+            "card": view.run_card_view(
+                item,
+                values=card,
+                session_id=session.session_id,
+                author=self._author(),
+            )
+            if item is not None
+            else {},
             "rows": view.run_rows(session, programme, queue),
             "written": written_ids,
             "last_run": dict(self.last_run),
@@ -741,20 +786,37 @@ class PultApp:
     def api_run_action(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """`POST /api/run` — `next|batch-tech|call` (`IR-P-4`, `A4`).
+        """`POST /api/run` — `next|batch-tech|call|mode` (`IR-P-4`, `A4`).
 
         Замок `run_lock` не даёт двум прогонам идти одновременно: случайный двойной клик
         получает «прогон уже идёт», а не второй вызов проверки на стенд (`NFR-P-5`).
+
+        Перед запуском проверяется **то же** правило готовности, что включает кнопку в
+        интерфейсе (`view.readiness_view`): API не запускает пункт, который оператору
+        недоступен, — иначе причина отказа и выключенная кнопка разошлись бы.
         """
         action = str(payload.get("action") or "next").strip()
         session = self.session()
         runtime = self.runtime()
         programme = self.programme(session)
-        mode = str(payload.get("mode") or "").strip()
-        if "skip_done" in payload:
-            session.skip_done = bool(payload.get("skip_done"))
+        run_mode = str(payload.get("mode") or "").strip()
+        queue_mode = str(payload.get("queue_mode") or "").strip()
+        if "skip_done" in payload and not run_mode:
+            run_mode = (
+                run_state.RUN_ONLY_REMAINING
+                if bool(payload.get("skip_done"))
+                else run_state.RUN_ALL
+            )
+        queue = self.queue(session, run_mode=run_mode, queue_mode=queue_mode)
+        ready = view.readiness_view(session, programme, queue)
+        if action == "mode":
+            chosen = run_state.set_run_mode(session, run_mode or run_state.RUN_ONLY_REMAINING)
             self.save(session)
-        queue = self.queue(session, mode=mode)
+            return self._run_view(session, written=[], mode=chosen)
+        if action not in ("next", "batch-tech", "call"):
+            raise ApiError(f"неизвестное действие прогона: {action}", status=422)
+        if not ready["runnable"]:
+            raise ApiError(str(ready["reason"]), status=409)
         check_id = str(payload.get("check_id") or "").strip() or None
         following = queue.next_item()
         target = check_id or ("" if following is None else following.check_id)
@@ -805,8 +867,6 @@ class PultApp:
                         run_evidence=card,
                     )
                 ]
-            else:
-                raise ApiError(f"неизвестное действие прогона: {action}", status=422)
         finally:
             self.run_lock.release()
         self.save(session)
@@ -816,7 +876,7 @@ class PultApp:
             "at": view.short_time(session_api.now_iso(), "%H:%M:%S"),
             "rows": rows,
         }
-        data = self._run_view(session, written=[], mode=mode)
+        data = self._run_view(session, written=[], mode=run_mode)
         data["outcomes"] = rows
         return data
 
@@ -824,7 +884,7 @@ class PultApp:
     def api_check_action(
         self, check_id: str, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """`POST /api/checks/{id}` — `annotate|suspend|resume|run-card` (`FR-P-15`, `FR-P-19`)."""
+        """`POST /api/checks/{id}` — `annotate|mark|suspend|resume|run-card` (`FR-P-15`, `FR-P-32`)."""
         action = str(payload.get("action") or "").strip()
         session = self.session()
         programme = self.programme(session)
@@ -846,6 +906,16 @@ class PultApp:
             results_api.annotate(
                 session,
                 values,
+                origin=results_api.ORIGIN_MANUAL,
+                author=author,
+                revision=programme.revision,
+            )
+        elif action == "mark":
+            if item is None:
+                raise ApiError(f"проверка {check_id} не входит в программу сессии", status=404)
+            results_api.annotate(
+                session,
+                self._mark_values(payload, check_id=check_id),
                 origin=results_api.ORIGIN_MANUAL,
                 author=author,
                 revision=programme.revision,

@@ -9,11 +9,12 @@
 from __future__ import annotations
 
 from acceptance import results as results_api
+from acceptance import run_card as run_card_api
 from acceptance import run_state
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.checks import catalog
-from acceptance.checks.registry import CheckClass
+from acceptance.checks.registry import CheckClass, CheckStatus
 from acceptance.http_log import HttpExchange
 from acceptance.programme import Programme, ProgrammeItem
 from acceptance.queue import Queue, QueueItem, queue_for_revision
@@ -401,6 +402,240 @@ def test_catalog_rows_mark_membership_and_confirmable() -> None:
     assert by_id["TC-SYS-01"]["in_set"] is True
     assert by_id["TC-SYS-02"]["in_programme"] is True
     assert by_id["TC-SYS-01"]["in_programme"] is False
+
+
+# ---------------------------------------------------------------------------
+# Прогон: готовность, карточка запуска, payload, отметка и детали (`SCR-301`)
+# ---------------------------------------------------------------------------
+def _programme_from_sets(*set_ids: str, approved: bool = False) -> Programme:
+    """Программа сессии из наборов каталога (утверждение — с обоснованием сокращения)."""
+    library = sets_api.library_from_catalog(author="Иванов И.И.")
+    programme = Programme.from_sets(library, list(set_ids) or ["SET-SYS"])
+    if approved:
+        programme.approve(by="Иванов И.И.", comment="приёмка", reduction="срез приёмки")
+    return programme
+
+
+def test_readiness_explains_every_obstacle() -> None:
+    """Одно правило «можно запускать»: код причины и панель, где её устраняют (`IR-P-8`)."""
+    no_session = view.readiness_view(None, Programme(), queue_for_revision(Programme(), 0))
+    assert no_session["blocked_by"] == "no-session"
+    assert no_session["fix"]["panel"] == "sessions"
+
+    programme = _programme_from_sets("SET-SYS")
+    queue = queue_for_revision(programme, 0)
+    no_stand = view.readiness_view(_session(), programme, queue, stand_configured=False)
+    assert no_stand["blocked_by"] == "no-stand"
+    assert no_stand["fix"]["label"]
+
+    empty = view.readiness_view(_session(), Programme(), queue_for_revision(Programme(), 0))
+    assert empty["blocked_by"] == "no-programme" and empty["fix"]["panel"] == "planning"
+
+    draft = view.readiness_view(_session(), programme, queue)
+    assert draft["runnable"] is False
+    assert draft["blocked_by"] == "not-approved"
+    assert "не утверждена" in draft["reason"]
+    assert draft["fix"]["label"] == "Утвердить программу"
+
+
+def test_readiness_allows_approved_programme_and_reports_finish() -> None:
+    """Утверждённая ревизия запускается; закрытые пункты оставляют только протокол."""
+    session = _session()
+    programme = _programme_from_sets("SET-SYS", approved=True)
+    ready = view.readiness_view(session, programme, queue_for_revision(programme, 0))
+    assert ready["runnable"] is True and ready["reason"] == "" and ready["blocked_by"] == ""
+    assert "утверждена" in ready["notice"]
+
+    for item in programme.items:
+        results_api.record(session, {"check_id": item.check_id, "status": "успех", "verdict": "ок"})
+    queue = run_state.run_queue(session, programme)
+    finished = view.readiness_view(session, programme, queue)
+    assert finished["blocked_by"] == "finished"
+    assert finished["fix"]["panel"] == "protocol"
+
+    header = view.header_view(
+        stand_configured=True,
+        base_url="https://stand.local",
+        session=session,
+        programme=programme,
+        queue=queue,
+    )
+    assert header["next"]["runnable"] is False
+    assert header["next"]["reason"] == finished["reason"], "шапка и экран прогона — одно правило"
+    assert header["next"]["fix"] == finished["fix"]
+
+
+def test_modes_view_uses_session_flag() -> None:
+    """Режим прогона: «только невыполненное» по умолчанию, «всё подряд» — по флагу."""
+    session = _session()
+    modes = view.modes_view(session)
+    assert modes["current"] == run_state.RUN_ONLY_REMAINING
+    assert [item["value"] for item in modes["options"]] == list(run_state.RUN_MODES)
+    assert all(item["hint"] for item in modes["options"])
+
+    assert run_state.set_run_mode(session, run_state.RUN_ALL) == run_state.RUN_ALL
+    assert session.skip_done is False
+    assert view.modes_view(session)["current"] == run_state.RUN_ALL
+
+    assert run_state.set_run_mode(session, "чепуха") == run_state.RUN_ONLY_REMAINING
+    assert session.skip_done is True
+
+
+def test_run_card_view_shows_missing_until_confirmed() -> None:
+    """Карточка запуска `live`: заготовки заполнены, подтверждение расходов — за оператором."""
+    item = _item(check_id="TC-FILE-11", check_class=str(CheckClass.LIVE), title="Выгрузка файла")
+    card = view.run_card_view(item, session_id="20260925-120000-0001", author="Петров П.П.")
+    assert card["required"] is True and card["note"]
+    fields = {field["name"]: field for field in card["fields"]}
+    assert fields["goal"]["value"].startswith("TC-FILE-11")
+    assert fields["responsible"]["value"] == "Петров П.П."
+    assert fields["confirm"]["kind"] == "checkbox" and fields["confirm"]["checked"] is False
+    assert card["filled"] is False and card["missing"]
+    assert [field["name"] for field in card["fields"]][:3] == list(run_card_api.REQUIRED)
+
+    saved = view.run_card_view(
+        item,
+        values={
+            "goal": "проверить",
+            "data": "__TEST__",
+            "responsible": "Петров П.П.",
+            "confirm": True,
+        },
+    )
+    assert saved["filled"] is True and saved["missing"] == []
+    assert saved["saved"] is True
+
+
+def test_payload_view_shows_test_data_and_silence_for_read_only() -> None:
+    """Предпросмотр отправляемого: у пишущей проверки видно `__TEST__`, у читающей — нет."""
+    session = _session()
+    writing = view.payload_view("TC-FILE-11", session=session)
+    assert writing["count"] >= 1
+    assert any("__TEST__" in line for line in writing["lines"])
+    assert writing["summary"]
+
+    reading = view.payload_view("TC-SYS-01", session=session)
+    assert reading["count"] == 0
+    assert "ничего не создаёт" in reading["lines"][0]
+    assert view.payload_view("TC-НЕТ-ТАКОЙ") == {"summary": "", "lines": [], "count": 0}
+
+
+def test_mark_view_offers_operator_statuses() -> None:
+    """Форма ручной отметки: статусы оператора и обязательное заключение (`FR-P-32`)."""
+    manual = view.mark_view(_item(check_id="TC-SYS-06", check_class=str(CheckClass.MANUAL)))
+    assert manual["required"] is True and manual["note"]
+    values = [item["value"] for item in manual["statuses"]]
+    assert str(CheckStatus.MANUAL_OK) in values
+    assert str(CheckStatus.SKIPPED) in values
+    assert manual["note_hint"]
+    assert manual["default_status"] == str(CheckStatus.MANUAL_OK)
+
+    assert view.mark_view(_item())["required"] is False
+
+
+def test_batch_view_counts_pending_tech_items() -> None:
+    """«▶▶ Пачка tech» знает, сколько пунктов заберёт (`A4`)."""
+    programme = _programme_from_sets("SET-SYS")
+    queue = queue_for_revision(programme, 0)
+    batch = view.batch_view(queue, programme)
+    assert batch["count"] == len(batch["ids"])
+    assert batch["enabled"] is bool(batch["ids"])
+    assert batch["count"] == 0 or batch["label"] == f"▶▶ Пачка tech ({batch['count']})"
+    for check_id in batch["ids"]:
+        found = programme.find(check_id)
+        assert found is not None and found.check_class == str(CheckClass.TECH)
+
+
+def test_run_rows_carry_steps_and_payload_details() -> None:
+    """Раскрытие пункта приходит готовым: шаги и payload считает Python (`FR-P-20`)."""
+    session = _session()
+    programme = _programme_from_sets("SET-SYS", approved=True)
+    queue = run_state.run_queue(session, programme)
+    rows = view.run_rows(session, programme, queue)
+    assert rows and all("details" in row for row in rows)
+    row = rows[0]
+    assert row["details"]["steps"], "шаги проверки берутся из каталога"
+    assert "summary" in row["details"]["payload"]
+    assert row["confirm_required"] is False and row["operator_required"] is False
+
+
+def test_next_view_describes_confirmable_item() -> None:
+    """Следующий пункт до нажатия «Следующая»: требования, шаги и payload (`FR-P-19`)."""
+    item = _item(check_id="TC-FILE-11", check_class=str(CheckClass.LIVE), title="Выгрузка файла")
+    described = view.run_next_view(item, session=_session(), author="Петров П.П.")
+    assert described["check_id"] == "TC-FILE-11"
+    assert described["confirm_required"] is True and described["confirm_note"]
+    assert described["operator_required"] is False
+    assert described["steps"] and described["payload"]["count"] >= 1
+    assert described["card"]["required"] is True
+    assert view.run_next_view(None) == {}, "без пункта описания нет"
+
+
+def test_outcome_rows_hint_about_card_and_mark() -> None:
+    """Итог шага объясняет, почему запрос не ушёл: карточка запуска или отметка (`FR-P-19`)."""
+
+    class _Card:
+        check_id = "TC-FILE-11"
+        ok = False
+        icon = "⛔"
+        state = "ожидает"
+        status = ""
+        verdict = ""
+        detail = "нужна карточка запуска"
+        journal_range = ""
+        stopped = True
+        stop_reason = "TC-FILE-11: нужна карточка запуска"
+        duration_ms = 0.0
+        steps = 0
+        confirmation_required = True
+        operator_required = False
+
+    class _Mark:
+        check_id = "TC-SYS-06"
+        ok = False
+        icon = "⛔"
+        state = "ожидает"
+        status = ""
+        verdict = ""
+        detail = "нужна отметка"
+        journal_range = ""
+        stopped = True
+        stop_reason = ""
+        duration_ms = 0.0
+        steps = 0
+        confirmation_required = False
+        operator_required = True
+
+    card_row = view.outcome_rows([_Card()])[0]
+    assert card_row["confirmation_required"] is True
+    assert "карточку запуска" in card_row["hint"]
+
+    mark_row = view.outcome_rows([_Mark()])[0]
+    assert mark_row["operator_required"] is True
+    assert "отметку" in mark_row["hint"]
+
+
+def test_readiness_reports_queue_built_from_another_revision() -> None:
+    """Очередь от другого состава — тоже препятствие: пульт не запускает пункт «вслепую».
+
+    Ветка страховочная: обычно утверждение ревизии переводит сессию на неё
+    (`session.run_revision`), но если очередь посчитана по прежнему составу, результат
+    оказался бы привязан не к той ревизии программы (`DR-P-14`).
+    """
+    session = _session()
+    programme = _programme_from_sets("SET-SYS", approved=True)
+    session.run_revision = programme.revision
+    programme.revise(author="Иванов И.И.", comment="правка состава")
+    programme.rebuild(sets_api.library_from_catalog(author="Иванов И.И."), [sets_api.SMOKE_SET_ID])
+    programme.approve(by="Иванов И.И.", comment="приёмка", reduction="срез приёмки")
+    assert session.run_revision < programme.revision
+
+    queue = run_state.run_queue(session, programme)
+    blocked = view.readiness_view(session, programme, queue)
+    assert blocked["runnable"] is False
+    assert blocked["blocked_by"] == "queue"
+    assert blocked["fix"]["panel"] == "planning"
+    assert str(session.run_revision) in blocked["reason"], "причина называет ревизию очереди"
 
 
 def test_dataset_and_composition_rows() -> None:

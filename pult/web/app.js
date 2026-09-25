@@ -128,13 +128,8 @@ function renderHeader(data) {
     : "Программа: не собрана";
   document.getElementById("progress-line").textContent = `Прогон: ${text(queue.done)} из ${text(queue.total)}`;
   document.getElementById("next-reason").textContent = next.runnable
-    ? `Дальше: ${text(next.check_id)} · ${text(queue.mode_label)}`
+    ? `Дальше: ${text(next.check_id)} · ${text(queue.mode_label)} · команда на вкладке «Прогон»`
     : text(next.reason);
-
-  const nextButton = document.getElementById("btn-next");
-  nextButton.textContent = next.command || next.label || "▶ Следующая";
-  nextButton.disabled = !next.runnable;
-  document.getElementById("btn-batch").disabled = !next.runnable;
 
   const warnings = document.getElementById("warnings");
   warnings.textContent = "";
@@ -151,39 +146,46 @@ function renderHeader(data) {
   warnings.hidden = lines.length === 0;
 }
 
-/** Прогон: строки ревизии, KPI и итоги последнего запуска (`SCR-301`). */
+/** Состояние экрана прогона: последний вид и раскрытый пункт (только отображение). */
+const runView = { data: null, openRow: "" };
+
+/** Прогон: ревизия, режим, управление, строки пунктов и итоги (`SCR-301`). */
 function renderRun(data) {
   const rows = data.rows || [];
   const progress = data.progress || {};
+  runView.data = data;
   document.getElementById("run-meta").textContent =
     `ревизия ${text(data.revision)} · режим «${text(data.mode_label)}» · выполнено ${text(progress.done)} из ${text(progress.total)}` +
     (progress.stop_reason ? ` · останов: ${text(progress.stop_reason)}` : "");
 
-  const outcomes = document.getElementById("run-outcomes");
-  outcomes.textContent = "";
-  ((data.last_run || {}).rows || []).forEach((row) => {
-    const line = document.createElement("div");
-    line.className = `outcome outcome--${row.ok ? "ok" : "bad"}`;
-    const tail = row.stop_reason ? ` · останов: ${text(row.stop_reason)}` : "";
-    const journal = row.journal ? ` · журнал ${text(row.journal)}` : "";
-    line.textContent = `${text(row.icon)} ${text(row.check_id)}: ${text(row.verdict)}${journal}${tail}`;
-    outcomes.appendChild(line);
-  });
+  renderRunModes(data.modes || {});
+  renderRunConsole(data);
+  renderRunOutcomes((data.last_run || {}).rows || []);
 
   fillTable(document.querySelector("#run-table tbody"), rows, (row) => {
     const actions = document.createElement("span");
+    actions.appendChild(
+      button("подробно", "btn btn--tiny", () => {
+        runView.openRow = runView.openRow === row.check_id ? "" : row.check_id;
+        renderRun(runView.data);
+      })
+    );
     if (row.state === "снята") {
       actions.appendChild(
-        button("вернуть", "btn btn--tiny", () => act(`/api/checks/${encodeURIComponent(row.check_id)}`, { action: "resume" }))
+        button("вернуть", "btn btn--tiny", () =>
+          runAction(`/api/checks/${encodeURIComponent(row.check_id)}`, { action: "resume" })
+        )
       );
     } else {
       actions.appendChild(
         button("снять", "btn btn--tiny btn--ghost", () => {
           const reason = window.prompt(`Причина снятия пункта ${row.check_id}:`, "");
-          if (!reason) {
-            return;
+          if (reason) {
+            runAction(`/api/checks/${encodeURIComponent(row.check_id)}`, {
+              action: "suspend",
+              reason,
+            });
           }
-          act(`/api/checks/${encodeURIComponent(row.check_id)}`, { action: "suspend", reason });
         })
       );
     }
@@ -199,6 +201,262 @@ function renderRun(data) {
       actions,
     ];
   });
+  renderRunDetails();
+}
+
+/** Режим прогона: «только невыполненное / всё подряд» — варианты и подписи с сервера. */
+function renderRunModes(modes) {
+  const select = document.getElementById("run-mode");
+  const options = modes.options || [];
+  select.textContent = "";
+  options.forEach((option) => {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    select.appendChild(element);
+  });
+  select.value = text(modes.current);
+  document.getElementById("run-mode-meta").textContent = text(modes.current_label);
+  const hint = options.find((option) => option.value === select.value);
+  document.getElementById("run-mode-hint").textContent = hint ? text(hint.hint) : "";
+}
+
+/** Блок управления: причина «нельзя» с кнопкой-выходом, требования пункта и формы. */
+function renderRunConsole(data) {
+  const next = data.next || {};
+  const item = next.item || {};
+  const reason = text(next.reason);
+  document.getElementById("run-blocked").hidden = !reason;
+  document.getElementById("run-blocked-reason").textContent = reason;
+  const fix = document.getElementById("run-fix");
+  const fixLabel = text((next.fix || {}).label);
+  fix.hidden = !(reason && fixLabel);
+  fix.textContent = fixLabel;
+  fix.dataset.panel = text((next.fix || {}).panel);
+
+  const notice = document.getElementById("run-notice");
+  notice.hidden = !text(next.notice);
+  notice.textContent = text(next.notice);
+
+  document.getElementById("run-next-line").textContent = item.check_id
+    ? `Следующая: ${text(item.check_id)} — «${text(item.title)}» · ${text(item.class_label)}` +
+      ` · раздел ${text(item.section)}` +
+      (item.requirement ? ` · требование ${text(item.requirement)}` : "") +
+      (item.expected ? ` · ожидаем: ${text(item.expected)}` : "")
+    : "";
+
+  const nextButton = document.getElementById("run-next");
+  nextButton.disabled = !next.runnable;
+  nextButton.textContent = item.check_id
+    ? `▶ Следующая: ${text(item.check_id)}`
+    : text(next.label) || "▶ Следующая";
+  const batch = data.batch || {};
+  const batchButton = document.getElementById("run-batch");
+  batchButton.disabled = !next.runnable || !batch.enabled;
+  batchButton.textContent = text(batch.label) || "▶▶ Пачка tech";
+
+  renderRunCard(item.card || {}, Boolean(next.runnable));
+  renderRunMark(item.mark || {}, Boolean(next.runnable));
+  renderRunPayload(reason ? {} : item.payload || {});
+  renderRunSteps(item.steps || []);
+}
+
+/** Карточка запуска `live`/`heavy`: поля, подтверждение и подсказка (`FR-P-19`). */
+function renderRunCard(card, runnable) {
+  const box = document.getElementById("run-card");
+  box.hidden = !card.required;
+  if (!card.required) {
+    return;
+  }
+  const item = ((runView.data || {}).next || {}).item || {};
+  document.getElementById("run-card-title").textContent =
+    `Карточка запуска: ${text(item.check_id)} (${text(item.class_label)})`;
+  document.getElementById("run-card-note").textContent = text(card.note);
+  const fields = document.getElementById("run-card-fields");
+  fields.textContent = "";
+  (card.fields || []).forEach((field) => {
+    const label = document.createElement("label");
+    label.textContent = field.label;
+    if (field.kind === "checkbox") {
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = `run-card-${field.name}`;
+      input.checked = Boolean(field.checked);
+      label.appendChild(input);
+    } else if (field.kind === "select") {
+      const select = document.createElement("select");
+      select.id = `run-card-${field.name}`;
+      (card.artifacts || []).forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      select.value = text(field.value) || text((card.artifacts || [])[0]);
+      label.appendChild(select);
+    } else {
+      const input = document.createElement("input");
+      input.id = `run-card-${field.name}`;
+      input.value = text(field.value);
+      input.size = 34;
+      label.appendChild(input);
+    }
+    fields.appendChild(label);
+  });
+  const missing = card.missing || [];
+  document.getElementById("run-card-missing").textContent = missing.length
+    ? `не заполнено: ${missing.join(", ")}`
+    : "карточка заполнена";
+  document.getElementById("run-card-save").disabled = !runnable;
+  document.getElementById("run-card-run").disabled = !runnable;
+}
+
+/** Пункт, для которого показывается карточка запуска: следующий по программе. */
+function runCardCheckId() {
+  return text((((runView.data || {}).next || {}).item || {}).check_id);
+}
+
+/** Значения карточки из формы: собираются по описанию полей, пришедшему с сервера. */
+function cardValues() {
+  const item = ((runView.data || {}).next || {}).item || {};
+  const values = {};
+  (((item.card || {}).fields) || []).forEach((field) => {
+    const element = document.getElementById(`run-card-${field.name}`);
+    if (!element) {
+      return;
+    }
+    values[field.name] = field.kind === "checkbox" ? element.checked : element.value;
+  });
+  return values;
+}
+
+/** Ручная отметка `manual`: статус и заключение (`FR-P-32`). */
+function renderRunMark(mark, runnable) {
+  const box = document.getElementById("run-mark");
+  box.hidden = !mark.required;
+  if (!mark.required) {
+    return;
+  }
+  document.getElementById("run-mark-title").textContent = `Ручная отметка: ${text(mark.check_id)}`;
+  document.getElementById("run-mark-note").textContent =
+    `${text(mark.note)} · ${text(mark.note_hint)}`;
+  const select = document.getElementById("run-mark-status");
+  select.textContent = "";
+  (mark.statuses || []).forEach((status) => {
+    const option = document.createElement("option");
+    option.value = status.value;
+    option.textContent = status.label;
+    select.appendChild(option);
+  });
+  select.value = text(mark.default_status);
+  document.getElementById("run-mark-save").disabled = !runnable;
+}
+
+/** Предпросмотр «что будет отправлено»: строки считает Python (`FR-P-19`). */
+function renderRunPayload(payload) {
+  const lines = payload.lines || [];
+  document.getElementById("run-payload").hidden = lines.length === 0;
+  document.getElementById("run-payload-summary").textContent = text(payload.summary);
+  const list = document.getElementById("run-payload-lines");
+  list.textContent = "";
+  lines.forEach((line) => {
+    const item = document.createElement("li");
+    item.textContent = line;
+    list.appendChild(item);
+  });
+}
+
+/** Шаги выбранного пункта: что именно будет вызвано (`FR-P-20`). */
+function renderRunSteps(steps) {
+  document.getElementById("run-steps").hidden = steps.length === 0;
+  const list = document.getElementById("run-steps-list");
+  list.textContent = "";
+  steps.forEach((step) => {
+    const item = document.createElement("li");
+    item.textContent =
+      `${text(step.label)}${step.summary ? " — " + text(step.summary) : ""}` +
+      `${step.safety ? ` · ${text(step.safety)}` : ""}`;
+    list.appendChild(item);
+  });
+}
+
+/** Итоги последнего запуска: чем закончился шаг и что делать дальше (`FR-P-30`). */
+function renderRunOutcomes(rows) {
+  const outcomes = document.getElementById("run-outcomes");
+  outcomes.textContent = "";
+  rows.forEach((row) => {
+    const line = document.createElement("div");
+    line.className = `outcome outcome--${row.ok ? "ok" : "bad"}`;
+    const journal = row.journal ? ` · журнал ${text(row.journal)}` : "";
+    const tail = row.stop_reason ? ` · останов: ${text(row.stop_reason)}` : "";
+    const hint = row.hint ? ` · ${text(row.hint)}` : "";
+    line.textContent =
+      `${text(row.icon)} ${text(row.check_id)}: ${text(row.verdict)}${journal}${tail}${hint}`;
+    outcomes.appendChild(line);
+  });
+}
+
+/** Раскрытие пункта: шаги, результат, доказательства и предпросмотр payload (`FR-P-20`). */
+function renderRunDetails() {
+  if (!runView.openRow) {
+    return;
+  }
+  const rows = (runView.data || {}).rows || [];
+  const index = rows.findIndex((row) => row.check_id === runView.openRow);
+  const line = document.querySelector("#run-table tbody").children[index];
+  if (index < 0 || !line) {
+    return;
+  }
+  const row = rows[index];
+  const details = row.details || {};
+  const cell = document.createElement("td");
+  cell.className = "details";
+  cell.colSpan = 9;
+  const add = (label, value) => {
+    if (!text(value)) {
+      return;
+    }
+    const pre = document.createElement("pre");
+    pre.textContent = `${label}: ${text(value)}`;
+    cell.appendChild(pre);
+  };
+  add("Ожидаемый результат", row.expected);
+  add("Требование", row.requirement);
+  add(
+    "Записано",
+    details.at ? `${details.at} · ${text(details.author)} · ревизия ${text(details.revision)}` : ""
+  );
+  add("Заключение / причина", details.note || row.reason);
+  (details.steps || []).forEach((step) => {
+    const pre = document.createElement("pre");
+    pre.textContent = `  ${text(step.label)}${step.summary ? " — " + text(step.summary) : ""}`;
+    cell.appendChild(pre);
+  });
+  const payload = details.payload || {};
+  const caption = document.createElement("pre");
+  caption.textContent = `Что будет отправлено: ${text(payload.summary) || "…"}`;
+  cell.appendChild(caption);
+  (payload.lines || []).forEach((lineText) => {
+    const pre = document.createElement("pre");
+    pre.textContent = `  ${text(lineText)}`;
+    cell.appendChild(pre);
+  });
+  const holder = document.createElement("tr");
+  holder.appendChild(cell);
+  line.after(holder);
+}
+
+/** Действие прогона: вызов, сообщение и обновление вида с шапкой. */
+async function runAction(path, body, message) {
+  const data = await act(path, body);
+  if (!data) {
+    return null;
+  }
+  if (message) {
+    flash("ok", message);
+  }
+  await refresh();
+  return data;
 }
 
 /** Сессии: список на диске, выбор текущей, создание и жизненный цикл (`FR-P-2`…`FR-P-4`). */
@@ -301,8 +559,49 @@ function renderJournal(data) {
       line.appendChild(caption);
       line.appendChild(pre);
     });
+    line.appendChild(repeatBox(row));
     box.appendChild(line);
   });
+}
+
+/** Повтор вызова с правками: путь, метод и тело (`FR-P-24`). */
+function repeatBox(row) {
+  const holder = document.createElement("div");
+  holder.className = "journal__repeat";
+  const path = document.createElement("input");
+  path.value = text(row.path);
+  path.size = 60;
+  path.className = "journal__path";
+  const body = document.createElement("textarea");
+  body.rows = 3;
+  body.value = text(row.request);
+  const actions = document.createElement("div");
+  actions.className = "row";
+  actions.appendChild(
+    button("⧉ повторить с правками", "btn btn--tiny", async () => {
+      let parsed = null;
+      try {
+        parsed = body.value.trim() ? JSON.parse(body.value) : {};
+      } catch (error) {
+        flash("error", `Тело повтора не разобрано как JSON: ${error.message}`);
+        return;
+      }
+      const answer = await act("/api/journal/repeat", {
+        method: text(row.method) || "GET",
+        path: path.value.trim(),
+        json: parsed,
+        label: `повтор #${text(row.seq)}`,
+      });
+      if (answer) {
+        flash("ok", `Повтор #${text(row.seq)} отправлен: ${text(answer.status)}`);
+        await refresh();
+      }
+    })
+  );
+  holder.appendChild(path);
+  holder.appendChild(body);
+  holder.appendChild(actions);
+  return holder;
 }
 
 // ---------------------------------------------------------------------------
@@ -824,19 +1123,72 @@ function bind() {
     tab.addEventListener("click", () => showPanel(tab.dataset.panel));
   });
   document.getElementById("btn-refresh").addEventListener("click", refresh);
-  document.getElementById("btn-next").addEventListener("click", async () => {
+
+  // Прогон: команды и формы живут на вкладке «Прогон» (правило одной команды, `IR-P-4`)
+  document.getElementById("run-next").addEventListener("click", async () => {
     const data = await act("/api/run", { action: "next" });
     if (data) {
+      runView.openRow = "";
       renderRun(data);
       flash("ok", `Пункт выполнен: ${text((data.outcomes || [{}])[0].check_id)}`);
       await refresh();
     }
   });
-  document.getElementById("btn-batch").addEventListener("click", async () => {
+  document.getElementById("run-batch").addEventListener("click", async () => {
     const data = await act("/api/run", { action: "batch-tech" });
     if (data) {
+      runView.openRow = "";
       renderRun(data);
       flash("ok", `Пачка tech: выполнено пунктов — ${text((data.outcomes || []).length)}`);
+      await refresh();
+    }
+  });
+  document.getElementById("run-mode").addEventListener("change", (event) => {
+    runAction("/api/run", { action: "mode", mode: event.target.value }, "Режим прогона изменён");
+  });
+  document.getElementById("run-fix").addEventListener("click", (event) => {
+    const panel = event.target.dataset.panel;
+    if (panel) {
+      showPanel(panel);
+    } else {
+      flash("error", "Эту причину пульт устранить не может: проверьте .env и перезапустите");
+    }
+  });
+  document.getElementById("run-card-save").addEventListener("click", () =>
+    runAction(
+      `/api/checks/${encodeURIComponent(runCardCheckId())}`,
+      { action: "run-card", values: cardValues() },
+      "Карточка запуска сохранена"
+    )
+  );
+  document.getElementById("run-card-run").addEventListener("click", async () => {
+    const checkId = runCardCheckId();
+    const saved = await act(`/api/checks/${encodeURIComponent(checkId)}`, {
+      action: "run-card",
+      values: cardValues(),
+    });
+    if (!saved) {
+      return;
+    }
+    const data = await act("/api/run", { action: "next" });
+    if (data) {
+      runView.openRow = "";
+      renderRun(data);
+      flash("ok", `Пункт ${text(checkId)}: карточка подтверждена, запуск выполнен`);
+      await refresh();
+    }
+  });
+  document.getElementById("run-mark-save").addEventListener("click", async () => {
+    const item = ((runView.data || {}).next || {}).item || {};
+    const answer = await act(`/api/checks/${encodeURIComponent(text(item.check_id))}`, {
+      action: "mark",
+      status: document.getElementById("run-mark-status").value,
+      note: document.getElementById("run-mark-text").value,
+    });
+    if (answer) {
+      document.getElementById("run-mark-text").value = "";
+      runView.openRow = "";
+      flash("ok", `Отметка по пункту ${text(item.check_id)} записана`);
       await refresh();
     }
   });

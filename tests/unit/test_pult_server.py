@@ -414,6 +414,181 @@ def test_journal_repeat_appends_record(pult: PultApp) -> None:
     assert data["row"]["response"]
 
 
+def _with_checks(pult: PultApp, *, check_class: str, check_id: str = "") -> str:
+    """Сессия с утверждённой программой из проверок одного класса: id проверки.
+
+    `check_id` задаётся явно там, где нужна конкретная проверка: например, ручная
+    `TC-SYS-06` подтверждается чтением `/version` при старте сессии (схема v8,
+    `UC-03`), поэтому для настоящей ручной отметки берётся `TC-TASK-08`.
+    """
+    created = post(
+        pult,
+        "/api/sessions",
+        info={"title": "Класс", "object_of_test": "Объект", "operator_fio": AUTHOR},
+    )
+    post(pult, f"/api/sessions/{created['id']}/start")
+    if not check_id:
+        every = get(pult, "/api/catalog")["rows"]
+        rows = [row for row in every if row["class_key"] == check_class]
+        assert rows, f"в каталоге нет проверок класса {check_class}"
+        check_id = str(rows[0]["check_id"])
+    title = f"Класс {check_class}"
+    saved = post(
+        pult,
+        "/api/sets",
+        action="save",
+        title=title,
+        check_ids=[check_id],
+        mandatory=True,
+    )
+    set_row = next(item for item in saved["library"]["rows"] if item["title"] == title)
+    post(pult, "/api/programme", action="rebuild", set_ids=[str(set_row["set_id"])])
+    approved = post(
+        pult,
+        "/api/programme",
+        action="approve",
+        comment="приёмка класса",
+        reduction="срез по классу",
+    )
+    assert approved["programme"]["approved"] is True
+    return check_id
+
+
+def test_run_refuses_programme_that_is_not_approved(pult: PultApp) -> None:
+    """Черновик программы не запускается: причина с сервера и отказ API — одна (`FR-P-13`)."""
+    created = post(
+        pult,
+        "/api/sessions",
+        info={"title": "Черновик", "object_of_test": "Объект", "operator_fio": AUTHOR},
+    )
+    post(pult, f"/api/sessions/{created['id']}/start")
+    rows = get(pult, "/api/sets")["rows"]
+    post(pult, "/api/programme", action="rebuild", set_ids=[str(rows[0]["set_id"])])
+
+    run = get(pult, "/api/run")
+    assert run["next"]["runnable"] is False
+    assert run["readiness"]["blocked_by"] == "not-approved"
+    assert run["next"]["fix"]["panel"] == "planning"
+    assert "не утверждена" in run["next"]["reason"]
+
+    with pytest.raises(ApiError) as refused:
+        post(pult, "/api/run", action="next")
+    assert refused.value.status == 409
+    assert refused.value.message == run["next"]["reason"], "страница и API объясняют одно и то же"
+
+    assert get(pult, "/api/state")["next"]["reason"] == run["next"]["reason"]
+
+
+def test_run_mode_switch_is_saved_in_session(pult: PultApp) -> None:
+    """«Только невыполненное / всё подряд» сохраняется в сессии и меняет очередь (`UC-09`)."""
+    _ready_session(pult)
+    post(pult, "/api/run", action="next")
+    only = get(pult, "/api/run")
+    assert only["progress"]["pending"] < only["progress"]["total"]
+
+    all_mode = post(pult, "/api/run", action="mode", mode="all")
+    assert all_mode["mode"] == "all" and all_mode["skip_done"] is False
+    assert all_mode["progress"]["pending"] == all_mode["progress"]["total"]
+    assert get(pult, "/api/run")["mode"] == "all", "режим переживает следующий запрос"
+
+    back = post(pult, "/api/run", action="mode", mode="only-remaining")
+    assert back["mode"] == "only-remaining" and back["skip_done"] is True
+    assert back["progress"]["pending"] < back["progress"]["total"]
+
+    assert post(pult, "/api/run", action="mode", mode="чепуха")["mode"] == "only-remaining"
+    assert [item["value"] for item in back["modes"]["options"]] == ["only-remaining", "all"]
+
+
+def test_run_view_describes_next_item_and_tools(pult: PultApp) -> None:
+    """Вид прогона несёт странице всё: пункт, шаги, payload, формы и «Пачку tech» (`FR-P-20`)."""
+    _ready_session(pult)
+    run = get(pult, "/api/run")
+    item = run["next"]["item"]
+    assert item["check_id"] == run["next"]["check_id"]
+    assert item["title"] and item["class_label"] and item["section"]
+    assert item["steps"], "шаги проверки приходят готовыми"
+    assert "summary" in item["payload"]
+    assert item["card"]["required"] is False, "у tech-проверки карточка запуска не нужна"
+    assert item["mark"]["required"] is False
+    assert run["batch"]["count"] == len(run["batch"]["ids"])
+    assert run["batch"]["label"].startswith("▶▶ Пачка tech")
+    assert run["queue_mode_label"], "режим исполнения очереди виден отдельно от режима прогона"
+    assert run["rows"][0]["details"]["steps"], "детали строки тоже готовы"
+
+
+def test_manual_mark_needs_conclusion_and_closes_item(pult: PultApp) -> None:
+    """Ручная проверка закрывается отметкой с заключением; без заключения — отказ (`FR-P-32`)."""
+    check_id = _with_checks(pult, check_class="manual", check_id="TC-TASK-08")
+
+    run = get(pult, "/api/run")
+    assert run["next"]["check_id"] == check_id
+    assert run["next"]["item"]["mark"]["required"] is True
+    assert run["next"]["item"]["mark"]["statuses"]
+
+    outcome = post(pult, "/api/run", action="next")["outcomes"][0]
+    assert outcome["operator_required"] is True
+    assert outcome["hint"]
+    assert outcome["journal"] == "", "при ручной проверке запрос на стенд не уходит"
+
+    with pytest.raises(ApiError) as no_note:
+        post(
+            pult,
+            f"/api/checks/{check_id}",
+            action="mark",
+            status="выполнена вручную",
+            note="   ",
+        )
+    assert no_note.value.status == 422
+    assert "заключение" in no_note.value.message
+
+    marked = post(
+        pult,
+        f"/api/checks/{check_id}",
+        action="mark",
+        status="выполнена вручную",
+        note="проверено вручную по инструкции, п. 4",
+    )
+    row = next(item for item in marked["run"]["rows"] if item["check_id"] == check_id)
+    assert row["status"] == "выполнена вручную"
+    assert row["origin"] == "оператор"
+    assert "инструкции" in row["reason"]
+    assert marked["run"]["progress"]["pending"] == 0, "отметка закрывает пункт программы"
+
+
+def test_run_card_is_kept_and_previewed(pult: PultApp) -> None:
+    """Карточка `live`: предпросмотр payload до запуска и возврат значений в форму (`FR-P-19`)."""
+    check_id = _with_checks(pult, check_class="live")
+
+    run = get(pult, "/api/run")
+    card = run["next"]["item"]["card"]
+    assert card["required"] is True
+    assert card["filled"] is False and card["missing"]
+    assert run["next"]["item"]["payload"]["count"] >= 1, "видно, какие `__TEST__`-данные уйдут"
+    assert run["card_ready"] is False
+
+    with pytest.raises(ApiError) as incomplete:
+        post(pult, f"/api/checks/{check_id}", action="run-card", values={"goal": "проверить"})
+    assert incomplete.value.status == 422
+
+    post(
+        pult,
+        f"/api/checks/{check_id}",
+        action="run-card",
+        values={"goal": "проверить", "data": "__TEST__", "responsible": AUTHOR, "confirm": True},
+    )
+    again = get(pult, "/api/run")
+    assert again["card_ready"] is True
+    assert again["next"]["item"]["card"]["filled"] is True
+    assert again["next"]["item"]["card"]["saved"] is True
+    confirm = next(
+        field for field in again["next"]["item"]["card"]["fields"] if field["name"] == "confirm"
+    )
+    assert confirm["checked"] is True
+
+    outcome = post(pult, "/api/run", action="next")["outcomes"][0]
+    assert outcome["confirmation_required"] is False, "с карточкой запуск не блокируется"
+
+
 def test_data_reports_registry_errors_instead_of_crashing(broken_stand: PultApp) -> None:
     """Ответ стенда не по схеме — ошибка видна в разделе `errors`, пульт не падает."""
     data = get(broken_stand, "/api/data")

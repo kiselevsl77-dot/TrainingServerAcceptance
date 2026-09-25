@@ -219,11 +219,26 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
     assert run["next"]["runnable"] is True
     assert run["next"]["check_id"]
     assert run["progress"]["total"] == len(run["rows"])
+    assert run["next"]["item"]["steps"], "страница прогона получает шаги проверки до запуска"
+    assert run["next"]["item"]["card"]["required"] is False, "у tech-проверки карточка не нужна"
+    assert run["next"]["item"]["mark"]["required"] is False
+    assert run["batch"]["label"].startswith("▶▶ Пачка tech")
+    assert run["rows"][0]["details"]["steps"], "детали пункта тоже готовы"
 
     result = api(pult, "/api/run", {"action": "next"})
     outcome = result["outcomes"][0]
     assert outcome["check_id"] == run["next"]["check_id"]
     assert outcome["journal"], "выполненный пункт должен ссылаться на журнал"
+
+    closed = api(pult, "/api/run")
+    assert closed["progress"]["pending"] == 0
+    everything = api(pult, "/api/run", {"action": "mode", "mode": "all"})
+    assert everything["progress"]["pending"] == everything["progress"]["total"], (
+        "режим «всё подряд» возвращает в очередь и выполненные пункты"
+    )
+    back = api(pult, "/api/run", {"action": "mode", "mode": "only-remaining"})
+    assert back["progress"]["pending"] == 0, "«только невыполненное» снова пропускает закрытые"
+    assert back["mode"] == "only-remaining" and back["skip_done"] is True
 
     protocol = api(pult, "/api/protocol")
     assert protocol["summary"]["closed"] >= 1

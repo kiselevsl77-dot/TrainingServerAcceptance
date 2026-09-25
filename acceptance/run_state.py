@@ -42,6 +42,30 @@ CONFIRMED_VERDICT = "подтверждено ранее выполненным 
 #: Пометка в записи результата и в колонке «способ» протокола.
 CONFIRMED_NOTE = "выполнено по факту запроса"
 
+#: Режимы прогона (ТЗ §2, решение 7): какие пункты берёт «▶ Следующая».
+RUN_ONLY_REMAINING = "only-remaining"
+RUN_ALL = "all"
+RUN_MODES: tuple[str, ...] = (RUN_ONLY_REMAINING, RUN_ALL)
+
+
+def run_mode_of(session: TestSession) -> str:
+    """Режим прогона сессии: «только невыполненное» (по умолчанию) или «всё подряд»."""
+    return RUN_ONLY_REMAINING if bool(getattr(session, "skip_done", True)) else RUN_ALL
+
+
+def set_run_mode(session: TestSession, mode: str) -> str:
+    """Задаёт режим прогона сессии (`skip_done`).
+
+    Неизвестное значение откатывается к «только невыполненное»: молча запускать всё
+    подряд, включая повторы, нельзя — это перезаписало бы результаты испытаний
+    историей повторов (`FR-P-36`).
+    """
+    value = str(mode or "").strip()
+    if value not in RUN_MODES:
+        value = RUN_ONLY_REMAINING
+    session.skip_done = value == RUN_ONLY_REMAINING
+    return value
+
 
 def session_records(records: Iterable[Any] | None, session: TestSession) -> tuple[Any, ...]:
     """Обмены сессии: журнал, ограниченный моментом создания сессии.
@@ -229,18 +253,25 @@ def run_queue(
     *,
     revision: int | None = None,
     mode: str | None = None,
+    run_mode: str | None = None,
 ) -> queue_api.Queue:
     """Очередь прогона по ревизии программы для текущего режима сессии.
 
     Режим «только невыполненное» (`session.skip_done`, по умолчанию) восстанавливает
     состояние по результатам сессии; режим «выполнять всё» возвращает очередь в
     исходном состоянии — все пункты ожидают запуска, повторы пишут историю.
+
+    Args:
+        revision: номер ревизии программы (по умолчанию — ревизия сессии).
+        mode: режим **исполнения** очереди («сценарием» / «по вызовам», задел M1/M2).
+        run_mode: режим **прогона** («only-remaining» / «all»); None — из сессии.
     """
     number = int(revision if revision is not None else session.run_revision or 0)
     queue = queue_api.queue_for_revision(programme, number)
     if mode:
         queue.set_mode(mode)
-    if bool(getattr(session, "skip_done", True)):
+    chosen = str(run_mode or "") or run_mode_of(session)
+    if chosen == RUN_ONLY_REMAINING:
         restore_state(queue, session)
     return queue
 
@@ -270,6 +301,9 @@ def suspension_reason(session: TestSession, check_id: str) -> str:
 __all__ = [
     "CONFIRMED_NOTE",
     "CONFIRMED_VERDICT",
+    "RUN_ALL",
+    "RUN_MODES",
+    "RUN_ONLY_REMAINING",
     "SUCCESS_MAX",
     "SUCCESS_MIN",
     "confirm_by_request",
@@ -279,7 +313,9 @@ __all__ = [
     "is_success",
     "progress",
     "restore_state",
+    "run_mode_of",
     "run_queue",
     "session_records",
+    "set_run_mode",
     "suspension_reason",
 ]

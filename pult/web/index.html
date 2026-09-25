@@ -14,8 +14,6 @@
         <span class="tag" id="phase">Ф0</span>
         <span class="head__note" id="phase-note"></span>
         <span class="grow"></span>
-        <button id="btn-next" class="btn btn--primary" type="button">▶ Следующая</button>
-        <button id="btn-batch" class="btn" type="button">▶▶ Пачка tech</button>
         <button id="btn-refresh" class="btn btn--ghost" type="button">Обновить</button>
       </div>
       <div class="head__line head__line--muted">
@@ -46,6 +44,61 @@
           <h2>Прогон программы</h2>
           <span class="muted" id="run-meta"></span>
         </div>
+
+        <section class="zone" id="run-console">
+          <div class="zone__head">
+            <h3>Управление прогоном</h3>
+            <span class="muted" id="run-mode-meta"></span>
+            <span class="grow"></span>
+            <label class="check">режим <select id="run-mode"></select></label>
+            <span class="muted" id="run-mode-hint"></span>
+          </div>
+
+          <div id="run-blocked" class="banner" hidden>
+            <b id="run-blocked-reason"></b>
+            <button class="btn btn--tiny btn--primary" id="run-fix" type="button" hidden></button>
+          </div>
+          <div id="run-notice" class="notice" hidden></div>
+
+          <p class="next-line" id="run-next-line"></p>
+          <div class="row">
+            <button class="btn btn--primary" id="run-next" type="button">▶ Следующая</button>
+            <button class="btn" id="run-batch" type="button">▶▶ Пачка tech</button>
+          </div>
+
+          <div class="zone__sub" id="run-card" hidden>
+            <h4 id="run-card-title">Карточка запуска</h4>
+            <p class="hint" id="run-card-note"></p>
+            <div class="form" id="run-card-fields"></div>
+            <div class="row">
+              <button class="btn" id="run-card-save" type="button">Сохранить карточку</button>
+              <button class="btn btn--primary" id="run-card-run" type="button">▶ Подтвердить и запустить</button>
+              <span class="muted" id="run-card-missing"></span>
+            </div>
+          </div>
+
+          <div class="zone__sub" id="run-mark" hidden>
+            <h4 id="run-mark-title">Ручная отметка</h4>
+            <p class="hint" id="run-mark-note"></p>
+            <div class="row">
+              <label class="check">статус <select id="run-mark-status"></select></label>
+              <input id="run-mark-text" placeholder="заключение оператора (обязательно)" size="52" />
+              <button class="btn btn--primary" id="run-mark-save" type="button">Записать отметку</button>
+            </div>
+          </div>
+
+          <div class="zone__sub" id="run-payload" hidden>
+            <h4>Что будет отправлено на стенд</h4>
+            <p class="muted" id="run-payload-summary"></p>
+            <ul class="payload" id="run-payload-lines"></ul>
+          </div>
+
+          <div class="zone__sub" id="run-steps" hidden>
+            <h4>Шаги проверки</h4>
+            <ol class="list" id="run-steps-list"></ol>
+          </div>
+        </section>
+
         <div id="run-outcomes" class="outcomes"></div>
         <table class="grid" id="run-table">
           <thead>
@@ -58,6 +111,7 @@
               <th>Результат</th>
               <th>Способ</th>
               <th>Журнал</th>
+              <th></th>
             </tr>
           </thead>
           <tbody></tbody>

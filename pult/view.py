@@ -29,16 +29,17 @@ from datetime import datetime
 from typing import Any
 
 from acceptance import dataset_composition as composition_api
-from acceptance import glossary, run_state
+from acceptance import glossary, run_state, test_payloads
 from acceptance import programme as programme_api
 from acceptance import queue as queue_api
 from acceptance import results as results_api
+from acceptance import run_card as run_card_api
+from acceptance import runner as runner_api
 from acceptance import session as session_api
 from acceptance.checks import catalog
 from acceptance.checks.registry import CLASS_LABELS, STATUS_ICONS, CheckClass, CheckStatus
 from acceptance.exchange import curl_command
 from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICONS, QUEUE_STATES
-from acceptance.runner import needs_confirmation
 from acceptance.session import TestSession
 
 #: Разделитель подписей в «одной строке» (макет печатает ` · `).
@@ -297,21 +298,18 @@ def header_view(
     actual_build = build or (session.server_build if session is not None else "")
     phase = phase_of(session, programme, results, queue)
     next_item = queue.next_item()
-    next_view: dict[str, Any] = {"check_id": "", "command": "", "runnable": False, "reason": ""}
-    if session is None:
-        next_view["reason"] = "Сессия испытаний не выбрана"
-    elif not stand_configured:
-        next_view["reason"] = "Адрес стенда не задан"
-    elif not programme.size:
-        next_view["reason"] = "Программа сессии не собрана"
-    elif not programme.is_approved:
-        next_view["reason"] = "Программа сессии не утверждена"
-    elif next_item is None:
-        next_view["reason"] = "Прогон завершён: все пункты закрыты"
-    else:
-        next_view["check_id"] = next_item.check_id
-        next_view["command"] = f"▶ Следующая: {next_item.check_id}"
-        next_view["runnable"] = True
+    ready = readiness_view(session, programme, queue, stand_configured=stand_configured)
+    next_view: dict[str, Any] = {
+        "check_id": "" if next_item is None else next_item.check_id,
+        "command": ""
+        if next_item is None or not ready["runnable"]
+        else f"▶ Следующая: {next_item.check_id}",
+        "runnable": bool(ready["runnable"]),
+        "reason": str(ready["reason"]),
+        "blocked_by": str(ready["blocked_by"]),
+        "fix": dict(ready["fix"]),
+        "notice": str(ready["notice"]),
+    }
 
     session_view: dict[str, Any] = {
         "id": "",
@@ -349,6 +347,264 @@ def header_view(
     }
 
 
+# ---------------------------------------------------------------------------
+# Прогон: готовность, карточка запуска, предпросмотр payload и отметка (`SCR-301`)
+# ---------------------------------------------------------------------------
+#: Кто устраняет препятствие и какой панелью: пульт показывает не только причину,
+#: но и кнопку «что делать» (`IR-P-8` — экран не оставляет оператора без выхода).
+READINESS_FIXES: dict[str, dict[str, str]] = {
+    "no-session": {"panel": "sessions", "label": "Создать и начать сессию"},
+    "no-stand": {"panel": "", "label": "Проверить адрес стенда в .env"},
+    "no-programme": {"panel": "planning", "label": "Собрать программу"},
+    "not-approved": {"panel": "planning", "label": "Утвердить программу"},
+    "queue": {"panel": "planning", "label": "Пересобрать и утвердить программу"},
+    "finished": {"panel": "protocol", "label": "Оформить протокол"},
+}
+
+#: Режимы прогона (ТЗ §2, решение 7): какие пункты берёт «▶ Следующая».
+#: Значения и переключение живут в ядре (`acceptance.run_state`), подписи — здесь.
+RUN_MODE_LABELS: dict[str, str] = {
+    run_state.RUN_ONLY_REMAINING: "только невыполненное",
+    run_state.RUN_ALL: "всё подряд (с повторами)",
+}
+
+RUN_MODE_HINTS: dict[str, str] = {
+    run_state.RUN_ONLY_REMAINING: (
+        "выполненные и снятые пункты пропускаются: повтор уже выполненного — "
+        "отдельное действие (`FR-P-36`)"
+    ),
+    run_state.RUN_ALL: (
+        "все пункты запускаются заново, включая выполненные; повтор пишет историю "
+        "предыдущего результата (`FR-P-36`)"
+    ),
+}
+
+#: Как показывать поле карточки запуска: вид элемента формы (`FR-P-19`).
+CARD_FIELD_KINDS: dict[str, str] = {
+    "goal": "text",
+    "data": "text",
+    "responsible": "text",
+    "artifacts": "select",
+    "confirm": "checkbox",
+}
+
+#: Статусы, которые оператор ставит вручную (`FR-P-32`): отметка, а не прогон.
+MARK_STATUSES: tuple[str, ...] = (
+    str(CheckStatus.MANUAL_OK),
+    str(CheckStatus.SKIPPED),
+    str(CheckStatus.BLOCKED),
+    str(CheckStatus.INTERRUPTED),
+    str(CheckStatus.FAILED),
+)
+
+
+def readiness_view(
+    session: TestSession | None,
+    programme: programme_api.Programme,
+    queue: queue_api.Queue,
+    *,
+    stand_configured: bool = True,
+) -> dict[str, Any]:
+    """Можно ли нажимать «▶ Следующая» и что мешает — **единое** правило пульта.
+
+    Ядро допускает прогон по черновику программы и помечает его (`queue.build_queue`),
+    но пульт так не работает: испытания ведутся по **утверждённой** ревизии
+    (`FR-P-13`, `IR-P-18`, решение заказчика 26.09.2026). Правило живёт здесь, а не в
+    шапке и не в JS: шапка, экран «Прогон» и проверка действия запуска берут его из
+    одного места, поэтому кнопка не может быть выключена «по одной причине», а API
+    отказать «по другой».
+
+    Returns:
+        `runnable`, `reason`, `blocked_by` (код для тестов и подсказок), `fix`
+        (панель и подпись кнопки «что делать»), `notice` (предупреждение прогона).
+    """
+    blocked = ""
+    reason = ""
+    if session is None:
+        blocked, reason = "no-session", "Сессия испытаний не выбрана"
+    elif not stand_configured:
+        blocked, reason = "no-stand", "Адрес испытуемого сервера не задан (.env)"
+    elif not programme.size:
+        blocked, reason = "no-programme", "Программа сессии не собрана"
+    elif not programme.is_approved:
+        blocked = "not-approved"
+        reason = (
+            f"Программа сессии не утверждена (ревизия {programme.revision}, черновик): "
+            "прогон идёт по утверждённой ревизии"
+        )
+    else:
+        allowed, why = runner_api.can_run(queue, programme)
+        if not allowed:
+            blocked = "finished" if queue.next_item() is None else "queue"
+            reason = why
+    return {
+        "runnable": not blocked,
+        "reason": reason,
+        "blocked_by": blocked,
+        "fix": dict(READINESS_FIXES.get(blocked, {})),
+        "notice": "" if blocked else runner_api.programme_notice(queue),
+    }
+
+
+def modes_view(session: TestSession) -> dict[str, Any]:
+    """Режим прогона: «только невыполненное» (по умолчанию) или «всё подряд» (`UC-09`)."""
+    current = run_state.run_mode_of(session)
+    return {
+        "current": current,
+        "current_label": RUN_MODE_LABELS[current],
+        "options": [
+            {"value": value, "label": label, "hint": RUN_MODE_HINTS[value]}
+            for value, label in RUN_MODE_LABELS.items()
+        ],
+    }
+
+
+def run_card_view(
+    item: programme_api.ProgrammeItem,
+    *,
+    values: Mapping[str, Any] | None = None,
+    session_id: str = "",
+    author: str = "",
+) -> dict[str, Any]:
+    """Карточка запуска как форма: поля, заготовки и что ещё не заполнено (`FR-P-19`).
+
+    Заготовки приходят из `acceptance.run_card.defaults`, правила обязательных полей —
+    из `acceptance.run_card.validate`, поэтому форма интерфейса и проверка ядра не
+    расходятся. `filled` честно False, пока оператор не подтвердил расход ресурсов.
+    """
+    required, note = runner_api.needs_confirmation(item)
+    saved = {key: value for key, value in dict(values or {}).items() if value not in ("", None)}
+    merged: dict[str, Any] = dict(run_card_api.defaults(item, session_id=session_id, author=author))
+    merged.update(saved)
+    fields: list[dict[str, Any]] = []
+    for name, label in run_card_api.FIELD_LABELS.items():
+        value = merged.get(name, "")
+        fields.append(
+            {
+                "name": name,
+                "label": label,
+                "kind": CARD_FIELD_KINDS.get(name, "text"),
+                "value": "" if isinstance(value, bool) else str(value),
+                "checked": bool(value) if name == "confirm" else False,
+                "required": name in run_card_api.REQUIRED or name == "confirm",
+            }
+        )
+    missing = run_card_api.validate(merged)
+    return {
+        "required": bool(required),
+        "note": str(note),
+        "fields": fields,
+        "artifacts": list(run_card_api.ARTIFACT_ACTIONS),
+        "missing": missing,
+        "filled": not missing,
+        "saved": bool(saved),
+        "author": str(saved.get("author") or ""),
+        "at": short_time(saved.get("at")) if saved.get("at") else "",
+    }
+
+
+def payload_view(
+    check_id: str, *, session: Any = None, params: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Предпросмотр «что будет отправлено»: `__TEST__`-имена и тела (`FR-P-19`).
+
+    Строки формирует `acceptance.test_payloads` — тот же модуль, что и сценарии, поэтому
+    предпросмотр не расходится с фактом. Проверки только для чтения payload не создают.
+    """
+    spec = catalog.find(check_id)
+    if spec is None:
+        return {"summary": "", "lines": [], "count": 0}
+    previews = test_payloads.payload_previews(spec, session, params=dict(params or {}))
+    return {
+        "summary": test_payloads.summary(previews),
+        "lines": test_payloads.preview_lines(previews),
+        "count": len(previews),
+    }
+
+
+def mark_view(item: programme_api.ProgrammeItem) -> dict[str, Any]:
+    """Форма ручной отметки: статусы и требование заключения (`FR-P-32`)."""
+    required, note = runner_api.requires_operator(item)
+    return {
+        "required": bool(required),
+        "check_id": item.check_id,
+        "note": str(note) or "ручная проверка: отметьте результат с заключением",
+        "statuses": [
+            {"value": value, "label": f"{status_icon(value)} {value}"} for value in MARK_STATUSES
+        ],
+        "default_status": str(CheckStatus.MANUAL_OK),
+        "note_label": "Заключение оператора",
+        "note_hint": "без заключения отметка не принимается (`FR-P-32`)",
+    }
+
+
+def batch_view(queue: queue_api.Queue, programme: programme_api.Programme) -> dict[str, Any]:
+    """«▶▶ Пачка tech (n)»: сколько пунктов заберёт пачка и до чьего препятствия (`A4`)."""
+    ids = list(runner_api.batch_tech_ids(queue, programme))
+    return {
+        "ids": ids,
+        "count": len(ids),
+        "label": f"▶▶ Пачка tech ({len(ids)})" if ids else "▶▶ Пачка tech",
+        "enabled": bool(ids),
+    }
+
+
+def step_rows(check_id: str) -> list[dict[str, Any]]:
+    """Шаги проверки: что именно будет вызвано, по порядку (`FR-P-20`)."""
+    spec = catalog.find(check_id)
+    if spec is None:
+        return []
+    return [
+        {
+            "index": int(step.index),
+            "label": f"{int(step.index)}. {str(step.method).upper()} {step.path}",
+            "summary": str(step.summary),
+            "safety": str(step.safety),
+            "body": str(step.body_sample),
+        }
+        for step in runner_api.call_steps(spec)
+    ]
+
+
+def run_next_view(
+    item: programme_api.ProgrammeItem | None,
+    *,
+    values: Mapping[str, Any] | None = None,
+    session: Any = None,
+    author: str = "",
+) -> dict[str, Any]:
+    """Следующий пункт прогона: что запустится и что для этого нужно (`IR-P-20`).
+
+    Всё, что интерфейсу нужно показать до нажатия «▶ Следующая» — название и класс
+    пункта, требования (карточка запуска, ручная отметка), шаги, предпросмотр payload
+    и форма отметки. Это позволяет оператору видеть последствия до вызова стенда
+    (`FR-P-19`, `FR-P-20`) и не дублировать правила в JS.
+    """
+    if item is None:
+        return {}
+    session_id = str(getattr(session, "session_id", "") or "")
+    confirm, confirm_note = runner_api.needs_confirmation(item)
+    operator, operator_note = runner_api.requires_operator(item)
+    return {
+        "check_id": item.check_id,
+        "title": item.title,
+        "order": int(item.order),
+        "check_class": str(item.check_class),
+        "class_label": class_label(item.check_class),
+        "section": item.group,
+        "requirement": item.requirement,
+        "expected": item.expected,
+        "confirm_required": bool(confirm),
+        "confirm_note": str(confirm_note),
+        "operator_required": bool(operator),
+        "operator_note": str(operator_note),
+        "steps": step_rows(item.check_id),
+        "card": run_card_view(item, values=values, session_id=session_id, author=author),
+        "payload": payload_view(item.check_id, session=session),
+        "mark": mark_view(item),
+    }
+
+
 def build_label(version: Any) -> str:
     """Подпись сборки из ответа `GET /version` («dev@83319ae»)."""
     body = dict(version) if isinstance(version, Mapping) else {}
@@ -381,9 +637,29 @@ def outcome_rows(outcomes: Iterable[Any]) -> list[dict[str, Any]]:
                 "stop_reason": str(getattr(outcome, "stop_reason", "") or ""),
                 "duration_ms": round(float(getattr(outcome, "duration_ms", 0.0) or 0.0), 1),
                 "steps": int(getattr(outcome, "steps", 0) or 0),
+                "confirmation_required": bool(getattr(outcome, "confirmation_required", False)),
+                "operator_required": bool(getattr(outcome, "operator_required", False)),
+                "hint": _outcome_hint(outcome),
             }
         )
     return rows
+
+
+def _outcome_hint(outcome: Any) -> str:
+    """Что оператору делать по итогу шага (пусто — делать нечего).
+
+    Интерфейс не выдумывает подсказки: «запрос на стенд не отправлялся, потому что нужна
+    карточка запуска» — факт ядра (`RunOutcome.confirmation_required`), и он должен
+    дойти до оператора тем же текстом, что и в протоколе.
+    """
+    if bool(getattr(outcome, "confirmation_required", False)):
+        return (
+            "запрос на стенд не отправлен: заполните карточку запуска и подтвердите "
+            "расход ресурсов (`FR-P-19`)"
+        )
+    if bool(getattr(outcome, "operator_required", False)):
+        return "ручная проверка: поставьте отметку с заключением (`FR-P-32`)"
+    return ""
 
 
 def sessions_view(
@@ -448,7 +724,22 @@ def run_rows(
                 "reason": str(row["reason"] or row["note"]),
                 "origin": origin_label(origin, suspended=bool(state_row.get("suspended"))),
                 "done_by": note if origin == results_api.ORIGIN_REQUEST else "",
-                "confirm_required": bool(item is not None and needs_confirmation(item)[0]),
+                "confirm_required": bool(
+                    item is not None and runner_api.needs_confirmation(item)[0]
+                ),
+                "operator_required": bool(
+                    item is not None and runner_api.requires_operator(item)[0]
+                ),
+                "details": {
+                    "steps": step_rows(check_id),
+                    "payload": payload_view(check_id, session=session),
+                    "author": str(state_row.get("author") or ""),
+                    "at": short_time(state_row.get("at"), "%d.%m %H:%M:%S")
+                    if state_row.get("at")
+                    else "",
+                    "revision": state_row.get("revision"),
+                    "note": note,
+                },
             }
         )
     return rows
