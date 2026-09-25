@@ -23,6 +23,9 @@ import httpx
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from acceptance import programme as programme_api
+from acceptance import queue as queue_api
+from acceptance import run_state
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.api import Apis
@@ -198,15 +201,18 @@ def test_vertical_slice_planning_to_queue(pult: tuple[AppTest, Path]) -> None:
     assert session.programme["status"] == "утверждена", "ревизия программы не утверждена"
     assert session.programme["approved"]["author"] == AUTHOR
 
-    # 4. Собираем очередь прогона — снимок утверждённой ревизии.
+    # 4. Очередь прогона: снимок утверждённой ревизии, в сессии не хранится (схема v8).
     app = _click(app, "🧾 Собрать очередь прогона")
     session = _stored(store, session_id)
-    queue = session.queue
+    queue = queue_api.queue_for_revision(
+        programme_api.load_programme(session), session.run_revision
+    )
 
-    assert queue["items"], "очередь прогона пуста"
-    assert queue["approved"] is True, "очередь собрана не по утверждённой ревизии"
-    assert queue["revision"] == session.programme["revision"]
-    assert len(queue["items"]) == len(session.programme["items"])
+    assert queue.items, "очередь прогона пуста"
+    assert queue.approved is True, "очередь собрана не по утверждённой ревизии"
+    assert queue.revision == session.programme["revision"]
+    assert len(queue.items) == len(session.programme["items"])
+    assert "queue" not in session.to_dict(), "очередь вычисляется и в сессии не хранится (v8)"
     assert "очередь прогона:" in _captions(app), "экран не показывает собранную очередь"
 
 
@@ -266,8 +272,15 @@ def test_vertical_slice_run_next_check(pult: tuple[AppTest, Path]) -> None:
 
     assert checks["TC-SYS-01"]["status"] == "успех", "результат прогона не записан в сессию"
     assert checks["TC-SYS-01"]["origin"] == "прогон"
-    assert session.queue["items"][0]["state"] == "выполнена", "пункт очереди не закрыт"
-    assert session.queue["items"][0]["journal_to"], "диапазон журнала не зафиксирован"
+
+    queue = run_state.restore_state(
+        queue_api.queue_for_revision(programme_api.load_programme(session), session.run_revision),
+        session,
+    )
+    item = queue.find("TC-SYS-01")
+    assert item is not None, "пункт прогона не найден в очереди ревизии"
+    assert item.state == "выполнена", "состояние пункта не восстановлено из результата"
+    assert item.journal_to, "диапазон журнала не зафиксирован"
     assert "Вердикт" in " ".join(_captions(app)) or "успех" in _messages(app)
 
 

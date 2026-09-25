@@ -263,33 +263,42 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_seven():
-    """Схема сессии — v7: программа сессии, очередь прогона и история повторов."""
-    assert SCHEMA_VERSION == 7
+def test_current_schema_version_is_eight():
+    """Схема сессии — v8: очередь не хранится, есть ревизия прогона и режим.
+
+    Очередь прогона как сущность убрана (решение заказчика 25.09.2026): она
+    вычисляется по ревизии программы, поэтому в сессии живут только номер
+    исполняемой ревизии (`run_revision`) и режим «только невыполненное» (`skip_done`).
+    """
+    assert SCHEMA_VERSION == 8
     payload = _session(Path(".")).to_dict()
 
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["programme"] == {}
-    assert payload["queue"] == {}
+    assert payload["run_revision"] == 0
+    assert payload["skip_done"] is True
     assert payload["check_history"] == {}
+    assert "queue" not in payload, "очередь вычисляется и в сессии не хранится (v8)"
 
 
-def test_programme_and_queue_are_stored_in_session(tmp_path: Path):
-    """Программа сессии и очередь прогона живут в сессии и переживают перезапись файла (v7).
+def test_programme_and_run_mode_are_stored_in_session(tmp_path: Path):
+    """Программа и режим прогона живут в сессии и переживают перезапись файла (v8).
 
     Прежнее поле `plan` схемы v6 удалено на этапе 2 big bang вместе со старым планировщиком:
-    состав программы собирается из наборов (`acceptance/programme.py`), а очередь — снимок
-    утверждённой ревизии (`acceptance/queue.py`).
+    состав программы собирается из наборов (`acceptance/programme.py`). Очередь схемой v8
+    не хранится — её строит ревизия программы (`acceptance/queue.py`).
     """
     session = _session(tmp_path)
     session.programme = {"revision": 2, "items": [{"item_id": "TC-SYS-01"}]}
-    session.queue = {"revision": 2, "items": [{"item_id": "TC-SYS-01"}]}
+    session.run_revision = 2
+    session.skip_done = False
 
     restored = SessionModel.from_dict(session.to_dict())
 
     assert restored.programme["revision"] == 2
     assert restored.programme["items"][0]["item_id"] == "TC-SYS-01"
-    assert restored.queue["revision"] == 2
+    assert restored.run_revision == 2
+    assert restored.skip_done is False
     assert not hasattr(restored, "plan"), "legacy-поле `plan` удалено на этапе 2 big bang"
 
 

@@ -584,11 +584,11 @@ def store_programme(
 
 
 def current_queue() -> queue_api.Queue:
-    """Очередь прогона текущей сессии (пустая, если прогон не начинался)."""
+    """Очередь прогона текущей сессии: вычисляется по ревизии программы (схема v8)."""
     session = current_session()
     if session is None:
         return queue_api.Queue()
-    return queue_api.load_queue(session)
+    return queue_api.queue_for_revision(programme_api.load_programme(session), session.run_revision)
 
 
 def store_queue(
@@ -597,12 +597,21 @@ def store_queue(
     event: str = "",
     message: str = "",
 ) -> queue_api.Queue | None:
-    """Сохраняет очередь прогона в текущую сессию; None — если сессии нет."""
+    """Отмечает событие прогона в сессии; сама очередь не хранится (схема v8)."""
     session = current_session()
     if session is None:
         return None
-    queue_api.save_queue(session, value, event=event, message=message)
-    store_session(session)
+    if event:
+        summary = value.summary()
+        session.add_history(
+            event,
+            message or event,
+            revision=value.revision,
+            status="черновик" if value.draft else "утверждена",
+            items=summary["total"],
+            next=summary["next"],
+        )
+        store_session(session)
     return value
 
 

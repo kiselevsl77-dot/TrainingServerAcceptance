@@ -19,12 +19,18 @@
 
 Статус проверки, вердикт и доказательства очередь **не хранит**: единственный
 источник результата — `results.py` (`DR-P-5`), поэтому двойной учёт невозможен.
+
+Схема сессии v8 (решение заказчика 25.09.2026, `llm_tasks/31.4` §1 п.6): очередь
+**не хранится в сессии**. Она вычисляется по ревизии программы (`build_queue` для
+текущей ревизии, `queue_for_revision` — для снимка нужного номера), а состояние
+пунктов восстанавливается из `results.py` и журнала обмена
+(`acceptance/run_state.py`). Отдельного шага «собрать очередь» в интерфейсе нет.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -428,7 +434,7 @@ class Queue:
 
     # -- сериализация ---------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
-        """Сериализует очередь в сессию (схема v7, поле `queue`)."""
+        """Сериализует очередь (выгрузка, отчёт); в сессии очередь не хранится (v8)."""
         return {
             "revision": self.revision,
             "approved": self.approved,
@@ -472,8 +478,14 @@ class Queue:
 
 
 # ---------------------------------------------------------------------------
-# Снимок программы и хранение очереди в сессии
+# Сборка очереди по ревизии программы (очередь не хранится — схема v8)
 # ---------------------------------------------------------------------------
+def signature_of(check_ids: Iterable[str]) -> str:
+    """Отпечаток состава по идентификаторам проверок (в порядке программы)."""
+    text = "\n".join(str(check_id) for check_id in check_ids)
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+
+
 def queue_signature(programme: Programme) -> str:
     """Отпечаток состава программы: по нему видно, что очередь снята с этой ревизии.
 
@@ -481,8 +493,7 @@ def queue_signature(programme: Programme) -> str:
     упорядоченным идентификаторам проверок: тот же состав даёт тот же отпечаток
     даже после выпуска новой ревизии программы.
     """
-    text = "\n".join(programme.check_ids)
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    return signature_of(programme.check_ids)
 
 
 def build_queue(programme: Programme, *, author: str = "") -> Queue:
@@ -501,28 +512,26 @@ def build_queue(programme: Programme, *, author: str = "") -> Queue:
     )
 
 
-def load_queue(session: Any) -> Queue:
-    """Очередь сессии: из поля `queue` (при отсутствии — пустая)."""
-    return Queue.from_dict(getattr(session, "queue", None) or {})
+def queue_for_revision(programme: Programme, revision: int | None = None) -> Queue:
+    """Очередь прогона по ревизии программы (схема v8: очередь не хранится).
 
-
-def save_queue(
-    session: Any,
-    queue: Queue,
-    *,
-    event: str = "",
-    message: str = "",
-) -> Queue:
-    """Сохраняет очередь в сессию (схема v7) и, при необходимости, отмечает событием."""
-    session.queue = queue.to_dict()
-    if event:
-        summary = queue.summary()
-        session.add_history(
-            event,
-            message or event,
-            revision=queue.revision,
-            status="черновик" if queue.draft else "утверждена",
-            items=summary["total"],
-            next=summary["next"],
-        )
-    return queue
+    Номер `0` (или отсутствующая ревизия) означает текущую ревизию программы.
+    Если назван другой номер, берётся неизменяемый снимок `ProgrammeRevision`:
+    состав прогона остаётся тем, что утвердил руководитель испытаний, даже когда
+    программа ушла вперёд (`FR-P-13`, `DR-P-14`).
+    """
+    number = int(revision or 0)
+    if number and number != programme.revision:
+        snapshot = programme.find_revision(number)
+        if snapshot is not None:
+            return Queue(
+                revision=snapshot.revision,
+                approved=bool(snapshot.approved),
+                draft=not bool(snapshot.approved),
+                signature=signature_of(snapshot.check_ids),
+                items=[
+                    QueueItem(check_id=item.check_id, order=index)
+                    for index, item in enumerate(snapshot.items, start=1)
+                ],
+            )
+    return build_queue(programme)

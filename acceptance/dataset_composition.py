@@ -1,13 +1,17 @@
-"""Учёт состава датасетов: локальный факт, серверный состав, эвристика (этап T5).
+"""Учёт состава датасетов: задача наполнения, локальный факт, эвристика (этап T5).
 
-Контракт 17.09.2026 **не отдаёт состав датасета**: `GET /api/datasets/{id}` возвращает
-только метаданные (`id`, `creation_date`, `name`, `description`, `type`), а
-`POST /api/datasets/fill/{id}` отвечает 202 без `task_id`. Поэтому пульт ведёт учёт
-состава у себя, а источник данных всегда помечается:
+Контракт 17.09.2026 **не отдаёт состав датасета** прямой операцией: `GET /api/datasets/{id}`
+возвращает только метаданные (`id`, `creation_date`, `name`, `description`, `type`), а
+`POST /api/datasets/fill/{id}` отвечает 202 без `task_id`. Поэтому пульт определяет состав
+косвенно, а источник данных всегда помечается:
 
     * `server` — состав от сервера (эталон). Появляется, когда замечание P1 устранят:
       провайдер сам находит операцию состава в реестре (`acceptance.endpoints`), поэтому
       ни экран, ни сценарии переписывать не нужно;
+    * `server_task` — состав восстановлен **по задаче наполнения** `dataset-fill`
+      (ответ разработчика 25.09.2026, `llm_tasks/30.1` §1): `GET /api/tasks/?task_type=dataset-fill`
+      находит задачу, `GET /api/tasks/{task_id}` отдаёт `parameters` (запрошенный состав)
+      и `result` (принятый). Новых операций контракта для этого не требуется;
     * `local` — достоверный факт пульта: состав известен точно, потому что `fill`
       отправлял сам пульт (перечень `raw_file_ids`/`markup_file_ids` записывается
       **до** вызова API, поэтому факт верен даже при отказе задачи);
@@ -15,8 +19,9 @@
       датасетов, наполненных вне пульта; всегда помечается как гипотеза;
     * `unknown` — данных нет: «состав недоступен (P1)».
 
-Серверный состав **имеет приоритет**, локальный факт остаётся для сверки: расхождение
-означает, что сервер сообщает не тот состав, который принял (`compare`).
+Приоритет источников: `server` → `server_task` → `local` → `heuristic` → `unknown`.
+Локальный факт остаётся для сверки: расхождение означает, что сервер сообщает не тот
+состав, который принял (`compare`).
 
 Дополнительно модуль считает косвенные признаки дублей (`overlap_report`): пересечения
 файлов между датасетами и повторные загрузки (`file_name` + `size` при разных `id`) —
@@ -45,6 +50,7 @@ __all__ = [
     "MODE_HEURISTIC",
     "MODE_LOCAL",
     "MODE_SERVER",
+    "MODE_SERVER_TASK",
     "ROLE_LABELS",
     "ROLE_MARKUP",
     "ROLE_RAW",
@@ -52,6 +58,7 @@ __all__ = [
     "SOURCE_LABELS",
     "SOURCE_LOCAL",
     "SOURCE_SERVER",
+    "SOURCE_SERVER_TASK",
     "SOURCE_UNKNOWN",
     "STORE_NAME",
     "STORE_VERSION",
@@ -59,6 +66,7 @@ __all__ = [
     "DatasetComposition",
     "compare",
     "composition_from_server",
+    "composition_from_task",
     "composition_of",
     "composition_rows",
     "composition_store",
@@ -73,8 +81,12 @@ __all__ = [
     "server_available",
     "server_composition",
     "server_summary_key",
+    "server_task_available",
+    "server_task_composition",
+    "server_task_key",
     "store_path",
     "stored_composition",
+    "task_matches_dataset",
     "unknown_composition",
 ]
 
@@ -83,16 +95,30 @@ MODE_AUTO = "auto"
 MODE_SERVER = "server"
 MODE_LOCAL = "local"
 MODE_HEURISTIC = "heuristic"
-COMPOSITION_MODES: tuple[str, ...] = (MODE_AUTO, MODE_SERVER, MODE_LOCAL, MODE_HEURISTIC)
+#: Состав восстанавливается по задаче наполнения `dataset-fill` (ответ разработчика
+#: от 25.09.2026, `llm_tasks/30.1` §1; решение заказчика: вариант A).
+MODE_SERVER_TASK = "server_task"
+COMPOSITION_MODES: tuple[str, ...] = (
+    MODE_AUTO,
+    MODE_SERVER,
+    MODE_SERVER_TASK,
+    MODE_LOCAL,
+    MODE_HEURISTIC,
+)
 
 #: Происхождение состава: откуда взяты данные.
 SOURCE_SERVER = "server"
+#: Состав, восстановленный по задаче наполнения датасета на сервере: прямой операции
+#: состава в контракте нет, но `GET /api/tasks/{task_id}` отдаёт `parameters` и
+#: `result` прогона `dataset-fill` — запрошенный и принятый состав.
+SOURCE_SERVER_TASK = "server_task"
 SOURCE_LOCAL = "local"
 SOURCE_HEURISTIC = "heuristic"
 SOURCE_UNKNOWN = "unknown"
 
 SOURCE_LABELS: dict[str, str] = {
     SOURCE_SERVER: "сервер (эталон)",
+    SOURCE_SERVER_TASK: "сервер (по задаче наполнения `dataset-fill`)",
     SOURCE_LOCAL: "локальный учёт пульта (факт fill)",
     SOURCE_HEURISTIC: "предположение по реестру файлов (гипотеза)",
     SOURCE_UNKNOWN: "состав недоступен (P1)",
@@ -107,6 +133,37 @@ SERVER_SUMMARY_KEYS: tuple[str, ...] = (
     "get /api/datasets/{dataset_id}/summary",
     "get /api/datasets/{dataset_id}/composition",
 )
+
+#: Операции реестра, которыми состав восстанавливается по задаче наполнения.
+SERVER_TASK_KEYS: tuple[str, ...] = ("get /api/tasks/", "get /api/tasks/{task_id}")
+
+#: Тип задачи наполнения датасета (`dataset-fill`).
+TASK_FILL_TYPE = "dataset-fill"
+
+#: Терминальный статус успешного прогона задачи (`runtimes[].status`).
+TASK_DONE_STATUS = "completed"
+
+#: Имена полей задачи: запрошенный состав прогона.
+TASK_RAW_KEYS: tuple[str, ...] = ("raw_file_ids", "raw_files", "raw")
+TASK_MARKUP_KEYS: tuple[str, ...] = ("markup_file_ids", "markup_files", "markup")
+
+#: Имена полей задачи: принятый состав (что реально влито).
+TASK_DONE_RAW_KEYS: tuple[str, ...] = (
+    "done_raw_file_ids",
+    "loaded_raw_file_ids",
+    "loaded_files",
+    "raw_file_ids",
+)
+TASK_DONE_MARKUP_KEYS: tuple[str, ...] = (
+    "done_markup_file_ids",
+    "loaded_markup_file_ids",
+    "loaded_files",
+    "markup_file_ids",
+)
+
+#: Разделы `result` прогона, где лежит принятый состав.
+TASK_RAW_SECTIONS: tuple[str, ...] = ("raw_processing",)
+TASK_MARKUP_SECTIONS: tuple[str, ...] = ("markup_processing",)
 
 #: Ожидаемые имена полей серверного состава (первое найденное выигрывает).
 SERVER_RAW_KEYS: tuple[str, ...] = ("raw_file_ids", "raw_file_id", "raw_files", "raw")
@@ -207,8 +264,8 @@ class DatasetComposition:
 
     @property
     def is_trusted(self) -> bool:
-        """True, если состав достоверен (серверный или факт пульта)."""
-        return self.source in (SOURCE_SERVER, SOURCE_LOCAL)
+        """True, если состав достоверен: серверный, по задаче наполнения или факт пульта."""
+        return self.source in (SOURCE_SERVER, SOURCE_SERVER_TASK, SOURCE_LOCAL)
 
     @property
     def is_hypothesis(self) -> bool:
@@ -737,6 +794,203 @@ def stored_composition(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Состав по задаче наполнения `dataset-fill` (прямой операции состава в API нет)
+# ---------------------------------------------------------------------------
+def _core_id(value: Any) -> str:
+    """Идентификатор без служебного суффикса: `06b5d3f3-…_33b718e3` → `06b5d3f3-…`."""
+    text = _as_id(value)
+    if not text:
+        return ""
+    head = text.split("_", 1)[0]
+    return head or text
+
+
+def _ids_from(value: Any) -> list[str]:
+    """Идентификаторы из значения задачи: список строк или список словарей с `id`."""
+    if not isinstance(value, list):
+        return []
+    found: list[str] = []
+    for entry in value:
+        if isinstance(entry, Mapping):
+            candidate = entry.get("file_id") or entry.get("id") or entry.get("raw_file_id")
+        else:
+            candidate = entry
+        text = _as_id(candidate)
+        if text:
+            found.append(text)
+    return found
+
+
+def _ids_by_keys(body: Mapping[str, Any], keys: Sequence[str]) -> list[str]:
+    """Первый найденный непустой список идентификаторов по перечню ключей."""
+    for key in keys:
+        ids = _ids_from(body.get(key))
+        if ids:
+            return ids
+    return []
+
+
+def _task_accepted(
+    body: Mapping[str, Any], sections: Sequence[str], keys: Sequence[str]
+) -> list[str]:
+    """Принятый состав: сначала разделы `result` (`raw_processing`), затем параметры."""
+    for section in sections:
+        nested = body.get(section)
+        if isinstance(nested, Mapping):
+            ids = _ids_by_keys(nested, keys)
+            if ids:
+                return ids
+    return _ids_by_keys(body, keys)
+
+
+def task_matches_dataset(task: Any, dataset_id: Any) -> bool:
+    """True, если задача наполнения относится к датасету (по имени или описанию)."""
+    key = _core_id(dataset_id)
+    if not key:
+        return False
+    text = " ".join((_as_id(getattr(task, "name", "")), _as_id(getattr(task, "description", ""))))
+    return key in text
+
+
+def server_task_key() -> str:
+    """Операция реестра, которой читается задача наполнения (пусто — нет в реестре)."""
+    for key in SERVER_TASK_KEYS:
+        if endpoints.find(key) is not None:
+            return key
+    return ""
+
+
+def server_task_available() -> bool:
+    """True, если контракт позволяет читать задачи наполнения (`GET /api/tasks/…`)."""
+    return bool(server_task_key())
+
+
+def _task_counts(result: Mapping[str, Any], params: Mapping[str, Any]) -> dict[str, Any]:
+    """Числовые агрегаты прогона наполнения: записи, отходы, время, память."""
+    counts: dict[str, Any] = {}
+    for section, prefix in (("raw_processing", "raw"), ("markup_processing", "markup")):
+        nested = result.get(section)
+        if not isinstance(nested, Mapping):
+            continue
+        for key in ("total_records", "saved_records", "skipped_records", "skipped_invalid_phase"):
+            if nested.get(key) is not None:
+                counts[f"{prefix}_{key}"] = nested[key]
+    for key in ("total_execution_time", "execution_time", "memory_delta"):
+        if params.get(key) is not None:
+            counts[key] = params[key]
+    return counts
+
+
+def composition_from_task(
+    dataset_id: Any,
+    task: Any,
+    *,
+    name: str = "",
+    dataset_type: str = "",
+    files: Sequence[Any] | Mapping[str, Any] | None = None,
+) -> DatasetComposition | None:
+    """Состав датасета по задаче наполнения: запрошенный и принятый (`dataset-fill`).
+
+    Прямой операции состава в контракте нет, но прогон `dataset-fill` хранит
+    `parameters` (что просили влить) и `result` (что влилось). Прогонов может быть
+    несколько: берётся тот, чей `parameters.dataset_id` указывает на наш датасет,
+    иначе последний успешный; оговорка попадает в подпись состава (`confidence`).
+    """
+    core = _core_id(dataset_id)
+    runtimes = [item for item in (getattr(task, "runtimes", None) or []) if item is not None]
+    if not runtimes:
+        return None
+
+    chosen = None
+    for runtime in runtimes:
+        params = getattr(runtime, "parameters", None)
+        if isinstance(params, Mapping) and _core_id(params.get("dataset_id")) == core:
+            chosen = runtime
+    if chosen is None:
+        completed = [
+            item for item in runtimes if str(getattr(item, "status", "") or "") == TASK_DONE_STATUS
+        ]
+        chosen = completed[-1] if completed else runtimes[-1]
+
+    params = dict(getattr(chosen, "parameters", None) or {})
+    result = dict(getattr(chosen, "result", None) or {})
+    body: dict[str, Any] = {**params, **result}
+
+    requested_raw = _ids_by_keys(params, TASK_RAW_KEYS)
+    requested_markup = _ids_by_keys(params, TASK_MARKUP_KEYS)
+    accepted_raw = _task_accepted(body, TASK_RAW_SECTIONS, TASK_DONE_RAW_KEYS)
+    accepted_markup = _task_accepted(body, TASK_MARKUP_SECTIONS, TASK_DONE_MARKUP_KEYS)
+
+    raw_ids = accepted_raw or requested_raw
+    markup_ids = accepted_markup or requested_markup
+    if not raw_ids and not markup_ids:
+        return None
+
+    index = _file_index(files)
+    items = [
+        *_composition_files(raw_ids, ROLE_RAW, index),
+        *_composition_files(markup_ids, ROLE_MARKUP, index),
+    ]
+    task_id = _as_id(getattr(task, "id", ""))
+    partial = bool(accepted_raw or accepted_markup) and (
+        len(requested_raw) + len(requested_markup) != len(raw_ids) + len(markup_ids)
+    )
+    note = (
+        f"состав восстановлен по задаче наполнения `{TASK_FILL_TYPE}` ({task_id or 'без id'}): "
+        f"запрошено RAW {len(requested_raw)} / markup {len(requested_markup)}, "
+        f"принято RAW {len(raw_ids)} / markup {len(markup_ids)}"
+    )
+    if partial:
+        note += "; принятый состав отличается от запрошенного — сверьте с заказчиком"
+    return DatasetComposition(
+        dataset_id=core or _as_id(dataset_id),
+        source=SOURCE_SERVER_TASK,
+        name=name,
+        dataset_type=dataset_type,
+        files=tuple(items),
+        task_id=task_id,
+        task_status=str(getattr(chosen, "status", "") or ""),
+        note=note,
+        confidence="по последнему прогону задачи наполнения",
+        checks=(),
+    ).with_counts(_task_counts(result, params))
+
+
+def server_task_composition(
+    apis: Any,
+    dataset_id: Any,
+    *,
+    name: str = "",
+    dataset_type: str = "",
+    files: Sequence[Any] | Mapping[str, Any] | None = None,
+    limit: int = 200,
+) -> DatasetComposition | None:
+    """Состав по задаче наполнения: находит задачу `dataset-fill` и читает её карточку.
+
+    Returns:
+        Состав или None, если сервис задач недоступен, задача не найдена или состав
+        в ней пуст — тогда срабатывают следующие источники цепочки.
+    """
+    if apis is None:
+        return None
+    tasks = getattr(apis, "tasks", None)
+    if tasks is None:
+        return None
+    listing = tasks.list_tasks(task_type=TASK_FILL_TYPE, limit=limit)
+    candidates = [item for item in (getattr(listing, "tasks", None) or []) if item is not None]
+    for item in reversed(candidates):
+        if not task_matches_dataset(item, dataset_id):
+            continue
+        detail = tasks.get_task(_as_id(getattr(item, "id", "")))
+        composition = composition_from_task(
+            dataset_id, detail, name=name, dataset_type=dataset_type, files=files
+        )
+        if composition is not None:
+            return composition
+    return None
+
+
 def read_composition(
     session: TestSession,
     apis: Any,
@@ -749,14 +1003,14 @@ def read_composition(
     allow_heuristic: bool = True,
     use_store: bool = True,
 ) -> DatasetComposition:
-    """Состав датасета с ярлыком происхождения: сервер → факт пульта → гипотеза.
+    """Состав датасета с ярлыком происхождения: сервер → задача наполнения → факт → гипотеза.
 
     Args:
         session: сессия испытаний (источник локального учёта состава).
         apis: агрегат сервисов API (серверный состав; None — сервер недоступен).
         dataset_id: датасет.
-        mode: `auto` (сервер → локальный факт → гипотеза), `server`, `local`,
-            `heuristic` — принудительный источник данных.
+        mode: `auto` (сервер → задача наполнения → локальный факт → гипотеза),
+            `server`, `server_task`, `local`, `heuristic` — принудительный источник.
         name: имя датасета (для гипотезы и подписи).
         dataset_type: тип датасета (`direct_fill`).
         files: реестр файлов (`GET /api/data/files`) — источник имён и размеров.
@@ -792,6 +1046,28 @@ def read_composition(
                 note=(
                     "серверный состав запрошен принудительно, но API его не отдал: "
                     f"{server_error or 'операции состава нет в реестре (P1)'}"
+                ),
+            )
+
+    if mode in (MODE_AUTO, MODE_SERVER_TASK):
+        try:
+            by_task = server_task_composition(
+                apis, key, name=name, dataset_type=dataset_type, files=files
+            )
+        except (ApiError, ClientError) as exc:
+            task_error = str(exc)
+        else:
+            task_error = ""
+        if by_task is not None:
+            return by_task
+        if mode == MODE_SERVER_TASK:
+            return unknown_composition(
+                key,
+                name=name,
+                dataset_type=dataset_type,
+                note=(
+                    "состав по задаче наполнения `dataset-fill` не получен: "
+                    f"{task_error or 'задача наполнения не найдена'}"
                 ),
             )
 

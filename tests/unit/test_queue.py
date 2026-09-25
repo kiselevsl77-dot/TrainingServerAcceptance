@@ -3,7 +3,8 @@
 Проверяются свойства, на которых держатся требования «Прогона»: очередь — снимок
 утверждённой ревизии программы (`FR-P-13`), маркеры «следующая/выполняется/
 последняя» (`IR-P-20`), снятие пункта с причиной как результат (`FR-P-15`),
-запрет правки состава в прогоне (`IR-P-18`) и хранение очереди в сессии (v7).
+запрет правки состава в прогоне (`IR-P-18`) и вычисление очереди по ревизии
+программы (схема v8: очередь в сессии не хранится).
 """
 
 from __future__ import annotations
@@ -305,15 +306,27 @@ def test_to_dict_round_trip_tolerates_broken_data(approved: programme_api.Progra
     assert restored.signature == queue.signature
 
 
-def test_load_and_save_queue_in_session(approved: programme_api.Programme, session: Any):
-    """Очередь живёт в сессии (схема v7) и восстанавливается из неё."""
-    assert queue_api.load_queue(session).is_empty
+def test_queue_is_computed_from_programme_revision(approved: programme_api.Programme, session: Any):
+    """Очередь не хранится в сессии (v8): её строит ревизия программы."""
+    assert not hasattr(session, "queue"), "поле `queue` удалено схемой v8 (очередь вычисляется)"
 
-    queue = queue_api.build_queue(approved)
-    queue_api.save_queue(session, queue, event="queue_built", message="Очередь собрана")
+    current = queue_api.queue_for_revision(approved)
+    assert current.check_ids == approved.check_ids
+    assert current.revision == approved.revision
 
-    restored = queue_api.load_queue(session)
-    assert restored.check_ids == approved.check_ids
-    assert restored.revision == approved.revision
-    assert session.queue["approved"] is True
-    assert any(entry.get("event") == "queue_built" for entry in session.history)
+    # Неизвестный номер ревизии — это текущая ревизия программы, а не пустая очередь.
+    assert queue_api.queue_for_revision(approved, 999).check_ids == approved.check_ids
+    assert queue_api.queue_for_revision(approved, 0).check_ids == approved.check_ids
+
+
+def test_queue_for_revision_takes_programme_snapshot(approved: programme_api.Programme):
+    """Номер ревизии даёт снимок: правка программы не меняет состав прогона (`DR-P-14`)."""
+    first = approved.revision
+    check_ids = list(approved.check_ids)
+
+    approved.revise(comment="правка состава после начала прогона")
+    assert approved.revision > first
+
+    snapshot = queue_api.queue_for_revision(approved, first)
+    assert snapshot.revision == first
+    assert snapshot.check_ids == check_ids

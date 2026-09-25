@@ -574,12 +574,22 @@ def _save_step(
     event: str = "",
     message: str = "",
 ) -> None:
-    """Пишет очередь в **тот же** объект сессии, в который движок записал результат.
+    """Пишет событие прогона в **тот же** объект сессии, в который движок записал результат.
 
     Отдельный путь сохранения нужен потому, что `state.store_queue` перечитывает сессию
     с диска: результат прогона, записанный движком в память, при этом потерялся бы.
+    Очередь в сессии не хранится (схема v8) — фиксируется только событие.
     """
-    queue_api.save_queue(session, queue, event=event, message=message)
+    if event:
+        summary = queue.summary()
+        session.add_history(
+            event,
+            message or event,
+            revision=queue.revision,
+            status="черновик" if queue.draft else "утверждена",
+            items=summary["total"],
+            next=summary["next"],
+        )
     state.store_session(session)
 
 

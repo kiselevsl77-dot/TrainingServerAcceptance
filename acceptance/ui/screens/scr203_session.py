@@ -20,7 +20,6 @@ from typing import Any
 import httpx
 import streamlit as st
 
-from acceptance import queue as queue_api
 from acceptance import results as results_api
 from acceptance import session as session_api
 from acceptance.labels import build_label
@@ -401,7 +400,7 @@ def _apply_uploaded(payload: bytes) -> None:
 # ---------------------------------------------------------------------------
 def _render_state(session: TestSession) -> None:
     """Панель контекста: состояние сессии, снимки стенда и действия (макет `SCR-203`)."""
-    queue = queue_api.load_queue(session)
+    queue = state.current_queue()
     summary = results_api.summary(session)
     checks_total = queue.size or int(summary["total"])
     stand = state.stand_status() or {}

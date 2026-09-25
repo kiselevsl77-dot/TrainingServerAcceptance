@@ -27,7 +27,7 @@ from uuid import uuid4
 from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -48,7 +48,11 @@ TOOL_VERSION = "0.1.0"
 #:        повторов проверки); библиотека наборов живёт отдельным файлом
 #:        `acceptance_data/check_sets.json` (`acceptance/sets.py`). Прежнее поле `plan`
 #:        (v6) удалено на этапе 2 big bang — программа и очередь живут в `programme`/`queue`.
-#: Файлы v1–v5 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:   v8 — очередь прогона **не хранится**: она вычисляется по ревизии программы
+#:        (`acceptance/queue.py::queue_for_revision`), а сессия помнит только номер
+#:        исполняемой ревизии (`run_revision`) и режим «только невыполненное»
+#:        (`skip_done`) — решение заказчика 25.09.2026 (`llm_tasks/31.4` §1 п.6–7).
+#: Файлы v1–v7 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
 ORIGIN_PULT = "пульт"
@@ -140,7 +144,10 @@ class TestSession:
     tasks: list[dict[str, Any]] = field(default_factory=list)
     dataset_composition: list[dict[str, Any]] = field(default_factory=list)
     programme: dict[str, Any] = field(default_factory=dict)
-    queue: dict[str, Any] = field(default_factory=dict)
+    #: Ревизия программы, по которой идёт прогон (0 — текущая ревизия программы).
+    run_revision: int = 0
+    #: Режим прогона: True — «только невыполненное», False — «всё подряд» (UC-09).
+    skip_done: bool = True
     check_history: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     history: list[dict[str, Any]] = field(default_factory=list)
 
@@ -210,7 +217,8 @@ class TestSession:
             "tasks": self.tasks,
             "dataset_composition": self.dataset_composition,
             "programme": self.programme,
-            "queue": self.queue,
+            "run_revision": self.run_revision,
+            "skip_done": self.skip_done,
             "check_history": self.check_history,
             "history": self.history,
         }
@@ -242,7 +250,8 @@ class TestSession:
             tasks=[dict(item) for item in (data.get("tasks") or [])],
             dataset_composition=[dict(item) for item in (data.get("dataset_composition") or [])],
             programme=dict(data.get("programme") or {}),
-            queue=dict(data.get("queue") or {}),
+            run_revision=int(data.get("run_revision") or 0),
+            skip_done=bool(data.get("skip_done", True)),
             check_history={
                 str(key): [dict(item) for item in (value or [])]
                 for key, value in (data.get("check_history") or {}).items()
