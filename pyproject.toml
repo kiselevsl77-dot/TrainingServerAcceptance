@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "training-server-acceptance"
 version = "0.1.0"
-description = "Пульт испытаний сервера обучения Energomera (временный UI для приёмки текущего API)"
+description = "Пульт испытаний сервера обучения Energomera (приёмка текущего API: ядро + веб-интерфейс)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -25,7 +25,10 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["client*", "lib*", "acceptance*"]
+include = ["client*", "lib*", "acceptance*", "pult*"]
+
+[tool.setuptools.package-data]
+pult = ["web/*"]
 
 [tool.ruff]
 line-length = 100

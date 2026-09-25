@@ -26,8 +26,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 
 from acceptance import programme as programme_api
+from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.api import Apis, build_client
 from acceptance.config import PultConfig, load_config
@@ -35,13 +37,7 @@ from acceptance.exchange import build_console_client
 from acceptance.http_log import HttpExchange, Journal
 from acceptance.logging_setup import LoggingArtifacts, setup_logging
 from acceptance.paths import ensure_dirs
-from acceptance.session import (
-    TestSession,
-    list_sessions,
-    load_session,
-    save_session,
-    session_exists,
-)
+from acceptance.session import TestSession
 from client.errors import ClientError
 from client.http import ApiHttpClient
 from client.schemas import CeleryTask, DatasetResponse, FileMetadataResponse, LoadItem
@@ -77,6 +73,12 @@ class Runtime:
 def _error_text(exc: Exception) -> str:
     """Текст ошибки для оператора (ошибка клиента или сети не скрывается)."""
     return str(exc).strip() or exc.__class__.__name__
+
+
+#: Ошибки чтения реестров: клиент, сеть и **ответ не по схеме**. Последнее — обычное
+#: состояние во время испытаний (стенд в работе), поэтому реестр отдаёт ошибку текстом,
+#: а не исключение: экран показывает, что именно не прочитано (`FR-P-25`).
+READ_ERRORS: tuple[type[Exception], ...] = (ClientError, httpx.HTTPError, ValidationError)
 
 
 class PultState:
@@ -183,7 +185,7 @@ class PultState:
     def set_session(self, session_id: str | None) -> str | None:
         """Выбирает сессию (None — снять выбор) и переключает журналирование."""
         key = str(session_id or "").strip() or None
-        if key and not session_exists(key):
+        if key and not session_api.session_exists(key):
             raise KeyError(f"сессия {key} не найдена")
         self._session_id = key
         self.ensure_logging(key)
@@ -195,19 +197,19 @@ class PultState:
         if not key:
             return None
         try:
-            return load_session(key)
+            return session_api.load_session(key)
         except (OSError, ValueError, TypeError, KeyError):
             return None
 
     def store_session(self, session: TestSession) -> TestSession:
         """Сохраняет сессию на диск и делает её текущей."""
-        save_session(session)
+        session_api.save_session(session)
         self._session_id = session.session_id
         return session
 
     def sessions(self) -> list[dict[str, Any]]:
         """Список сессий на диске (метаданные: id, наименование, статус, прогресс)."""
-        return list_sessions()
+        return session_api.list_sessions()
 
     # -- реестры стенда (кэш) ----------------------------------------------
     def _cached(self, key: str, ttl: float, loader: Callable[[], Any], *, refresh: bool) -> Any:
@@ -240,10 +242,8 @@ class PultState:
                 return [], STAND_NOT_CONFIGURED
             try:
                 return list(runtime.apis.files.list_files().files), None
-            except ClientError as exc:
+            except READ_ERRORS as exc:
                 return [], _error_text(exc)
-            except httpx.HTTPError as exc:
-                return [], f"Сеть недоступна: {exc}"
 
         return self._cached("files", FILES_TTL, load, refresh=refresh)
 
@@ -257,10 +257,8 @@ class PultState:
             try:
                 result = runtime.apis.loads.list_loads(limit=LOAD_LIMIT, offset=0)
                 return list(result.loads), None
-            except ClientError as exc:
+            except READ_ERRORS as exc:
                 return [], _error_text(exc)
-            except httpx.HTTPError as exc:
-                return [], f"Сеть недоступна: {exc}"
 
         return self._cached("loads", LOADS_TTL, load, refresh=refresh)
 
@@ -273,10 +271,8 @@ class PultState:
                 return [], STAND_NOT_CONFIGURED
             try:
                 return list(runtime.apis.datasets.list_datasets().datasets), None
-            except ClientError as exc:
+            except READ_ERRORS as exc:
                 return [], _error_text(exc)
-            except httpx.HTTPError as exc:
-                return [], f"Сеть недоступна: {exc}"
 
         return self._cached("datasets", DATASETS_TTL, load, refresh=refresh)
 
@@ -302,10 +298,8 @@ class PultState:
                     limit=limit or None,
                     offset=offset or None,
                 )
-            except ClientError as exc:
+            except READ_ERRORS as exc:
                 return [], 0, _error_text(exc)
-            except httpx.HTTPError as exc:
-                return [], 0, f"Сеть недоступна: {exc}"
             return list(response.tasks), int(response.count or 0), None
 
         key = f"tasks|{task_type}|{status}|{limit}|{offset}"
