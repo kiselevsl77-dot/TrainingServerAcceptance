@@ -1,0 +1,3109 @@
+{
+  "files": [
+    {
+      "id": "cb98aaca-23c4-40f6-92fb-88cb4de1483b",
+      "file_name": "3Дпринтер.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/3Дпринтер.raw.csv",
+      "import_date": "2026-09-09T13:52:55.791912",
+      "file_type": "RAW"
+    },
+    {
+      "id": "07c321d7-139a-488a-abe2-1bb2aa4c023e",
+      "file_name": "3Дпринтер.markup.csv",
+      "size": 68401,
+      "s3_path": "LOADS/2026/09/09/3Дпринтер.markup.csv",
+      "import_date": "2026-09-09T13:52:56.025501",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5c6d47ae-2b01-44af-84fb-3745c5d176ec",
+      "file_name": "3Дпринтер_подготовка.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/3Дпринтер_подготовка.raw.csv",
+      "import_date": "2026-09-09T13:52:57.167170",
+      "file_type": "RAW"
+    },
+    {
+      "id": "12f4f785-ee74-478a-9913-7805b2b90aec",
+      "file_name": "3Дпринтер_подготовка.markup.csv",
+      "size": 78880,
+      "s3_path": "LOADS/2026/09/09/3Дпринтер_подготовка.markup.csv",
+      "import_date": "2026-09-09T13:52:57.313753",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ead5b240-bd97-4ffa-9fe8-9c4870f4dd07",
+      "file_name": "Antminer_S19.raw.csv",
+      "size": 2107657231,
+      "s3_path": "RAW/2026/09/09/Antminer_S19.raw.csv",
+      "import_date": "2026-09-09T13:53:56.319271",
+      "file_type": "RAW"
+    },
+    {
+      "id": "224dd764-5faa-4b85-8cdf-47967f664e41",
+      "file_name": "Antminer_S19.markup.csv",
+      "size": 5666062,
+      "s3_path": "LOADS/2026/09/09/Antminer_S19.markup.csv",
+      "import_date": "2026-09-09T13:53:57.298053",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "b9af5f3c-b862-4239-8161-4cf84b43a8a5",
+      "file_name": "Antminer_S19i.raw.csv",
+      "size": 2107657317,
+      "s3_path": "RAW/2026/09/09/Antminer_S19i.raw.csv",
+      "import_date": "2026-09-09T13:54:58.700113",
+      "file_type": "RAW"
+    },
+    {
+      "id": "18c6cfe5-f6b4-4f08-bbac-6f46c03966e8",
+      "file_name": "Antminer_S19i.markup.csv",
+      "size": 5675666,
+      "s3_path": "LOADS/2026/09/09/Antminer_S19i.markup.csv",
+      "import_date": "2026-09-09T13:54:59.696469",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "30f61064-272c-4177-bd5d-bd2ca073cb43",
+      "file_name": "Avalon_1240.raw.csv",
+      "size": 2177904636,
+      "s3_path": "RAW/2026/09/09/Avalon_1240.raw.csv",
+      "import_date": "2026-09-09T13:56:01.330383",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b2cc93bd-c1e5-460d-a38a-0099f5d16834",
+      "file_name": "Avalon_1240.markup.csv",
+      "size": 5771255,
+      "s3_path": "LOADS/2026/09/09/Avalon_1240.markup.csv",
+      "import_date": "2026-09-09T13:56:02.284485",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7a3f5013-7c38-4402-a8c2-12f2c3bd29c6",
+      "file_name": "Miner_3Ph.raw.csv",
+      "size": 2142937818,
+      "s3_path": "RAW/2026/09/09/Miner_3Ph.raw.csv",
+      "import_date": "2026-09-09T13:57:13.719903",
+      "file_type": "RAW"
+    },
+    {
+      "id": "36ddecdf-93f2-4329-9d77-0544cdf4f156",
+      "file_name": "Miner_3Ph.markup.csv",
+      "size": 5592432,
+      "s3_path": "LOADS/2026/09/09/Miner_3Ph.markup.csv",
+      "import_date": "2026-09-09T13:57:14.664222",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0afcf9a7-67f9-4922-ac64-ad50678cca82",
+      "file_name": "Wi-Fi.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Wi-Fi.raw.csv",
+      "import_date": "2026-09-09T13:57:15.692719",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ee009067-9327-4003-a8d1-43380556382f",
+      "file_name": "Wi-Fi.markup.csv",
+      "size": 62413,
+      "s3_path": "LOADS/2026/09/09/Wi-Fi.markup.csv",
+      "import_date": "2026-09-09T13:57:15.884416",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "99cd1fae-f7df-4ee2-b487-0769348df150",
+      "file_name": "БегДорожка.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/БегДорожка.raw.csv",
+      "import_date": "2026-09-09T13:57:16.838781",
+      "file_type": "RAW"
+    },
+    {
+      "id": "2923440b-0835-4f95-b2d5-9d19af866f6b",
+      "file_name": "БегДорожка.markup.csv",
+      "size": 69898,
+      "s3_path": "LOADS/2026/09/09/БегДорожка.markup.csv",
+      "import_date": "2026-09-09T13:57:17.018841",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "c714ffdb-f897-4461-9c24-f47368df341a",
+      "file_name": "БегДорожка_1.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/БегДорожка_1.raw.csv",
+      "import_date": "2026-09-09T13:57:18.009832",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9f136e73-a8f0-41c6-9160-48843af56b53",
+      "file_name": "БегДорожка_1.markup.csv",
+      "size": 70896,
+      "s3_path": "LOADS/2026/09/09/БегДорожка_1.markup.csv",
+      "import_date": "2026-09-09T13:57:18.177358",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "85681f68-fb98-4882-9cf6-e43993ff2746",
+      "file_name": "БегДорожкаМакс.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/БегДорожкаМакс.raw.csv",
+      "import_date": "2026-09-09T13:57:19.166710",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b0aeb59a-da4c-4790-8f86-50ac2b62256b",
+      "file_name": "БегДорожкаМакс.markup.csv",
+      "size": 73890,
+      "s3_path": "LOADS/2026/09/09/БегДорожкаМакс.markup.csv",
+      "import_date": "2026-09-09T13:57:19.322132",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "96bf7917-cc9f-4a48-9087-4b032b39482f",
+      "file_name": "Блендер.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Блендер.raw.csv",
+      "import_date": "2026-09-09T13:57:20.331370",
+      "file_type": "RAW"
+    },
+    {
+      "id": "3094627c-8994-4862-a129-43e3a8a1c414",
+      "file_name": "Блендер.markup.csv",
+      "size": 66904,
+      "s3_path": "LOADS/2026/09/09/Блендер.markup.csv",
+      "import_date": "2026-09-09T13:57:20.497089",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "91fd0661-7b9c-44ce-9fec-8d5c5632c569",
+      "file_name": "Блендермин.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Блендермин.raw.csv",
+      "import_date": "2026-09-09T13:57:21.468975",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a171ffa0-013d-40bc-9acf-332cc6c54765",
+      "file_name": "Блендермин.markup.csv",
+      "size": 69898,
+      "s3_path": "LOADS/2026/09/09/Блендермин.markup.csv",
+      "import_date": "2026-09-09T13:57:21.631567",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5d3fedeb-c3a5-41a5-ae47-bc4aa4b66e28",
+      "file_name": "Блок_ПКВКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Блок_ПКВКЛ.raw.csv",
+      "import_date": "2026-09-09T13:57:22.602323",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9307b322-1847-41b2-aede-ca00a7b02451",
+      "file_name": "Блок_ПКВКЛ.markup.csv",
+      "size": 69399,
+      "s3_path": "LOADS/2026/09/09/Блок_ПКВКЛ.markup.csv",
+      "import_date": "2026-09-09T13:57:22.760032",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "06dbbb2b-529e-4587-a888-8b4a329e41a4",
+      "file_name": "Блок_ПКВЫКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Блок_ПКВЫКЛ.raw.csv",
+      "import_date": "2026-09-09T13:57:23.859629",
+      "file_type": "RAW"
+    },
+    {
+      "id": "aae41e1d-6dbb-44d8-a1ef-57d484cc0881",
+      "file_name": "Блок_ПКВЫКЛ.markup.csv",
+      "size": 70397,
+      "s3_path": "LOADS/2026/09/09/Блок_ПКВЫКЛ.markup.csv",
+      "import_date": "2026-09-09T13:57:24.031568",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "dcb499f4-e4d3-467f-9375-e4c5ff105a2a",
+      "file_name": "Динамики_ВКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Динамики_ВКЛ.raw.csv",
+      "import_date": "2026-09-09T13:57:25.015093",
+      "file_type": "RAW"
+    },
+    {
+      "id": "316d0519-dd91-4d85-8f05-8ae254a99869",
+      "file_name": "Динамики_ВКЛ.markup.csv",
+      "size": 71395,
+      "s3_path": "LOADS/2026/09/09/Динамики_ВКЛ.markup.csv",
+      "import_date": "2026-09-09T13:57:25.166753",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e5a8ccff-de12-4eda-819a-70b3a9950c85",
+      "file_name": "Динамики_ВЫКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Динамики_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-09T13:57:26.123870",
+      "file_type": "RAW"
+    },
+    {
+      "id": "cbaab993-1e4d-442d-a308-a22f11113570",
+      "file_name": "Динамики_ВЫКЛ.markup.csv",
+      "size": 72393,
+      "s3_path": "LOADS/2026/09/09/Динамики_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-09T13:57:26.281551",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e9db982b-5b1a-4db5-8029-3e577691ace0",
+      "file_name": "ИБП_online.raw.csv",
+      "size": 1124059548,
+      "s3_path": "RAW/2026/09/09/ИБП_online.raw.csv",
+      "import_date": "2026-09-09T13:57:57.469836",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f80f8b0d-ef54-42c1-9f13-c5110ea39558",
+      "file_name": "ИБП_online.markup.csv",
+      "size": 2758838,
+      "s3_path": "LOADS/2026/09/09/ИБП_online.markup.csv",
+      "import_date": "2026-09-09T13:57:58.099925",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "743fb37b-8c83-4ef5-915e-e463b0e8f111",
+      "file_name": "Игровой_ПК.raw.csv",
+      "size": 807942376,
+      "s3_path": "RAW/2026/09/09/Игровой_ПК.raw.csv",
+      "import_date": "2026-09-09T13:58:20.658558",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6e9f0a59-61e8-4aff-8a31-3776dbaa0792",
+      "file_name": "Игровой_ПК.markup.csv",
+      "size": 2277970,
+      "s3_path": "LOADS/2026/09/09/Игровой_ПК.markup.csv",
+      "import_date": "2026-09-09T13:58:21.123351",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a2208edd-4d99-429e-84ee-edf7f2a015eb",
+      "file_name": "Кондиц._обогрев.raw.csv",
+      "size": 1194312993,
+      "s3_path": "RAW/2026/09/09/Кондиц._обогрев.raw.csv",
+      "import_date": "2026-09-09T13:58:53.471128",
+      "file_type": "RAW"
+    },
+    {
+      "id": "206ffc43-9276-4f1d-a83b-3c3ed920b462",
+      "file_name": "Кондиц._обогрев.markup.csv",
+      "size": 3585338,
+      "s3_path": "LOADS/2026/09/09/Кондиц._обогрев.markup.csv",
+      "import_date": "2026-09-09T13:58:54.139986",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "4a0a2c93-c82e-42ab-9677-d656c0557d5a",
+      "file_name": "Кофеварка.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Кофеварка.raw.csv",
+      "import_date": "2026-09-09T13:58:55.132288",
+      "file_type": "RAW"
+    },
+    {
+      "id": "61b03fd9-869f-4f13-b1e4-e510ff4257aa",
+      "file_name": "Кофеварка.markup.csv",
+      "size": 68900,
+      "s3_path": "LOADS/2026/09/09/Кофеварка.markup.csv",
+      "import_date": "2026-09-09T13:58:55.274571",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1ed23a96-4275-49ba-bd39-8914a12c6789",
+      "file_name": "Кофеварка_насос.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Кофеварка_насос.raw.csv",
+      "import_date": "2026-09-09T13:58:56.304464",
+      "file_type": "RAW"
+    },
+    {
+      "id": "78473f00-5eef-4778-a217-1e8fdcdbb1b5",
+      "file_name": "Кофеварка_насос.markup.csv",
+      "size": 74389,
+      "s3_path": "LOADS/2026/09/09/Кофеварка_насос.markup.csv",
+      "import_date": "2026-09-09T13:58:56.494387",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "99b860c6-9f1b-41bb-bf7b-b19efdb67041",
+      "file_name": "Кофемолка.raw.csv",
+      "size": 24566273,
+      "s3_path": "RAW/2026/09/09/Кофемолка.raw.csv",
+      "import_date": "2026-09-09T13:58:57.413930",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bceec1ae-1eee-414f-b3c5-537184eb67b0",
+      "file_name": "Кофемолка.markup.csv",
+      "size": 68900,
+      "s3_path": "LOADS/2026/09/09/Кофемолка.markup.csv",
+      "import_date": "2026-09-09T13:58:57.595063",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "45787c54-6e85-4950-9e36-95f381aba94f",
+      "file_name": "Лампа.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Лампа.raw.csv",
+      "import_date": "2026-09-09T13:58:58.572598",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6d3a08d5-dcd4-462b-98f9-f3cbcb0b8831",
+      "file_name": "Лампа.markup.csv",
+      "size": 64908,
+      "s3_path": "LOADS/2026/09/09/Лампа.markup.csv",
+      "import_date": "2026-09-09T13:58:58.713625",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "da8de9db-7ab5-46f1-a647-190fc934733a",
+      "file_name": "Массажер.raw.csv",
+      "size": 24566315,
+      "s3_path": "RAW/2026/09/09/Массажер.raw.csv",
+      "import_date": "2026-09-09T13:58:59.692657",
+      "file_type": "RAW"
+    },
+    {
+      "id": "106db37c-9c70-497e-9f53-30970669bf12",
+      "file_name": "Массажер.markup.csv",
+      "size": 67902,
+      "s3_path": "LOADS/2026/09/09/Массажер.markup.csv",
+      "import_date": "2026-09-09T13:58:59.869329",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "6efdccd9-d42f-4a78-ab4e-f92416322f9e",
+      "file_name": "Монитор_ВКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Монитор_ВКЛ.raw.csv",
+      "import_date": "2026-09-09T13:59:00.845240",
+      "file_type": "RAW"
+    },
+    {
+      "id": "725fc8e1-12a0-4ccd-a1e0-0b58cbd5d8c4",
+      "file_name": "Монитор_ВКЛ.markup.csv",
+      "size": 70397,
+      "s3_path": "LOADS/2026/09/09/Монитор_ВКЛ.markup.csv",
+      "import_date": "2026-09-09T13:59:01.064875",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "70a86bca-b358-4a21-a769-2db21f10a153",
+      "file_name": "Монитор_ВЫКЛ.raw.csv",
+      "size": 49132354,
+      "s3_path": "RAW/2026/09/09/Монитор_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-09T13:59:02.669472",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bb502bab-bfee-4db7-86cc-d3e7ca4dc6bf",
+      "file_name": "Монитор_ВЫКЛ.markup.csv",
+      "size": 142752,
+      "s3_path": "LOADS/2026/09/09/Монитор_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-09T13:59:02.876784",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "37ba5e5d-e55a-4746-b02b-ec8bb8dc0374",
+      "file_name": "Нагреватель.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Нагреватель.raw.csv",
+      "import_date": "2026-09-09T13:59:03.853265",
+      "file_type": "RAW"
+    },
+    {
+      "id": "af349759-cf3d-45fd-a646-530a91e40831",
+      "file_name": "Нагреватель.markup.csv",
+      "size": 70896,
+      "s3_path": "LOADS/2026/09/09/Нагреватель.markup.csv",
+      "import_date": "2026-09-09T13:59:04.029897",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "99a0ef26-8068-4eaa-8087-1a631dec435c",
+      "file_name": "Ноутбук_ВКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Ноутбук_ВКЛ.raw.csv",
+      "import_date": "2026-09-09T13:59:05.049013",
+      "file_type": "RAW"
+    },
+    {
+      "id": "82bac05c-b43b-43a1-9700-3196bbcd7fc1",
+      "file_name": "Ноутбук_ВКЛ.markup.csv",
+      "size": 70397,
+      "s3_path": "LOADS/2026/09/09/Ноутбук_ВКЛ.markup.csv",
+      "import_date": "2026-09-09T13:59:05.208551",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "4b2cf3db-7d81-4a25-8c76-4c4a9e5d5117",
+      "file_name": "Ноутбук_ВЫКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Ноутбук_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-09T13:59:06.190944",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9b91bc7f-e8d6-4cb1-96d1-8cdaf659434b",
+      "file_name": "Ноутбук_ВЫКЛ.markup.csv",
+      "size": 71395,
+      "s3_path": "LOADS/2026/09/09/Ноутбук_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-09T13:59:06.346136",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d6ad3bcf-00ec-415b-a3f7-785608e32ba5",
+      "file_name": "Обогреватель.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Обогреватель.raw.csv",
+      "import_date": "2026-09-09T13:59:07.321676",
+      "file_type": "RAW"
+    },
+    {
+      "id": "cf7161d6-59da-4676-95bd-93cd0aa68dc9",
+      "file_name": "Обогреватель.markup.csv",
+      "size": 71894,
+      "s3_path": "LOADS/2026/09/09/Обогреватель.markup.csv",
+      "import_date": "2026-09-09T13:59:07.446277",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "b3bfa74c-e65a-415c-b70e-0cab5274fef4",
+      "file_name": "ПК.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/ПК.raw.csv",
+      "import_date": "2026-09-09T13:59:08.491423",
+      "file_type": "RAW"
+    },
+    {
+      "id": "3bbaea87-0d27-40e9-9970-6afe0aedc5b8",
+      "file_name": "ПК.markup.csv",
+      "size": 61914,
+      "s3_path": "LOADS/2026/09/09/ПК.markup.csv",
+      "import_date": "2026-09-09T13:59:08.628152",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "112355b2-bc19-4a3f-a73b-0d630bddfb15",
+      "file_name": "ПК_Idle.raw.csv",
+      "size": 1087777204,
+      "s3_path": "RAW/2026/09/09/ПК_Idle.raw.csv",
+      "import_date": "2026-09-09T13:59:38.898746",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c25b10bb-5b11-4833-a33a-e003f0141559",
+      "file_name": "ПК_Idle.markup.csv",
+      "size": 2628510,
+      "s3_path": "LOADS/2026/09/09/ПК_Idle.markup.csv",
+      "import_date": "2026-09-09T13:59:39.442821",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "54d3d242-c206-48e1-9130-41f2445613e6",
+      "file_name": "Пистолет.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Пистолет.raw.csv",
+      "import_date": "2026-09-09T13:59:40.391105",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d17fe00c-42ea-4635-b400-ae54405023f9",
+      "file_name": "Пистолет.markup.csv",
+      "size": 67902,
+      "s3_path": "LOADS/2026/09/09/Пистолет.markup.csv",
+      "import_date": "2026-09-09T13:59:40.572156",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "33e7b44e-21eb-4077-bbb4-cdd1a484265e",
+      "file_name": "Принтер.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Принтер.raw.csv",
+      "import_date": "2026-09-09T13:59:41.587817",
+      "file_type": "RAW"
+    },
+    {
+      "id": "1ec35c18-8199-48ff-be87-83c786d3dbee",
+      "file_name": "Принтер.markup.csv",
+      "size": 66904,
+      "s3_path": "LOADS/2026/09/09/Принтер.markup.csv",
+      "import_date": "2026-09-09T13:59:41.729428",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a64f38c8-b1fa-47c5-939d-e56710e5e9d2",
+      "file_name": "Принтер_РАБОТА.raw.csv",
+      "size": 24565865,
+      "s3_path": "RAW/2026/09/09/Принтер_РАБОТА.raw.csv",
+      "import_date": "2026-09-09T13:59:42.646916",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6e0f6e08-ef6e-410a-a3e1-5aef06dcccc4",
+      "file_name": "Принтер_РАБОТА.markup.csv",
+      "size": 73391,
+      "s3_path": "LOADS/2026/09/09/Принтер_РАБОТА.markup.csv",
+      "import_date": "2026-09-09T13:59:42.826145",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d0180674-33a0-42e1-8ed9-0f9a0c6801af",
+      "file_name": "Пылесос.raw.csv",
+      "size": 913298253,
+      "s3_path": "RAW/2026/09/09/Пылесос.raw.csv",
+      "import_date": "2026-09-09T14:00:08.814184",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5a4510c2-1896-4180-82cf-ed64640bfdb5",
+      "file_name": "Пылесос.markup.csv",
+      "size": 2482388,
+      "s3_path": "LOADS/2026/09/09/Пылесос.markup.csv",
+      "import_date": "2026-09-09T14:00:09.439367",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8cf915c7-3256-4d65-8c42-bac9e0c13d51",
+      "file_name": "Стиралка_ОЖИДАНИЕ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Стиралка_ОЖИДАНИЕ.raw.csv",
+      "import_date": "2026-09-09T14:00:10.501332",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b3da32c6-a912-4cd8-b9bf-54047ab889fc",
+      "file_name": "Стиралка_ОЖИДАНИЕ.markup.csv",
+      "size": 76385,
+      "s3_path": "LOADS/2026/09/09/Стиралка_ОЖИДАНИЕ.markup.csv",
+      "import_date": "2026-09-09T14:00:10.653376",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "69a5cba3-52ad-4eb2-97e4-71894298d12a",
+      "file_name": "Стиралка_ОТЖИМ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Стиралка_ОТЖИМ.raw.csv",
+      "import_date": "2026-09-09T14:00:11.589058",
+      "file_type": "RAW"
+    },
+    {
+      "id": "020060ea-eddc-4da7-b7f1-f9cf67fe8ccd",
+      "file_name": "Стиралка_ОТЖИМ.markup.csv",
+      "size": 73391,
+      "s3_path": "LOADS/2026/09/09/Стиралка_ОТЖИМ.markup.csv",
+      "import_date": "2026-09-09T14:00:11.749853",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "690a3357-00b3-49a5-a8fd-b3951ad8f1f0",
+      "file_name": "ТВ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/ТВ.raw.csv",
+      "import_date": "2026-09-09T14:00:12.913623",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f384fb6c-d592-4f08-8765-b2cd2d41703d",
+      "file_name": "ТВ.markup.csv",
+      "size": 61914,
+      "s3_path": "LOADS/2026/09/09/ТВ.markup.csv",
+      "import_date": "2026-09-09T14:00:13.061714",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5c3bb73d-dd5c-4e01-99aa-b0145a4af0c5",
+      "file_name": "ТВ_ВКЛ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/ТВ_ВКЛ.raw.csv",
+      "import_date": "2026-09-09T14:00:13.973136",
+      "file_type": "RAW"
+    },
+    {
+      "id": "10399aef-147c-4340-8a1b-621df95e3349",
+      "file_name": "ТВ_ВКЛ.markup.csv",
+      "size": 65407,
+      "s3_path": "LOADS/2026/09/09/ТВ_ВКЛ.markup.csv",
+      "import_date": "2026-09-09T14:00:14.149420",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d7a4621b-718e-4bf8-8c0b-73da839b095c",
+      "file_name": "ТВ_ОЖИДАНИЕ.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/ТВ_ОЖИДАНИЕ.raw.csv",
+      "import_date": "2026-09-09T14:00:15.129345",
+      "file_type": "RAW"
+    },
+    {
+      "id": "551384fc-e075-4e4e-b4c7-94c2e9bf50f0",
+      "file_name": "ТВ_ОЖИДАНИЕ.markup.csv",
+      "size": 70397,
+      "s3_path": "LOADS/2026/09/09/ТВ_ОЖИДАНИЕ.markup.csv",
+      "import_date": "2026-09-09T14:00:15.305765",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "694ecaca-6cec-4c07-b23f-1457a1d9ffcb",
+      "file_name": "ТВ_приставка.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/ТВ_приставка.raw.csv",
+      "import_date": "2026-09-09T14:00:16.238641",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ebf0e510-cc07-469b-9a62-e2a509d1bb8f",
+      "file_name": "ТВ_приставка.markup.csv",
+      "size": 71395,
+      "s3_path": "LOADS/2026/09/09/ТВ_приставка.markup.csv",
+      "import_date": "2026-09-09T14:00:16.385484",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "be85ab2a-00d8-41b8-a2c6-c01212933399",
+      "file_name": "ТП-10-04.raw.csv",
+      "size": 210804465,
+      "s3_path": "RAW/2026/09/09/ТП-10-04.raw.csv",
+      "import_date": "2026-09-09T14:00:24.031899",
+      "file_type": "RAW"
+    },
+    {
+      "id": "46530959-af23-4321-9bc6-f11f35e60862",
+      "file_name": "ТП-10-04.markup.csv",
+      "size": 555788,
+      "s3_path": "LOADS/2026/09/09/ТП-10-04.markup.csv",
+      "import_date": "2026-09-09T14:00:24.328215",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8cdb94ce-76d0-4f39-92b4-5b7cdd2a3c0c",
+      "file_name": "ТП-10-0_4.raw.csv",
+      "size": 1475629935,
+      "s3_path": "RAW/2026/09/09/ТП-10-0_4.raw.csv",
+      "import_date": "2026-09-09T14:01:18.196915",
+      "file_type": "RAW"
+    },
+    {
+      "id": "dd018ad1-e547-48c4-a945-09f351fedc1e",
+      "file_name": "ТП-10-0_4.markup.csv",
+      "size": 3920213,
+      "s3_path": "LOADS/2026/09/09/ТП-10-0_4.markup.csv",
+      "import_date": "2026-09-09T14:01:18.959866",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "26ae34cc-37bb-4ef9-a57f-e95ea4ac0339",
+      "file_name": "Тостер.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Тостер.raw.csv",
+      "import_date": "2026-09-09T14:01:19.934713",
+      "file_type": "RAW"
+    },
+    {
+      "id": "4ab7be5d-11bd-4626-82b2-1f170a0ad09d",
+      "file_name": "Тостер.markup.csv",
+      "size": 65906,
+      "s3_path": "LOADS/2026/09/09/Тостер.markup.csv",
+      "import_date": "2026-09-09T14:01:20.106947",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0dcc57c2-dc27-4199-8375-fc7467549dcb",
+      "file_name": "Тостермин.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Тостермин.raw.csv",
+      "import_date": "2026-09-09T14:01:21.088967",
+      "file_type": "RAW"
+    },
+    {
+      "id": "dfd8264b-9412-4cff-8ffe-3b3902965156",
+      "file_name": "Тостермин.markup.csv",
+      "size": 68900,
+      "s3_path": "LOADS/2026/09/09/Тостермин.markup.csv",
+      "import_date": "2026-09-09T14:01:21.239058",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "6ef0f4aa-c7ee-4be5-845c-f8c8e2d970b2",
+      "file_name": "Усилитель.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Усилитель.raw.csv",
+      "import_date": "2026-09-09T14:01:22.163269",
+      "file_type": "RAW"
+    },
+    {
+      "id": "664f6529-4963-4e98-946e-e49a3f8fb20d",
+      "file_name": "Усилитель.markup.csv",
+      "size": 68900,
+      "s3_path": "LOADS/2026/09/09/Усилитель.markup.csv",
+      "import_date": "2026-09-09T14:01:22.325295",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "380efc3b-5622-428f-b986-139c4ed05dde",
+      "file_name": "Утюг.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Утюг.raw.csv",
+      "import_date": "2026-09-09T14:01:23.411214",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b83cebcd-8d70-4683-9561-cba9bd5b516c",
+      "file_name": "Утюг.markup.csv",
+      "size": 63910,
+      "s3_path": "LOADS/2026/09/09/Утюг.markup.csv",
+      "import_date": "2026-09-09T14:01:23.546330",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "c2dcf3b4-f16e-4471-a7d3-e51f13bfb75c",
+      "file_name": "Холодильник.raw.csv",
+      "size": 1270180410,
+      "s3_path": "RAW/2026/09/09/Холодильник.raw.csv",
+      "import_date": "2026-09-09T14:01:58.042512",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6bbb5fee-188b-4b79-bc49-9f55369f56f9",
+      "file_name": "Холодильник.markup.csv",
+      "size": 3679212,
+      "s3_path": "LOADS/2026/09/09/Холодильник.markup.csv",
+      "import_date": "2026-09-09T14:01:58.746908",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8552e118-f2ad-4c62-8d9a-17548479095f",
+      "file_name": "Чайник_Braun.raw.csv",
+      "size": 1475327973,
+      "s3_path": "RAW/2026/09/09/Чайник_Braun.raw.csv",
+      "import_date": "2026-09-09T14:02:41.038728",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d80d2a12-f291-470e-b7c4-3b8016119555",
+      "file_name": "Чайник_Braun.markup.csv",
+      "size": 4129688,
+      "s3_path": "LOADS/2026/09/09/Чайник_Braun.markup.csv",
+      "import_date": "2026-09-09T14:02:41.778349",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5415c048-ca72-41a4-b028-3b13a89f5966",
+      "file_name": "Часы.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/Часы.raw.csv",
+      "import_date": "2026-09-09T14:02:42.783136",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a05d8d7b-c4ee-45e8-8ce2-1866c2bbf5e7",
+      "file_name": "Часы.markup.csv",
+      "size": 63910,
+      "s3_path": "LOADS/2026/09/09/Часы.markup.csv",
+      "import_date": "2026-09-09T14:02:42.937769",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1918c99f-aea8-4fc4-bba0-0e1883da41bb",
+      "file_name": "микроволновка.raw.csv",
+      "size": 24566291,
+      "s3_path": "RAW/2026/09/09/микроволновка.raw.csv",
+      "import_date": "2026-09-09T14:02:43.938121",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a0749f8e-2885-4c79-b350-205a493d4bc3",
+      "file_name": "микроволновка.markup.csv",
+      "size": 72892,
+      "s3_path": "LOADS/2026/09/09/микроволновка.markup.csv",
+      "import_date": "2026-09-09T14:02:44.114195",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "34b31e66-87ea-44c7-804b-6fcd82016fbd",
+      "file_name": "майнер_avalon_1246-90т.raw.csv",
+      "size": 1729557604,
+      "s3_path": "RAW/2026/09/09/майнер_avalon_1246-90т.raw.csv",
+      "import_date": "2026-09-09T14:37:32.800409",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8c9588b0-f957-4523-9214-b97bd6c02a7b",
+      "file_name": "майнер_avalon_1246-90т.markup.csv",
+      "size": 19400308,
+      "s3_path": "LOADS/2026/09/09/майнер_avalon_1246-90т.markup.csv",
+      "import_date": "2026-09-09T14:37:35.483074",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "fa74f390-b256-4daa-abfe-7b7d24d4bfa0",
+      "file_name": "майнер_s19i-90.raw.csv",
+      "size": 1953786053,
+      "s3_path": "RAW/2026/09/09/майнер_s19i-90.raw.csv",
+      "import_date": "2026-09-09T14:38:28.357363",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7772c10c-d683-4075-960f-f792326c1718",
+      "file_name": "майнер_s19i-90.markup.csv",
+      "size": 4674744,
+      "s3_path": "LOADS/2026/09/09/майнер_s19i-90.markup.csv",
+      "import_date": "2026-09-09T14:38:29.743861",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "98eebf93-1897-461b-96ec-f11b7e41bf97",
+      "file_name": "майнер_s19i_92.5т.raw.csv",
+      "size": 2281224117,
+      "s3_path": "RAW/2026/09/09/майнер_s19i_92.5т.raw.csv",
+      "import_date": "2026-09-09T14:39:31.618511",
+      "file_type": "RAW"
+    },
+    {
+      "id": "77052596-ab16-47e7-9a30-a52c634d88d4",
+      "file_name": "майнер_s19i_92.5т.markup.csv",
+      "size": 13130518,
+      "s3_path": "LOADS/2026/09/09/майнер_s19i_92.5т.markup.csv",
+      "import_date": "2026-09-09T14:39:33.845172",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e9e7058c-17ad-4124-99da-ba617cfb75e1",
+      "file_name": "электрический_чайник.raw.csv",
+      "size": 224002652,
+      "s3_path": "RAW/2026/09/09/электрический_чайник.raw.csv",
+      "import_date": "2026-09-09T14:39:40.095668",
+      "file_type": "RAW"
+    },
+    {
+      "id": "0869ccfd-6e8e-4a65-8922-774f730a5f20",
+      "file_name": "электрический_чайник.markup.csv",
+      "size": 585053,
+      "s3_path": "LOADS/2026/09/09/электрический_чайник.markup.csv",
+      "import_date": "2026-09-09T14:39:40.408613",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e77a97e0-4249-4fd8-ae69-dac8dfc6314e",
+      "file_name": "электро-_чайник.raw.csv",
+      "size": 1693074475,
+      "s3_path": "RAW/2026/09/09/электро-_чайник.raw.csv",
+      "import_date": "2026-09-09T14:40:26.604021",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b39a2fa6-f719-4bd7-993b-3feafac57d93",
+      "file_name": "электро-_чайник.markup.csv",
+      "size": 4642866,
+      "s3_path": "LOADS/2026/09/09/электро-_чайник.markup.csv",
+      "import_date": "2026-09-09T14:40:27.696369",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e5bc3b62-9ae6-493d-8857-11b410b3c463",
+      "file_name": "электро-обогре-ватель.raw.csv",
+      "size": 911590731,
+      "s3_path": "RAW/2026/09/09/электро-обогре-ватель.raw.csv",
+      "import_date": "2026-09-09T14:40:53.835991",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8dc531b1-7fff-4019-b330-b005b70de5e9",
+      "file_name": "электро-обогре-ватель.markup.csv",
+      "size": 5279988,
+      "s3_path": "LOADS/2026/09/09/электро-обогре-ватель.markup.csv",
+      "import_date": "2026-09-09T14:40:54.816755",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a2951974-4577-4414-939f-549733686f2f",
+      "file_name": "электро-утюг.raw.csv",
+      "size": 1278354097,
+      "s3_path": "RAW/2026/09/09/электро-утюг.raw.csv",
+      "import_date": "2026-09-09T14:41:31.316578",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8dd76595-1801-4cd2-982c-90b1f8303463",
+      "file_name": "электро-утюг.markup.csv",
+      "size": 2924478,
+      "s3_path": "LOADS/2026/09/09/электро-утюг.markup.csv",
+      "import_date": "2026-09-09T14:41:31.996491",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ca376f27-245a-40d4-aca4-a909ba2a1190",
+      "file_name": "3Дпринтер.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/3Дпринтер.raw_1.csv",
+      "import_date": "2026-09-09T14:42:03.211235",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b9eb8b0a-c226-4346-9b08-9df6cad36556",
+      "file_name": "3Дпринтер.markup.csv",
+      "size": 3600,
+      "s3_path": "LOADS/2026/09/09/3Дпринтер.markup_1.csv",
+      "import_date": "2026-09-09T14:42:03.376902",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "961e35e0-d808-4822-b5d8-73641823c7fc",
+      "file_name": "3Дпринтер_подготовка.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/3Дпринтер_подготовка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:03.764066",
+      "file_type": "RAW"
+    },
+    {
+      "id": "74b65429-6c1f-49c4-a88c-ecf3eef2a598",
+      "file_name": "3Дпринтер_подготовка.markup.csv",
+      "size": 4146,
+      "s3_path": "LOADS/2026/09/09/3Дпринтер_подготовка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:03.922646",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "07bbd1fa-a939-4191-b4f1-907160f75e11",
+      "file_name": "Antminer_S19.raw.csv",
+      "size": 110929639,
+      "s3_path": "RAW/2026/09/09/Antminer_S19.raw_1.csv",
+      "import_date": "2026-09-09T14:42:07.606890",
+      "file_type": "RAW"
+    },
+    {
+      "id": "530787c8-7b86-4a5a-9e33-80b1c3b1be29",
+      "file_name": "Antminer_S19.markup.csv",
+      "size": 298014,
+      "s3_path": "LOADS/2026/09/09/Antminer_S19.markup_1.csv",
+      "import_date": "2026-09-09T14:42:07.892866",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "15dacb23-e3c9-4647-b121-e8f167255821",
+      "file_name": "Antminer_S19i.raw.csv",
+      "size": 110929509,
+      "s3_path": "RAW/2026/09/09/Antminer_S19i.raw_1.csv",
+      "import_date": "2026-09-09T14:42:11.666661",
+      "file_type": "RAW"
+    },
+    {
+      "id": "1f444149-ef29-4f65-8e4f-940209925710",
+      "file_name": "Antminer_S19i.markup.csv",
+      "size": 298910,
+      "s3_path": "LOADS/2026/09/09/Antminer_S19i.markup_1.csv",
+      "import_date": "2026-09-09T14:42:11.953203",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d4fecf23-8a0d-4b97-90c1-93126ee83249",
+      "file_name": "Avalon_1240.raw.csv",
+      "size": 114626610,
+      "s3_path": "RAW/2026/09/09/Avalon_1240.raw_1.csv",
+      "import_date": "2026-09-09T14:42:15.725838",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c6b5956d-893c-4986-9602-f8d2006c73f1",
+      "file_name": "Avalon_1240.markup.csv",
+      "size": 303821,
+      "s3_path": "LOADS/2026/09/09/Avalon_1240.markup_1.csv",
+      "import_date": "2026-09-09T14:42:16.011387",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "88f4d448-6874-4180-b22c-13805b1d0a54",
+      "file_name": "Miner_3Ph.raw.csv",
+      "size": 112812222,
+      "s3_path": "RAW/2026/09/09/Miner_3Ph.raw_1.csv",
+      "import_date": "2026-09-09T14:42:20.122437",
+      "file_type": "RAW"
+    },
+    {
+      "id": "0aee5a8c-473f-49f0-9815-a54340cfb657",
+      "file_name": "Miner_3Ph.markup.csv",
+      "size": 294394,
+      "s3_path": "LOADS/2026/09/09/Miner_3Ph.markup_1.csv",
+      "import_date": "2026-09-09T14:42:20.422996",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "21144953-def8-4b48-82a1-55fad76a3055",
+      "file_name": "Wi-Fi.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Wi-Fi.raw_1.csv",
+      "import_date": "2026-09-09T14:42:20.720999",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8e5386f7-36b0-4581-8b12-1569d3da97dd",
+      "file_name": "Wi-Fi.markup.csv",
+      "size": 3288,
+      "s3_path": "LOADS/2026/09/09/Wi-Fi.markup_1.csv",
+      "import_date": "2026-09-09T14:42:20.882569",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "41af57a1-4241-47dc-b354-2f16e3bf1a3b",
+      "file_name": "БегДорожка.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/БегДорожка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:21.181259",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f1ea2e4d-637d-403d-a81c-5674b7169eb5",
+      "file_name": "БегДорожка.markup.csv",
+      "size": 3678,
+      "s3_path": "LOADS/2026/09/09/БегДорожка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:21.330717",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5619f7bb-41d8-484c-81d0-b838720e10af",
+      "file_name": "БегДорожка_1.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/БегДорожка_1.raw_1.csv",
+      "import_date": "2026-09-09T14:42:21.603132",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d344bd8b-6e6c-4f21-ab8c-9e4b91be02f4",
+      "file_name": "БегДорожка_1.markup.csv",
+      "size": 3730,
+      "s3_path": "LOADS/2026/09/09/БегДорожка_1.markup_1.csv",
+      "import_date": "2026-09-09T14:42:21.760412",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e4ab0b1f-144a-4ad6-8777-d719773a8b87",
+      "file_name": "БегДорожкаМакс.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/БегДорожкаМакс.raw_1.csv",
+      "import_date": "2026-09-09T14:42:22.066801",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ae1059ad-fe56-4fc0-b5c4-fee4b600784f",
+      "file_name": "БегДорожкаМакс.markup.csv",
+      "size": 3886,
+      "s3_path": "LOADS/2026/09/09/БегДорожкаМакс.markup_1.csv",
+      "import_date": "2026-09-09T14:42:22.240504",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "3193fb7d-b432-4805-b168-88dbae33b0a2",
+      "file_name": "Блендер.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Блендер.raw_1.csv",
+      "import_date": "2026-09-09T14:42:22.516940",
+      "file_type": "RAW"
+    },
+    {
+      "id": "81c39f0c-50af-43f2-971d-a0414553b9fe",
+      "file_name": "Блендер.markup.csv",
+      "size": 3522,
+      "s3_path": "LOADS/2026/09/09/Блендер.markup_1.csv",
+      "import_date": "2026-09-09T14:42:22.660014",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "92e273c9-a961-48f8-b9f4-eb37a9a93594",
+      "file_name": "Блендермин.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Блендермин.raw_1.csv",
+      "import_date": "2026-09-09T14:42:22.990722",
+      "file_type": "RAW"
+    },
+    {
+      "id": "1ff04f51-3f3c-4e4a-8a9b-f962492468b2",
+      "file_name": "Блендермин.markup.csv",
+      "size": 3678,
+      "s3_path": "LOADS/2026/09/09/Блендермин.markup_1.csv",
+      "import_date": "2026-09-09T14:42:23.140131",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "b4e70de7-b663-4799-8609-7af2bad81a45",
+      "file_name": "Блок_ПКВКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Блок_ПКВКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:23.465859",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7c8ea51a-4009-4ce4-89e8-62d17e2be722",
+      "file_name": "Блок_ПКВКЛ.markup.csv",
+      "size": 3652,
+      "s3_path": "LOADS/2026/09/09/Блок_ПКВКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:23.644258",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "dfd6be9d-d325-438c-94de-8987d8e717a5",
+      "file_name": "Блок_ПКВЫКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Блок_ПКВЫКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:23.960421",
+      "file_type": "RAW"
+    },
+    {
+      "id": "91a8fafd-3cc9-49da-a7fc-99f50b538532",
+      "file_name": "Блок_ПКВЫКЛ.markup.csv",
+      "size": 3704,
+      "s3_path": "LOADS/2026/09/09/Блок_ПКВЫКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:24.157369",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "156ee70d-5237-4f71-bb60-d3b9ddfc7216",
+      "file_name": "Динамики_ВКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Динамики_ВКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:24.424427",
+      "file_type": "RAW"
+    },
+    {
+      "id": "05ebbfe0-0d59-485a-a855-150c668fedb2",
+      "file_name": "Динамики_ВКЛ.markup.csv",
+      "size": 3756,
+      "s3_path": "LOADS/2026/09/09/Динамики_ВКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:24.574502",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "49a3d520-0522-4050-8367-0a6c4fe35a37",
+      "file_name": "Динамики_ВЫКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Динамики_ВЫКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:24.922798",
+      "file_type": "RAW"
+    },
+    {
+      "id": "942ed79e-6dbe-458e-81a0-316a4d6b552f",
+      "file_name": "Динамики_ВЫКЛ.markup.csv",
+      "size": 3808,
+      "s3_path": "LOADS/2026/09/09/Динамики_ВЫКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:25.100914",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "f39b1d72-eccd-4a8f-85b3-adf62a999958",
+      "file_name": "ИБП_online.raw.csv",
+      "size": 59161068,
+      "s3_path": "RAW/2026/09/09/ИБП_online.raw_1.csv",
+      "import_date": "2026-09-09T14:42:27.220515",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f42ff0cb-d96b-43d3-824e-385cd7f12e7a",
+      "file_name": "ИБП_online.markup.csv",
+      "size": 145238,
+      "s3_path": "LOADS/2026/09/09/ИБП_online.markup_1.csv",
+      "import_date": "2026-09-09T14:42:27.450605",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "6e0eea91-6f05-4e35-81cd-658a14ec388f",
+      "file_name": "Игровой_ПК.raw.csv",
+      "size": 42497570,
+      "s3_path": "RAW/2026/09/09/Игровой_ПК.raw_1.csv",
+      "import_date": "2026-09-09T14:42:28.978473",
+      "file_type": "RAW"
+    },
+    {
+      "id": "71563b7f-5dda-4599-ac05-7ffb265e6126",
+      "file_name": "Игровой_ПК.markup.csv",
+      "size": 119856,
+      "s3_path": "LOADS/2026/09/09/Игровой_ПК.markup_1.csv",
+      "import_date": "2026-09-09T14:42:29.193971",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "b0ae7d46-f47a-4595-af2c-1ac2e37142c6",
+      "file_name": "Кондиц._обогрев.raw.csv",
+      "size": 62858883,
+      "s3_path": "RAW/2026/09/09/Кондиц._обогрев.raw_1.csv",
+      "import_date": "2026-09-09T14:42:31.508416",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c5ddc0a3-4362-4033-b6cd-e0e79e0faad9",
+      "file_name": "Кондиц._обогрев.markup.csv",
+      "size": 188738,
+      "s3_path": "LOADS/2026/09/09/Кондиц._обогрев.markup_1.csv",
+      "import_date": "2026-09-09T14:42:31.797420",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "3cae3800-2bb7-4d22-9120-f192f081c325",
+      "file_name": "Кофеварка.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Кофеварка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:32.131703",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a457dc52-8daf-4525-8556-ef129b9c4974",
+      "file_name": "Кофеварка.markup.csv",
+      "size": 3626,
+      "s3_path": "LOADS/2026/09/09/Кофеварка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:32.804830",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1ebc6cd2-ce55-4a71-8cc9-dc86087d59de",
+      "file_name": "Кофеварка_насос.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Кофеварка_насос.raw_1.csv",
+      "import_date": "2026-09-09T14:42:33.085904",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7f1e5d2a-dcba-4b8a-9478-b706715c1aae",
+      "file_name": "Кофеварка_насос.markup.csv",
+      "size": 3912,
+      "s3_path": "LOADS/2026/09/09/Кофеварка_насос.markup_1.csv",
+      "import_date": "2026-09-09T14:42:33.249818",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "f280c8b7-c0db-418f-b92e-2acbc00e632d",
+      "file_name": "Кофемолка.raw.csv",
+      "size": 1282052,
+      "s3_path": "RAW/2026/09/09/Кофемолка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:33.595216",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bf08f11e-182e-4254-9cb8-912b3c52f00e",
+      "file_name": "Кофемолка.markup.csv",
+      "size": 3626,
+      "s3_path": "LOADS/2026/09/09/Кофемолка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:33.729344",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "c2d10bad-be12-4b06-832a-c00394563a99",
+      "file_name": "Лампа.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Лампа.raw_1.csv",
+      "import_date": "2026-09-09T14:42:34.040096",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d0f523df-1fc0-4a85-9bc8-bf07cb824292",
+      "file_name": "Лампа.markup.csv",
+      "size": 3418,
+      "s3_path": "LOADS/2026/09/09/Лампа.markup_1.csv",
+      "import_date": "2026-09-09T14:42:34.229829",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ac13cfe5-3c10-468a-b4b1-c01007470723",
+      "file_name": "Массажер.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Массажер.raw_1.csv",
+      "import_date": "2026-09-09T14:42:34.514858",
+      "file_type": "RAW"
+    },
+    {
+      "id": "3a639dbe-83c4-4e91-bcd3-6988b0b18a94",
+      "file_name": "Массажер.markup.csv",
+      "size": 3574,
+      "s3_path": "LOADS/2026/09/09/Массажер.markup_1.csv",
+      "import_date": "2026-09-09T14:42:34.655347",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "4b16dd80-728f-4c06-81d8-2cb4cf66bb9f",
+      "file_name": "Монитор_ВКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Монитор_ВКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:34.980222",
+      "file_type": "RAW"
+    },
+    {
+      "id": "83a763f4-fbdc-4832-8b13-220eb270644b",
+      "file_name": "Монитор_ВКЛ.markup.csv",
+      "size": 3704,
+      "s3_path": "LOADS/2026/09/09/Монитор_ВКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:35.142700",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "237eb7b0-8aa6-4d6a-abb7-0fbe3b71b34b",
+      "file_name": "Монитор_ВЫКЛ.raw.csv",
+      "size": 2563880,
+      "s3_path": "RAW/2026/09/09/Монитор_ВЫКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:35.472666",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5dd353b7-e68c-40ac-8f9c-89efbc589a6e",
+      "file_name": "Монитор_ВЫКЛ.markup.csv",
+      "size": 7474,
+      "s3_path": "LOADS/2026/09/09/Монитор_ВЫКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:35.626605",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "81c36ea0-f830-49a4-8305-dd3055929bfd",
+      "file_name": "Нагреватель.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Нагреватель.raw_1.csv",
+      "import_date": "2026-09-09T14:42:35.905799",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5aa68010-cd06-43ad-b140-8cc2c190ad23",
+      "file_name": "Нагреватель.markup.csv",
+      "size": 3730,
+      "s3_path": "LOADS/2026/09/09/Нагреватель.markup_1.csv",
+      "import_date": "2026-09-09T14:42:36.078024",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "6c6d4f14-88b3-4332-8250-999c504eaed2",
+      "file_name": "Ноутбук_ВКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Ноутбук_ВКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:36.330618",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f8828972-75ef-4535-b328-80a87d45f21f",
+      "file_name": "Ноутбук_ВКЛ.markup.csv",
+      "size": 3704,
+      "s3_path": "LOADS/2026/09/09/Ноутбук_ВКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:36.486130",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "16e66a38-b6fc-4e88-9f67-18f822417c32",
+      "file_name": "Ноутбук_ВЫКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Ноутбук_ВЫКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:36.788550",
+      "file_type": "RAW"
+    },
+    {
+      "id": "83716adb-9f85-482c-955a-1f1f0c644695",
+      "file_name": "Ноутбук_ВЫКЛ.markup.csv",
+      "size": 3756,
+      "s3_path": "LOADS/2026/09/09/Ноутбук_ВЫКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:36.941892",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "caca1917-6d50-46c0-9a40-808d8e75e030",
+      "file_name": "Обогреватель.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Обогреватель.raw_1.csv",
+      "import_date": "2026-09-09T14:42:37.229716",
+      "file_type": "RAW"
+    },
+    {
+      "id": "44cf2317-4452-43a5-a2b4-ea7a94c740b1",
+      "file_name": "Обогреватель.markup.csv",
+      "size": 3782,
+      "s3_path": "LOADS/2026/09/09/Обогреватель.markup_1.csv",
+      "import_date": "2026-09-09T14:42:37.387253",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "94075f37-d958-46f6-8ff0-2b6f3653bdfc",
+      "file_name": "ПК.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/ПК.raw_1.csv",
+      "import_date": "2026-09-09T14:42:37.672075",
+      "file_type": "RAW"
+    },
+    {
+      "id": "1e5ae0c5-4326-4c44-bdb2-7380a3e3b850",
+      "file_name": "ПК.markup.csv",
+      "size": 3262,
+      "s3_path": "LOADS/2026/09/09/ПК.markup_1.csv",
+      "import_date": "2026-09-09T14:42:37.805372",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "88c74332-642b-491b-a8f3-d5ef05e2b5e3",
+      "file_name": "ПК_Idle.raw.csv",
+      "size": 57238707,
+      "s3_path": "RAW/2026/09/09/ПК_Idle.raw_1.csv",
+      "import_date": "2026-09-09T14:42:39.711513",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5234bfac-c0ef-4ed2-8535-c939dee5b2f5",
+      "file_name": "ПК_Idle.markup.csv",
+      "size": 138316,
+      "s3_path": "LOADS/2026/09/09/ПК_Idle.markup_1.csv",
+      "import_date": "2026-09-09T14:42:39.920104",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0a38b74f-5da8-48a7-a433-4e25e93674e4",
+      "file_name": "Пистолет.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Пистолет.raw_1.csv",
+      "import_date": "2026-09-09T14:42:40.216687",
+      "file_type": "RAW"
+    },
+    {
+      "id": "927813de-0f97-4a9c-86ca-745a3bb11f3e",
+      "file_name": "Пистолет.markup.csv",
+      "size": 3574,
+      "s3_path": "LOADS/2026/09/09/Пистолет.markup_1.csv",
+      "import_date": "2026-09-09T14:42:40.383911",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "57c36f8b-a525-45a1-8779-5ebcc2ce3fff",
+      "file_name": "Принтер.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Принтер.raw_1.csv",
+      "import_date": "2026-09-09T14:42:40.732961",
+      "file_type": "RAW"
+    },
+    {
+      "id": "83ca4066-ba00-42d5-9ba1-9434c10e0b81",
+      "file_name": "Принтер.markup.csv",
+      "size": 3522,
+      "s3_path": "LOADS/2026/09/09/Принтер.markup_1.csv",
+      "import_date": "2026-09-09T14:42:40.902457",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "63809fe8-334c-4874-9a9f-193bcfa25d7f",
+      "file_name": "Принтер_РАБОТА.raw.csv",
+      "size": 1282030,
+      "s3_path": "RAW/2026/09/09/Принтер_РАБОТА.raw_1.csv",
+      "import_date": "2026-09-09T14:42:41.190269",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a4d8d678-67cd-4611-ad39-8cb92999ad87",
+      "file_name": "Принтер_РАБОТА.markup.csv",
+      "size": 3860,
+      "s3_path": "LOADS/2026/09/09/Принтер_РАБОТА.markup_1.csv",
+      "import_date": "2026-09-09T14:42:41.397118",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a93533cd-f864-4575-bc9d-c3c76f69b093",
+      "file_name": "Пылесос.raw.csv",
+      "size": 48068583,
+      "s3_path": "RAW/2026/09/09/Пылесос.raw_1.csv",
+      "import_date": "2026-09-09T14:42:43.264176",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b796bd58-17ec-4559-8fee-d5fe1d966f21",
+      "file_name": "Пылесос.markup.csv",
+      "size": 130688,
+      "s3_path": "LOADS/2026/09/09/Пылесос.markup_1.csv",
+      "import_date": "2026-09-09T14:42:43.506263",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0efeb200-c3c9-4f1c-b83e-7b81c6abd97e",
+      "file_name": "Стиралка_ОЖИДАНИЕ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Стиралка_ОЖИДАНИЕ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:43.824941",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5119e399-ccc3-445a-8557-f3b939d29c3b",
+      "file_name": "Стиралка_ОЖИДАНИЕ.markup.csv",
+      "size": 4016,
+      "s3_path": "LOADS/2026/09/09/Стиралка_ОЖИДАНИЕ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:43.967195",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "591c9e63-ee57-41eb-97de-102892a2c252",
+      "file_name": "Стиралка_ОТЖИМ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Стиралка_ОТЖИМ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:44.251169",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6b8ca56c-d909-4a33-810f-2464f8cbfb46",
+      "file_name": "Стиралка_ОТЖИМ.markup.csv",
+      "size": 3860,
+      "s3_path": "LOADS/2026/09/09/Стиралка_ОТЖИМ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:44.422492",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0fe55f17-1cf9-4fce-9111-da21ddd63d67",
+      "file_name": "ТВ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/ТВ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:44.695060",
+      "file_type": "RAW"
+    },
+    {
+      "id": "0d7ee281-b140-4823-b259-ad34c5290da1",
+      "file_name": "ТВ.markup.csv",
+      "size": 3262,
+      "s3_path": "LOADS/2026/09/09/ТВ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:44.866538",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0dc153eb-f0c7-46dc-8c29-e9504c0ad0de",
+      "file_name": "ТВ_ВКЛ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/ТВ_ВКЛ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:45.162555",
+      "file_type": "RAW"
+    },
+    {
+      "id": "51797501-7ccc-437f-b30f-4fee91b8b131",
+      "file_name": "ТВ_ВКЛ.markup.csv",
+      "size": 3444,
+      "s3_path": "LOADS/2026/09/09/ТВ_ВКЛ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:45.300137",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "61213757-5185-4ad3-baa3-bc3ed70a56e8",
+      "file_name": "ТВ_ОЖИДАНИЕ.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/ТВ_ОЖИДАНИЕ.raw_1.csv",
+      "import_date": "2026-09-09T14:42:45.601777",
+      "file_type": "RAW"
+    },
+    {
+      "id": "1d4f2c11-d885-4323-8415-1c6afaa2e01b",
+      "file_name": "ТВ_ОЖИДАНИЕ.markup.csv",
+      "size": 3704,
+      "s3_path": "LOADS/2026/09/09/ТВ_ОЖИДАНИЕ.markup_1.csv",
+      "import_date": "2026-09-09T14:42:45.766917",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "775eebaf-2ae3-4123-8083-85c185a6d04b",
+      "file_name": "ТВ_приставка.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/ТВ_приставка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:46.045329",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a8c3c041-fea9-4a74-94e0-59d80d0b9f9e",
+      "file_name": "ТВ_приставка.markup.csv",
+      "size": 3756,
+      "s3_path": "LOADS/2026/09/09/ТВ_приставка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:46.212278",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "3939944b-144a-4b76-8f49-12e65e727d32",
+      "file_name": "ТП-10-04.raw.csv",
+      "size": 11095203,
+      "s3_path": "RAW/2026/09/09/ТП-10-04.raw_1.csv",
+      "import_date": "2026-09-09T14:42:47.035826",
+      "file_type": "RAW"
+    },
+    {
+      "id": "cf367062-31ae-4dc0-be6d-d72ce196fb30",
+      "file_name": "ТП-10-04.markup.csv",
+      "size": 29288,
+      "s3_path": "LOADS/2026/09/09/ТП-10-04.markup_1.csv",
+      "import_date": "2026-09-09T14:42:47.218545",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1a4e94a0-05dd-439a-8d47-c585bf06728a",
+      "file_name": "ТП-10-0_4.raw.csv",
+      "size": 77665005,
+      "s3_path": "RAW/2026/09/09/ТП-10-0_4.raw_1.csv",
+      "import_date": "2026-09-09T14:42:50.399441",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6c435cd5-686b-4549-b3f9-d2f700ec9dcb",
+      "file_name": "ТП-10-0_4.markup.csv",
+      "size": 206363,
+      "s3_path": "LOADS/2026/09/09/ТП-10-0_4.markup_1.csv",
+      "import_date": "2026-09-09T14:42:50.731460",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "de088f95-91a3-46a7-8c2c-3f61d2bee0d6",
+      "file_name": "Тостер.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Тостер.raw_1.csv",
+      "import_date": "2026-09-09T14:42:51.045231",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f9863569-f7e0-4aab-92b6-358ac25f5ad5",
+      "file_name": "Тостер.markup.csv",
+      "size": 3470,
+      "s3_path": "LOADS/2026/09/09/Тостер.markup_1.csv",
+      "import_date": "2026-09-09T14:42:51.203832",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "44951d40-5dbd-4d8f-b006-63b67deb4106",
+      "file_name": "Тостермин.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Тостермин.raw_1.csv",
+      "import_date": "2026-09-09T14:42:51.515070",
+      "file_type": "RAW"
+    },
+    {
+      "id": "426d235f-6109-4cf6-a3a0-7e9459b203a1",
+      "file_name": "Тостермин.markup.csv",
+      "size": 3626,
+      "s3_path": "LOADS/2026/09/09/Тостермин.markup_1.csv",
+      "import_date": "2026-09-09T14:42:51.675933",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8fd88f7f-2139-4a20-8de7-2e0d264b6fe4",
+      "file_name": "Усилитель.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Усилитель.raw_1.csv",
+      "import_date": "2026-09-09T14:42:52.000054",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9f548a31-4194-4abf-b9ab-75ce03ef0986",
+      "file_name": "Усилитель.markup.csv",
+      "size": 3626,
+      "s3_path": "LOADS/2026/09/09/Усилитель.markup_1.csv",
+      "import_date": "2026-09-09T14:42:52.154909",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a4b1fc6c-4fe1-4acb-bcc2-d813e022820a",
+      "file_name": "Утюг.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Утюг.raw_1.csv",
+      "import_date": "2026-09-09T14:42:52.414589",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ed42a527-bf71-4ad3-961d-bc3a77a7cb0e",
+      "file_name": "Утюг.markup.csv",
+      "size": 3366,
+      "s3_path": "LOADS/2026/09/09/Утюг.markup_1.csv",
+      "import_date": "2026-09-09T14:42:52.553536",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e5164f06-b7eb-4f44-9ece-509693bfd4f0",
+      "file_name": "Холодильник.raw.csv",
+      "size": 66510883,
+      "s3_path": "RAW/2026/09/09/Холодильник.raw_1.csv",
+      "import_date": "2026-09-09T14:42:54.723685",
+      "file_type": "RAW"
+    },
+    {
+      "id": "71045572-a65e-468f-a24f-7240816b0b83",
+      "file_name": "Холодильник.markup.csv",
+      "size": 193414,
+      "s3_path": "LOADS/2026/09/09/Холодильник.markup_1.csv",
+      "import_date": "2026-09-09T14:42:54.971402",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1250f5fb-1991-4bce-974d-5b71215469b7",
+      "file_name": "Чайник_Braun.raw.csv",
+      "size": 77648943,
+      "s3_path": "RAW/2026/09/09/Чайник_Braun.raw_1.csv",
+      "import_date": "2026-09-09T14:42:57.734492",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bd9d9cfc-78b9-49bb-ad46-d170cf31187c",
+      "file_name": "Чайник_Braun.markup.csv",
+      "size": 217388,
+      "s3_path": "LOADS/2026/09/09/Чайник_Braun.markup_1.csv",
+      "import_date": "2026-09-09T14:42:58.015246",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ea534376-8ce5-4cbe-bbaa-e3b2d0b6858c",
+      "file_name": "Часы.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/Часы.raw_1.csv",
+      "import_date": "2026-09-09T14:42:58.339231",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b5656498-0e86-4926-8e05-58ffae6ba9a1",
+      "file_name": "Часы.markup.csv",
+      "size": 3366,
+      "s3_path": "LOADS/2026/09/09/Часы.markup_1.csv",
+      "import_date": "2026-09-09T14:42:58.509901",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "85572e3a-1818-4324-ba6a-eaa5fcc7fa57",
+      "file_name": "микроволновка.raw.csv",
+      "size": 1282054,
+      "s3_path": "RAW/2026/09/09/микроволновка.raw_1.csv",
+      "import_date": "2026-09-09T14:42:58.816759",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6db305b4-28c4-4517-adc8-ae65646a6f57",
+      "file_name": "микроволновка.markup.csv",
+      "size": 3834,
+      "s3_path": "LOADS/2026/09/09/микроволновка.markup_1.csv",
+      "import_date": "2026-09-09T14:42:58.982326",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "444243a0-a4de-40c4-8453-a69522270e5c",
+      "file_name": "майнер_avalon_1246-90т.raw.csv",
+      "size": 88617069,
+      "s3_path": "RAW/2026/09/09/майнер_avalon_1246-90т.raw_1.csv",
+      "import_date": "2026-09-09T14:58:25.304785",
+      "file_type": "RAW"
+    },
+    {
+      "id": "13b6371b-f6e2-424d-950c-068cdb9b932c",
+      "file_name": "майнер_avalon_1246-90т.markup.csv",
+      "size": 1021123,
+      "s3_path": "LOADS/2026/09/09/майнер_avalon_1246-90т.markup_1.csv",
+      "import_date": "2026-09-09T14:58:25.829132",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "c20f83a2-ef0c-4366-8509-72342b7c2892",
+      "file_name": "майнер_s19i-90.raw.csv",
+      "size": 103382332,
+      "s3_path": "RAW/2026/09/09/майнер_s19i-90.raw_1.csv",
+      "import_date": "2026-09-09T14:58:29.170249",
+      "file_type": "RAW"
+    },
+    {
+      "id": "2867a5a8-fd23-436b-8e3b-4b0d167cb53f",
+      "file_name": "майнер_s19i-90.markup.csv",
+      "size": 246064,
+      "s3_path": "LOADS/2026/09/09/майнер_s19i-90.markup_1.csv",
+      "import_date": "2026-09-09T14:58:29.453525",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "cbc73921-4e89-4d68-9b9c-5808609b33f1",
+      "file_name": "майнер_s19i_92.5т.raw.csv",
+      "size": 125414772,
+      "s3_path": "RAW/2026/09/09/майнер_s19i_92.5т.raw_1.csv",
+      "import_date": "2026-09-09T14:58:32.882965",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5ea7ae80-6e8c-4e2e-9c44-5de2d6e3bef8",
+      "file_name": "майнер_s19i_92.5т.markup.csv",
+      "size": 691058,
+      "s3_path": "LOADS/2026/09/09/майнер_s19i_92.5т.markup_1.csv",
+      "import_date": "2026-09-09T14:58:33.254678",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "5637663f-f13c-415a-9692-0bf1947451a3",
+      "file_name": "электрический_чайник.raw.csv",
+      "size": 11805424,
+      "s3_path": "RAW/2026/09/09/электрический_чайник.raw_1.csv",
+      "import_date": "2026-09-09T14:58:34.045829",
+      "file_type": "RAW"
+    },
+    {
+      "id": "3548b777-2542-4662-8863-4a1174f6bf98",
+      "file_name": "электрический_чайник.markup.csv",
+      "size": 30869,
+      "s3_path": "LOADS/2026/09/09/электрический_чайник.markup_1.csv",
+      "import_date": "2026-09-09T14:58:34.214059",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "455f64dc-5ee1-4979-9190-cf1c7b705e18",
+      "file_name": "электро-_чайник.raw.csv",
+      "size": 89850345,
+      "s3_path": "RAW/2026/09/09/электро-_чайник.raw_1.csv",
+      "import_date": "2026-09-09T14:58:37.033866",
+      "file_type": "RAW"
+    },
+    {
+      "id": "4895d0f2-6281-41c6-99a2-57d173fa7d2b",
+      "file_name": "электро-_чайник.markup.csv",
+      "size": 244416,
+      "s3_path": "LOADS/2026/09/09/электро-_чайник.markup_1.csv",
+      "import_date": "2026-09-09T14:58:37.343329",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "fba4e401-50ef-425f-bcbe-86aabd5631e5",
+      "file_name": "электро-обогре-ватель.raw.csv",
+      "size": 47765599,
+      "s3_path": "RAW/2026/09/09/электро-обогре-ватель.raw_1.csv",
+      "import_date": "2026-09-09T14:58:39.086041",
+      "file_type": "RAW"
+    },
+    {
+      "id": "97135d52-4596-49d3-a390-9906367bf306",
+      "file_name": "электро-обогре-ватель.markup.csv",
+      "size": 277978,
+      "s3_path": "LOADS/2026/09/09/электро-обогре-ватель.markup_1.csv",
+      "import_date": "2026-09-09T14:58:39.350285",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "09311b00-2f84-4030-a860-27ec18c4d326",
+      "file_name": "электро-утюг.raw.csv",
+      "size": 67276710,
+      "s3_path": "RAW/2026/09/09/электро-утюг.raw_1.csv",
+      "import_date": "2026-09-09T14:58:41.539544",
+      "file_type": "RAW"
+    },
+    {
+      "id": "babec148-558f-44a5-b4ec-7f7fc13a4d8c",
+      "file_name": "электро-утюг.markup.csv",
+      "size": 153944,
+      "s3_path": "LOADS/2026/09/09/электро-утюг.markup_1.csv",
+      "import_date": "2026-09-09T14:58:41.789876",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "927e558f-3ea1-4c10-98b9-dda3589c656b",
+      "file_name": "30e5707f-65ff-4aec-b1ec-d926e58bdac7.h5",
+      "size": 178760,
+      "s3_path": "H5/2026/09/09/30e5707f-65ff-4aec-b1ec-d926e58bdac7.h5",
+      "import_date": "2026-09-09T15:03:32.769144",
+      "file_type": "H5"
+    },
+    {
+      "id": "24c7d2a0-db44-48f4-b71e-d75c553c4fb4",
+      "file_name": "model.h5",
+      "size": 383704,
+      "s3_path": "H5/2026/09/09/model.h5",
+      "import_date": "2026-09-09T15:07:36.709357",
+      "file_type": "H5"
+    },
+    {
+      "id": "3632dc4a-a360-41bb-aa71-9f592fc3851d",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0001.csv",
+      "size": 1073701680,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0001.csv",
+      "import_date": "2026-09-10T16:54:48.939753",
+      "file_type": "RAW"
+    },
+    {
+      "id": "caa9f108-f263-4f84-b423-5d3c453e54ae",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0001.csv",
+      "size": 5864319,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0001.csv",
+      "import_date": "2026-09-10T16:54:50.051795",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8216eec9-2f77-41f6-8db6-bd0b2eaf0805",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0002.csv",
+      "size": 1073699427,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0002.csv",
+      "import_date": "2026-09-10T16:55:23.243110",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c360b61d-8b3e-4331-8d2d-868e3fa878a9",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0002.csv",
+      "size": 5897843,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0002.csv",
+      "import_date": "2026-09-10T16:55:24.346579",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "42393bb1-9bf4-498d-9700-51375ff3a6fa",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0003.csv",
+      "size": 1073700752,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0003.csv",
+      "import_date": "2026-09-10T16:55:53.092909",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bcfd6f27-287d-4c93-8214-8bd352f69ed0",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0003.csv",
+      "size": 5901108,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0003.csv",
+      "import_date": "2026-09-10T16:55:59.634162",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0a8bc68b-8c9c-42da-b3f6-7c309f14a5d0",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0004.csv",
+      "size": 1073700220,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0004.csv",
+      "import_date": "2026-09-10T16:56:27.135687",
+      "file_type": "RAW"
+    },
+    {
+      "id": "e5b3331b-2086-4919-9486-bafd6c8628cf",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0004.csv",
+      "size": 5923232,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0004.csv",
+      "import_date": "2026-09-10T16:56:30.938642",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "640ec3bb-5958-4aea-8a2e-24f7480e01d5",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0005.csv",
+      "size": 1073698532,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0005.csv",
+      "import_date": "2026-09-10T16:56:59.914865",
+      "file_type": "RAW"
+    },
+    {
+      "id": "bda18891-dac0-405f-9858-a3fa3e280ffe",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0005.csv",
+      "size": 5927177,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0005.csv",
+      "import_date": "2026-09-10T16:57:03.676406",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "9c33e8ee-2a0c-43c8-950c-541e280074b5",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0006.csv",
+      "size": 1073701311,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0006.csv",
+      "import_date": "2026-09-10T16:57:29.359118",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9b091b99-0916-4edb-8e6a-5e5341e8cb65",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0006.csv",
+      "size": 5910510,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0006.csv",
+      "import_date": "2026-09-10T16:57:33.289266",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "25d00713-e0c5-43d3-bc3d-423346d3ed34",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0007.csv",
+      "size": 1073699995,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0007.csv",
+      "import_date": "2026-09-10T16:58:05.908580",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5114683c-d89b-46f2-b9ae-1007345ecd03",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0007.csv",
+      "size": 5928561,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0007.csv",
+      "import_date": "2026-09-10T16:58:07.749131",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a662bc01-2fc8-434e-a8f6-bcf18aa9e189",
+      "file_name": "skfu_three_phase_test_160000.raw.part_0008.csv",
+      "size": 380405352,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_160000.raw.part_0008.csv",
+      "import_date": "2026-09-10T16:58:17.343065",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a183669e-3c52-4e39-82e9-fe38f0316782",
+      "file_name": "skfu_three_phase_test_160000.markup.part_0008.csv",
+      "size": 2105070,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_160000.markup.part_0008.csv",
+      "import_date": "2026-09-10T16:58:19.848831",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e2fd33e3-4d40-4cab-a025-7ee10940cf02",
+      "file_name": "skfu_three_phase_test_40000.raw.part_0001.csv",
+      "size": 1075871876,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_40000.raw.part_0001.csv",
+      "import_date": "2026-09-10T16:58:44.596597",
+      "file_type": "RAW"
+    },
+    {
+      "id": "cb169029-0b2c-453d-91fb-a99282a3f44c",
+      "file_name": "skfu_three_phase_test_40000.markup.part_0001.csv",
+      "size": 5933254,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_40000.markup.part_0001.csv",
+      "import_date": "2026-09-10T16:58:48.220630",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "b4217790-4701-448a-8e74-daaafd80b4e9",
+      "file_name": "skfu_three_phase_test_40000.raw.part_0002.csv",
+      "size": 898204357,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_test_40000.raw.part_0002.csv",
+      "import_date": "2026-09-10T16:59:09.512489",
+      "file_type": "RAW"
+    },
+    {
+      "id": "9ea3965d-ee11-44fc-b83b-2be7a1aeba04",
+      "file_name": "skfu_three_phase_test_40000.markup.part_0002.csv",
+      "size": 4956824,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_test_40000.markup.part_0002.csv",
+      "import_date": "2026-09-10T16:59:24.695150",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "4d4e90bc-04df-4035-9011-11eeb7fc0075",
+      "file_name": "skfu_three_phase_validation_20000.raw.part_0001.csv",
+      "size": 987037667,
+      "s3_path": "RAW/2026/09/10/skfu_three_phase_validation_20000.raw.part_0001.csv",
+      "import_date": "2026-09-10T17:00:13.812379",
+      "file_type": "RAW"
+    },
+    {
+      "id": "eb57a159-17f7-4a82-b7a2-392b0ecae59d",
+      "file_name": "skfu_three_phase_validation_20000.markup.part_0001.csv",
+      "size": 5445039,
+      "s3_path": "LOADS/2026/09/10/skfu_three_phase_validation_20000.markup.part_0001.csv",
+      "import_date": "2026-09-10T17:00:17.658116",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d7572fac-e48d-4294-ae51-406b21915f53",
+      "file_name": "stft_mlp-skfu-train-dev_stft_mlp.e9f8e2ca.h5",
+      "size": 68032,
+      "s3_path": "H5/2026/09/14/stft_mlp-skfu-train-dev_stft_mlp.e9f8e2ca.h5",
+      "import_date": "2026-09-14T13:15:58.059629",
+      "file_type": "H5"
+    },
+    {
+      "id": "5932482e-9c80-415a-8544-990d15b8ce3e",
+      "file_name": "stft_mlp-skfu-train-dev.h5",
+      "size": 178760,
+      "s3_path": "H5/2026/09/14/stft_mlp-skfu-train-dev.h5",
+      "import_date": "2026-09-14T13:16:42.487474",
+      "file_type": "H5"
+    },
+    {
+      "id": "3f6893b1-5811-402e-9362-02a859685228",
+      "file_name": "tmpczwthhy7_quantized.h5",
+      "size": 202952,
+      "s3_path": "H5/2026/09/15/tmpczwthhy7_quantized.h5",
+      "import_date": "2026-09-15T08:40:38.277697",
+      "file_type": "H5"
+    },
+    {
+      "id": "2222aeab-0fbc-4112-8e7b-393957e68fcf",
+      "file_name": "model-36940f3b-2891-496f-9e30-070cf90e36a4-20260915-082625.zip",
+      "size": 15420,
+      "s3_path": "REPORT_ZIP/2026/09/15/model-36940f3b-2891-496f-9e30-070cf90e36a4-20260915-082625.zip",
+      "import_date": "2026-09-15T08:26:25.976800",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "ec62f1df-5647-4db5-b25f-083f497de1c3",
+      "file_name": "model-fc3f7245-5f5c-4db1-b0ff-e1a35fe2fd18-20260915-084118.zip",
+      "size": 477460,
+      "s3_path": "REPORT_ZIP/2026/09/15/model-fc3f7245-5f5c-4db1-b0ff-e1a35fe2fd18-20260915-084118.zip",
+      "import_date": "2026-09-15T08:41:18.732761",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "416bfebb-b2ea-45b2-b7ab-2e87055d32af",
+      "file_name": "step1.h5",
+      "size": 140736,
+      "s3_path": "H5/2026/09/18/step1_1.h5",
+      "import_date": "2026-09-18T09:16:36.088455",
+      "file_type": "H5"
+    },
+    {
+      "id": "5b1268f0-715c-4bab-b60f-fea74e981ce2",
+      "file_name": "stft-prev2026-pruned-step1.h5",
+      "size": 136576,
+      "s3_path": "H5/2026/09/18/stft-prev2026-pruned-step1.h5",
+      "import_date": "2026-09-18T12:05:52.345209",
+      "file_type": "H5"
+    },
+    {
+      "id": "30b767c6-f6c7-47de-85f7-1a789c9b41b7",
+      "file_name": "model-022c25db-232e-4182-90a2-bc8151bf098b-20260921-124954.zip",
+      "size": 137764,
+      "s3_path": "REPORT_ZIP/2026/09/21/model-022c25db-232e-4182-90a2-bc8151bf098b-20260921-124954.zip",
+      "import_date": "2026-09-21T12:49:55.393152",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "2f6df283-3910-41d8-8d61-e9fddee6b6d6",
+      "file_name": "tmp95db_puy_pruned.h5",
+      "size": 202952,
+      "s3_path": "H5/2026/09/21/tmp95db_puy_pruned.h5",
+      "import_date": "2026-09-21T14:01:18.691663",
+      "file_type": "H5"
+    },
+    {
+      "id": "58222710-63c1-4179-a4dc-3f453f8df387",
+      "file_name": "3Дпринтер.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/3Дпринтер.raw.csv",
+      "import_date": "2026-09-21T14:54:36.338496",
+      "file_type": "RAW"
+    },
+    {
+      "id": "b4a8149a-188e-4be6-b9bb-7168f52e31aa",
+      "file_name": "3Дпринтер.markup.csv",
+      "size": 2778,
+      "s3_path": "LOADS/2026/09/21/3Дпринтер.markup.csv",
+      "import_date": "2026-09-21T14:54:36.728928",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ad5b4cb7-4888-466b-a72d-3898caabb9a1",
+      "file_name": "3Дпринтер_подготовка.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/3Дпринтер_подготовка.raw.csv",
+      "import_date": "2026-09-21T14:54:37.156803",
+      "file_type": "RAW"
+    },
+    {
+      "id": "3d8aaa21-e416-4a39-8707-8be7029d10da",
+      "file_name": "3Дпринтер_подготовка.markup.csv",
+      "size": 3198,
+      "s3_path": "LOADS/2026/09/21/3Дпринтер_подготовка.markup.csv",
+      "import_date": "2026-09-21T14:54:37.390948",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "9cf196fa-ce99-455c-bd05-db4965df90cb",
+      "file_name": "Antminer_S19.raw.csv",
+      "size": 986268,
+      "s3_path": "RAW/2026/09/21/Antminer_S19.raw.csv",
+      "import_date": "2026-09-21T14:54:37.743421",
+      "file_type": "RAW"
+    },
+    {
+      "id": "090971cc-3406-4ad8-9a72-05461482d96b",
+      "file_name": "Antminer_S19.markup.csv",
+      "size": 2698,
+      "s3_path": "LOADS/2026/09/21/Antminer_S19.markup.csv",
+      "import_date": "2026-09-21T14:54:38.085210",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ecacee52-f68e-48a9-be63-7224a712ec77",
+      "file_name": "Antminer_S19i.raw.csv",
+      "size": 986267,
+      "s3_path": "RAW/2026/09/21/Antminer_S19i.raw.csv",
+      "import_date": "2026-09-21T14:54:38.556997",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5e8e9bac-ea10-4558-8e17-2450189ccc78",
+      "file_name": "Antminer_S19i.markup.csv",
+      "size": 2684,
+      "s3_path": "LOADS/2026/09/21/Antminer_S19i.markup.csv",
+      "import_date": "2026-09-21T14:54:38.854425",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "50deb70b-067a-4ea2-8160-88abf7acad4a",
+      "file_name": "Avalon_1240.raw.csv",
+      "size": 986266,
+      "s3_path": "RAW/2026/09/21/Avalon_1240.raw.csv",
+      "import_date": "2026-09-21T14:54:39.255607",
+      "file_type": "RAW"
+    },
+    {
+      "id": "a341927b-d2ec-412f-86c0-739334c4c0b8",
+      "file_name": "Avalon_1240.markup.csv",
+      "size": 2658,
+      "s3_path": "LOADS/2026/09/21/Avalon_1240.markup.csv",
+      "import_date": "2026-09-21T14:54:39.482326",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "2ffe2e39-99f0-4263-9b11-ba29487d6351",
+      "file_name": "Miner_3Ph.raw.csv",
+      "size": 986334,
+      "s3_path": "RAW/2026/09/21/Miner_3Ph.raw.csv",
+      "import_date": "2026-09-21T14:54:39.741553",
+      "file_type": "RAW"
+    },
+    {
+      "id": "02bd5b0e-a02e-41a5-a44b-d7cc2a44c134",
+      "file_name": "Miner_3Ph.markup.csv",
+      "size": 2618,
+      "s3_path": "LOADS/2026/09/21/Miner_3Ph.markup.csv",
+      "import_date": "2026-09-21T14:54:39.852745",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ac086a22-b27d-4e3f-89d3-f8292137f015",
+      "file_name": "Wi-Fi.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Wi-Fi.raw.csv",
+      "import_date": "2026-09-21T14:54:40.052648",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8b8d68c6-0c14-400c-b52d-8a2b99d1239d",
+      "file_name": "Wi-Fi.markup.csv",
+      "size": 2538,
+      "s3_path": "LOADS/2026/09/21/Wi-Fi.markup.csv",
+      "import_date": "2026-09-21T14:54:40.237569",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7401bcef-c40f-454e-a989-70adc27243b7",
+      "file_name": "БегДорожка.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/БегДорожка.raw.csv",
+      "import_date": "2026-09-21T14:54:40.449601",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7d1a5b2b-058b-453e-b718-370c811a5d1e",
+      "file_name": "БегДорожка.markup.csv",
+      "size": 2838,
+      "s3_path": "LOADS/2026/09/21/БегДорожка.markup.csv",
+      "import_date": "2026-09-21T14:54:40.587405",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "77743f7f-dcc5-41e5-9727-2394f19a06df",
+      "file_name": "БегДорожка_1.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/БегДорожка_1.raw.csv",
+      "import_date": "2026-09-21T14:54:40.876345",
+      "file_type": "RAW"
+    },
+    {
+      "id": "edabea48-e567-43fe-859e-0597d3bd93ca",
+      "file_name": "БегДорожка_1.markup.csv",
+      "size": 2878,
+      "s3_path": "LOADS/2026/09/21/БегДорожка_1.markup.csv",
+      "import_date": "2026-09-21T14:54:41.071940",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "78bb576e-4702-4de7-8143-654c0109c797",
+      "file_name": "БегДорожкаМакс.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/БегДорожкаМакс.raw.csv",
+      "import_date": "2026-09-21T14:54:41.310155",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6f51cd69-49fe-4dd7-b6e9-35f869a40546",
+      "file_name": "БегДорожкаМакс.markup.csv",
+      "size": 2998,
+      "s3_path": "LOADS/2026/09/21/БегДорожкаМакс.markup.csv",
+      "import_date": "2026-09-21T14:54:41.447830",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "82da32b9-f393-4a23-ad8c-fe0aef5de7bd",
+      "file_name": "Блендер.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Блендер.raw.csv",
+      "import_date": "2026-09-21T14:54:41.713862",
+      "file_type": "RAW"
+    },
+    {
+      "id": "cc210b59-a6ed-42a7-9139-de277110bb30",
+      "file_name": "Блендер.markup.csv",
+      "size": 2718,
+      "s3_path": "LOADS/2026/09/21/Блендер.markup.csv",
+      "import_date": "2026-09-21T14:54:41.886488",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "98ad605c-e2b8-421f-970d-0a0cfef547fe",
+      "file_name": "Блендермин.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Блендермин.raw.csv",
+      "import_date": "2026-09-21T14:54:42.127025",
+      "file_type": "RAW"
+    },
+    {
+      "id": "811990f4-aeb5-4eec-bab3-10163fc9d38e",
+      "file_name": "Блендермин.markup.csv",
+      "size": 2838,
+      "s3_path": "LOADS/2026/09/21/Блендермин.markup.csv",
+      "import_date": "2026-09-21T14:54:42.266293",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "dd7fe7b1-67b1-4f7b-9de2-8acdd7c67ef2",
+      "file_name": "Блок_ПКВКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Блок_ПКВКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:42.561478",
+      "file_type": "RAW"
+    },
+    {
+      "id": "8d77cdd5-9551-4a2b-a2e9-1bc408e104c3",
+      "file_name": "Блок_ПКВКЛ.markup.csv",
+      "size": 2818,
+      "s3_path": "LOADS/2026/09/21/Блок_ПКВКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:42.769527",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "91209059-9fba-4044-8f14-21cd1159ad84",
+      "file_name": "Блок_ПКВЫКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Блок_ПКВЫКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:43.037245",
+      "file_type": "RAW"
+    },
+    {
+      "id": "725aeb90-f16e-415d-b84c-9f7acc3bc5eb",
+      "file_name": "Блок_ПКВЫКЛ.markup.csv",
+      "size": 2858,
+      "s3_path": "LOADS/2026/09/21/Блок_ПКВЫКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:43.259031",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d8655c2b-8ce6-4052-8f13-b71885e2a387",
+      "file_name": "Динамики_ВКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Динамики_ВКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:43.562967",
+      "file_type": "RAW"
+    },
+    {
+      "id": "4223b0b5-b319-43bc-a7c4-63788cf2617e",
+      "file_name": "Динамики_ВКЛ.markup.csv",
+      "size": 2898,
+      "s3_path": "LOADS/2026/09/21/Динамики_ВКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:43.762095",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ad3ef1b9-9271-42d8-bd58-8e2df09bd352",
+      "file_name": "Динамики_ВЫКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Динамики_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:44.105573",
+      "file_type": "RAW"
+    },
+    {
+      "id": "18e452e7-5506-4038-9842-77e6bb76926f",
+      "file_name": "Динамики_ВЫКЛ.markup.csv",
+      "size": 2938,
+      "s3_path": "LOADS/2026/09/21/Динамики_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:44.867103",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1db68468-ebf5-4dc9-9060-5336f8c411d4",
+      "file_name": "ИБП_online.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ИБП_online.raw.csv",
+      "import_date": "2026-09-21T14:54:45.064969",
+      "file_type": "RAW"
+    },
+    {
+      "id": "35489d0d-23ae-46a7-bde7-970d5df0abba",
+      "file_name": "ИБП_online.markup.csv",
+      "size": 2458,
+      "s3_path": "LOADS/2026/09/21/ИБП_online.markup.csv",
+      "import_date": "2026-09-21T14:54:45.207446",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "095ada75-bc0b-4819-955f-7a413ea062c1",
+      "file_name": "Игровой_ПК.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Игровой_ПК.raw.csv",
+      "import_date": "2026-09-21T14:54:45.452554",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7e4a485e-3952-4353-aac3-8180743661a5",
+      "file_name": "Игровой_ПК.markup.csv",
+      "size": 2818,
+      "s3_path": "LOADS/2026/09/21/Игровой_ПК.markup.csv",
+      "import_date": "2026-09-21T14:54:45.608929",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "143b5f49-49d3-48d9-9586-872c9e9ec88f",
+      "file_name": "Кондиц._обогрев.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Кондиц._обогрев.raw.csv",
+      "import_date": "2026-09-21T14:54:45.870719",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ce98d748-b8d4-4753-b2ea-79ac6e870a64",
+      "file_name": "Кондиц._обогрев.markup.csv",
+      "size": 2998,
+      "s3_path": "LOADS/2026/09/21/Кондиц._обогрев.markup.csv",
+      "import_date": "2026-09-21T14:54:46.031548",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "41b5ab29-94e5-44e1-b739-919601695b42",
+      "file_name": "Кофеварка.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Кофеварка.raw.csv",
+      "import_date": "2026-09-21T14:54:46.335095",
+      "file_type": "RAW"
+    },
+    {
+      "id": "84cdc6c4-49f8-45cb-979e-dbf804f39238",
+      "file_name": "Кофеварка.markup.csv",
+      "size": 2798,
+      "s3_path": "LOADS/2026/09/21/Кофеварка.markup.csv",
+      "import_date": "2026-09-21T14:54:46.532330",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "104b998b-0181-437b-89e4-91cb66506654",
+      "file_name": "Кофеварка_насос.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Кофеварка_насос.raw.csv",
+      "import_date": "2026-09-21T14:54:46.893316",
+      "file_type": "RAW"
+    },
+    {
+      "id": "dfdb023b-287b-432e-b51d-abab30692365",
+      "file_name": "Кофемолка.raw.csv",
+      "size": 986246,
+      "s3_path": "RAW/2026/09/21/Кофемолка.raw.csv",
+      "import_date": "2026-09-21T14:54:47.278649",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6958cdf6-90d0-423c-884a-cac28c8bfbc5",
+      "file_name": "Лампа.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Лампа.raw.csv",
+      "import_date": "2026-09-21T14:54:47.714631",
+      "file_type": "RAW"
+    },
+    {
+      "id": "e51630c9-4953-4d8a-a88c-470e8ab6df9c",
+      "file_name": "Массажер.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Массажер.raw.csv",
+      "import_date": "2026-09-21T14:54:48.044690",
+      "file_type": "RAW"
+    },
+    {
+      "id": "14ec5571-2c68-4d8c-9e8b-c95c3d9d7724",
+      "file_name": "Монитор_ВКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Монитор_ВКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:48.379408",
+      "file_type": "RAW"
+    },
+    {
+      "id": "53f513bf-dec5-443f-a195-614a8f6b9c2e",
+      "file_name": "Монитор_ВЫКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Монитор_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:48.802270",
+      "file_type": "RAW"
+    },
+    {
+      "id": "46e56607-e91b-4263-a7ed-f3beb7a45b80",
+      "file_name": "Нагреватель.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Нагреватель.raw.csv",
+      "import_date": "2026-09-21T14:54:49.354923",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c0d31472-175a-4326-b4c2-aaf8220eb83f",
+      "file_name": "Ноутбук_ВКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Ноутбук_ВКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:49.883701",
+      "file_type": "RAW"
+    },
+    {
+      "id": "f52a960c-c617-4a62-be6f-1edefa0cb1cc",
+      "file_name": "Ноутбук_ВЫКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Ноутбук_ВЫКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:50.380388",
+      "file_type": "RAW"
+    },
+    {
+      "id": "14ff76f9-8a48-49b1-8738-82a47223ea20",
+      "file_name": "Обогреватель.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Обогреватель.raw.csv",
+      "import_date": "2026-09-21T14:54:51.104727",
+      "file_type": "RAW"
+    },
+    {
+      "id": "63bf5bcf-7857-4a9a-a6b5-6565adc9b92a",
+      "file_name": "ПК.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ПК.raw.csv",
+      "import_date": "2026-09-21T14:54:51.532439",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5753a3c4-23f4-4cc4-9170-a8d632ae2231",
+      "file_name": "ПК_Idle.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ПК_Idle.raw.csv",
+      "import_date": "2026-09-21T14:54:51.880574",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7637c329-00eb-45bd-990e-d6ed3c9d73f6",
+      "file_name": "Пистолет.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Пистолет.raw.csv",
+      "import_date": "2026-09-21T14:54:52.459301",
+      "file_type": "RAW"
+    },
+    {
+      "id": "076faeed-44a9-4bb0-aada-063ad566b7ac",
+      "file_name": "Принтер.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Принтер.raw.csv",
+      "import_date": "2026-09-21T14:54:52.844939",
+      "file_type": "RAW"
+    },
+    {
+      "id": "21e14c31-fac3-42cd-a109-edba264f00b9",
+      "file_name": "Принтер_РАБОТА.raw.csv",
+      "size": 986232,
+      "s3_path": "RAW/2026/09/21/Принтер_РАБОТА.raw.csv",
+      "import_date": "2026-09-21T14:54:53.170624",
+      "file_type": "RAW"
+    },
+    {
+      "id": "e137b0b7-4c50-449c-948c-db04a64222c7",
+      "file_name": "Пылесос.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Пылесос.raw.csv",
+      "import_date": "2026-09-21T14:54:53.576966",
+      "file_type": "RAW"
+    },
+    {
+      "id": "6fe38564-3ec1-427c-b2df-665d0eb04a48",
+      "file_name": "Стиралка_ОЖИДАНИЕ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Стиралка_ОЖИДАНИЕ.raw.csv",
+      "import_date": "2026-09-21T14:54:53.888438",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d7f5ddb8-6c5a-48aa-ae6d-8b91d6d7ac24",
+      "file_name": "Стиралка_ОТЖИМ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Стиралка_ОТЖИМ.raw.csv",
+      "import_date": "2026-09-21T14:54:54.195110",
+      "file_type": "RAW"
+    },
+    {
+      "id": "4fec0f82-8546-459b-8378-80b11a2ab50e",
+      "file_name": "ТВ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ТВ.raw.csv",
+      "import_date": "2026-09-21T14:54:54.517178",
+      "file_type": "RAW"
+    },
+    {
+      "id": "20af091f-7ac2-403e-8612-ea15bf3b57de",
+      "file_name": "ТВ_ВКЛ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ТВ_ВКЛ.raw.csv",
+      "import_date": "2026-09-21T14:54:54.966999",
+      "file_type": "RAW"
+    },
+    {
+      "id": "e315da98-45b7-481c-9598-090a85e1bb73",
+      "file_name": "ТВ_ОЖИДАНИЕ.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ТВ_ОЖИДАНИЕ.raw.csv",
+      "import_date": "2026-09-21T14:54:55.553392",
+      "file_type": "RAW"
+    },
+    {
+      "id": "7f4d43cb-b14d-4b90-827e-b33f0c7d14c5",
+      "file_name": "ТВ_приставка.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/ТВ_приставка.raw.csv",
+      "import_date": "2026-09-21T14:54:56.056314",
+      "file_type": "RAW"
+    },
+    {
+      "id": "88c44a30-5dfd-403e-9a53-e7752ee30b79",
+      "file_name": "ТП-10-04.raw.csv",
+      "size": 986448,
+      "s3_path": "RAW/2026/09/21/ТП-10-04.raw.csv",
+      "import_date": "2026-09-21T14:54:56.569622",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d59a5bf1-9ad6-48af-9dda-de6a27b8b4d5",
+      "file_name": "ТП-10-0_4.raw.csv",
+      "size": 986448,
+      "s3_path": "RAW/2026/09/21/ТП-10-0_4.raw.csv",
+      "import_date": "2026-09-21T14:54:57.088227",
+      "file_type": "RAW"
+    },
+    {
+      "id": "68929556-50a9-4a6b-88e8-0aa67f35cd66",
+      "file_name": "Тостер.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Тостер.raw.csv",
+      "import_date": "2026-09-21T14:54:57.668895",
+      "file_type": "RAW"
+    },
+    {
+      "id": "32474538-b083-4777-a6a2-d451937a9965",
+      "file_name": "Тостермин.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Тостермин.raw.csv",
+      "import_date": "2026-09-21T14:54:58.211353",
+      "file_type": "RAW"
+    },
+    {
+      "id": "de6477fc-7a77-43af-ab3d-2b226c332596",
+      "file_name": "Усилитель.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Усилитель.raw.csv",
+      "import_date": "2026-09-21T14:54:58.651400",
+      "file_type": "RAW"
+    },
+    {
+      "id": "ffdd77f4-7e41-4358-adec-79cb411fc752",
+      "file_name": "Утюг.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Утюг.raw.csv",
+      "import_date": "2026-09-21T14:54:59.018769",
+      "file_type": "RAW"
+    },
+    {
+      "id": "dca61fed-6eaa-4ea8-90e5-27d0a42d0895",
+      "file_name": "Холодильник.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Холодильник.raw.csv",
+      "import_date": "2026-09-21T14:54:59.459126",
+      "file_type": "RAW"
+    },
+    {
+      "id": "5af417a6-1470-443c-8e71-a97ad8ada3d0",
+      "file_name": "Чайник_Braun.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Чайник_Braun.raw.csv",
+      "import_date": "2026-09-21T14:55:00.006240",
+      "file_type": "RAW"
+    },
+    {
+      "id": "44e49eb3-89ae-40f9-8242-aafca7bdc0bf",
+      "file_name": "Часы.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/Часы.raw.csv",
+      "import_date": "2026-09-21T14:55:00.510525",
+      "file_type": "RAW"
+    },
+    {
+      "id": "d9f55a94-8edd-401a-9183-bd7f988d6cde",
+      "file_name": "микроволновка.raw.csv",
+      "size": 986248,
+      "s3_path": "RAW/2026/09/21/микроволновка.raw.csv",
+      "import_date": "2026-09-21T14:55:00.995162",
+      "file_type": "RAW"
+    },
+    {
+      "id": "c98ff87c-63d3-4cc7-bb68-4ffb2455ad3a",
+      "file_name": "Кофеварка_насос.markup.csv",
+      "size": 3018,
+      "s3_path": "LOADS/2026/09/21/Кофеварка_насос.markup.csv",
+      "import_date": "2026-09-21T14:54:47.059512",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1ccb98be-33e0-4b55-aedd-dff949e95a26",
+      "file_name": "Кофемолка.markup.csv",
+      "size": 2798,
+      "s3_path": "LOADS/2026/09/21/Кофемолка.markup.csv",
+      "import_date": "2026-09-21T14:54:47.408998",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "63999979-42e4-4bc7-8281-a18d2baa565d",
+      "file_name": "Лампа.markup.csv",
+      "size": 2638,
+      "s3_path": "LOADS/2026/09/21/Лампа.markup.csv",
+      "import_date": "2026-09-21T14:54:47.865325",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "93818ebf-4174-40d6-a7ba-33393278db36",
+      "file_name": "Массажер.markup.csv",
+      "size": 2758,
+      "s3_path": "LOADS/2026/09/21/Массажер.markup.csv",
+      "import_date": "2026-09-21T14:54:48.163938",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7261e005-79a7-48e4-ae2f-1baa890290d3",
+      "file_name": "Монитор_ВКЛ.markup.csv",
+      "size": 2858,
+      "s3_path": "LOADS/2026/09/21/Монитор_ВКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:48.515930",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "8be76bce-d2ca-4963-87d5-3dd1af0e92fc",
+      "file_name": "Монитор_ВЫКЛ.markup.csv",
+      "size": 2898,
+      "s3_path": "LOADS/2026/09/21/Монитор_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:49.036394",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "353b1b02-bfab-4cf4-aff7-f876c6514954",
+      "file_name": "Нагреватель.markup.csv",
+      "size": 2878,
+      "s3_path": "LOADS/2026/09/21/Нагреватель.markup.csv",
+      "import_date": "2026-09-21T14:54:49.537428",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "2385797c-c5c6-49e1-9b33-d37165474722",
+      "file_name": "Ноутбук_ВКЛ.markup.csv",
+      "size": 2858,
+      "s3_path": "LOADS/2026/09/21/Ноутбук_ВКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:50.151881",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d7652d76-c2b3-4434-b1f7-6be2a0eb390d",
+      "file_name": "Ноутбук_ВЫКЛ.markup.csv",
+      "size": 2898,
+      "s3_path": "LOADS/2026/09/21/Ноутбук_ВЫКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:50.737098",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e933a331-d3ed-408a-8fb2-2b6e9941e1a8",
+      "file_name": "Обогреватель.markup.csv",
+      "size": 2918,
+      "s3_path": "LOADS/2026/09/21/Обогреватель.markup.csv",
+      "import_date": "2026-09-21T14:54:51.274085",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7b588b9a-a955-4fde-a3f4-8ff6262e4560",
+      "file_name": "ПК.markup.csv",
+      "size": 2518,
+      "s3_path": "LOADS/2026/09/21/ПК.markup.csv",
+      "import_date": "2026-09-21T14:54:51.673554",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "41d22316-c8bd-4fc8-ac8b-66f275b15aaf",
+      "file_name": "ПК_Idle.markup.csv",
+      "size": 2418,
+      "s3_path": "LOADS/2026/09/21/ПК_Idle.markup.csv",
+      "import_date": "2026-09-21T14:54:52.084967",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "1bdd767e-2825-4cfa-b642-eb0682f2426e",
+      "file_name": "Пистолет.markup.csv",
+      "size": 2758,
+      "s3_path": "LOADS/2026/09/21/Пистолет.markup.csv",
+      "import_date": "2026-09-21T14:54:52.621085",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "72157a33-3a55-4e71-a74a-399d5ae7d43a",
+      "file_name": "Принтер.markup.csv",
+      "size": 2718,
+      "s3_path": "LOADS/2026/09/21/Принтер.markup.csv",
+      "import_date": "2026-09-21T14:54:52.979960",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "d63486e2-824f-4bdd-9c04-4956859aafc5",
+      "file_name": "Принтер_РАБОТА.markup.csv",
+      "size": 2978,
+      "s3_path": "LOADS/2026/09/21/Принтер_РАБОТА.markup.csv",
+      "import_date": "2026-09-21T14:54:53.317716",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "0105e1d7-ecb6-4502-b09e-e5b26ca49f3c",
+      "file_name": "Пылесос.markup.csv",
+      "size": 2718,
+      "s3_path": "LOADS/2026/09/21/Пылесос.markup.csv",
+      "import_date": "2026-09-21T14:54:53.708964",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7e1ed069-4f05-4d7e-902f-531c98fe7bd9",
+      "file_name": "Стиралка_ОЖИДАНИЕ.markup.csv",
+      "size": 3098,
+      "s3_path": "LOADS/2026/09/21/Стиралка_ОЖИДАНИЕ.markup.csv",
+      "import_date": "2026-09-21T14:54:54.017059",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "64a0d2a0-868b-44cb-a38e-229420739b48",
+      "file_name": "Стиралка_ОТЖИМ.markup.csv",
+      "size": 2978,
+      "s3_path": "LOADS/2026/09/21/Стиралка_ОТЖИМ.markup.csv",
+      "import_date": "2026-09-21T14:54:54.334896",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "ba5058f5-0a61-4a09-9daa-308bb5deb29b",
+      "file_name": "ТВ.markup.csv",
+      "size": 2518,
+      "s3_path": "LOADS/2026/09/21/ТВ.markup.csv",
+      "import_date": "2026-09-21T14:54:54.668591",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "f3769c57-f22a-4bb8-a191-e5178cead2a3",
+      "file_name": "ТВ_ВКЛ.markup.csv",
+      "size": 2658,
+      "s3_path": "LOADS/2026/09/21/ТВ_ВКЛ.markup.csv",
+      "import_date": "2026-09-21T14:54:55.157249",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "58b97cc9-72c8-47bd-930e-4b373d835a02",
+      "file_name": "ТВ_ОЖИДАНИЕ.markup.csv",
+      "size": 2858,
+      "s3_path": "LOADS/2026/09/21/ТВ_ОЖИДАНИЕ.markup.csv",
+      "import_date": "2026-09-21T14:54:55.704653",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "715ed05f-87be-46b2-b28c-7c5214681ea0",
+      "file_name": "ТВ_приставка.markup.csv",
+      "size": 2898,
+      "s3_path": "LOADS/2026/09/21/ТВ_приставка.markup.csv",
+      "import_date": "2026-09-21T14:54:56.219308",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "83684de1-e712-44d5-801e-5d94c82bb13e",
+      "file_name": "ТП-10-04.markup.csv",
+      "size": 2638,
+      "s3_path": "LOADS/2026/09/21/ТП-10-04.markup.csv",
+      "import_date": "2026-09-21T14:54:56.772745",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "faf58808-d4c3-47d6-a629-7abcd4dda68c",
+      "file_name": "ТП-10-0_4.markup.csv",
+      "size": 2658,
+      "s3_path": "LOADS/2026/09/21/ТП-10-0_4.markup.csv",
+      "import_date": "2026-09-21T14:54:57.315321",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "9bf9ae23-5b90-43c8-aeb5-d36dab479683",
+      "file_name": "Тостер.markup.csv",
+      "size": 2678,
+      "s3_path": "LOADS/2026/09/21/Тостер.markup.csv",
+      "import_date": "2026-09-21T14:54:57.851707",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "9090852e-6454-466b-bcff-520181315c4f",
+      "file_name": "Тостермин.markup.csv",
+      "size": 2798,
+      "s3_path": "LOADS/2026/09/21/Тостермин.markup.csv",
+      "import_date": "2026-09-21T14:54:58.405576",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "f3f3197d-528f-4c3e-a502-412d78e8c948",
+      "file_name": "Усилитель.markup.csv",
+      "size": 2798,
+      "s3_path": "LOADS/2026/09/21/Усилитель.markup.csv",
+      "import_date": "2026-09-21T14:54:58.787098",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "657d5d15-7f95-4517-aff1-ee9be7170795",
+      "file_name": "Утюг.markup.csv",
+      "size": 2598,
+      "s3_path": "LOADS/2026/09/21/Утюг.markup.csv",
+      "import_date": "2026-09-21T14:54:59.176375",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "7c709b19-edb9-4a03-8a87-6f8676afea04",
+      "file_name": "Холодильник.markup.csv",
+      "size": 2830,
+      "s3_path": "LOADS/2026/09/21/Холодильник.markup.csv",
+      "import_date": "2026-09-21T14:54:59.626126",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "a174d57d-4892-4b01-977e-844a0cec5555",
+      "file_name": "Чайник_Braun.markup.csv",
+      "size": 2798,
+      "s3_path": "LOADS/2026/09/21/Чайник_Braun.markup.csv",
+      "import_date": "2026-09-21T14:55:00.179195",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "81e88f0f-5127-4898-a64d-3d94c53eaadb",
+      "file_name": "Часы.markup.csv",
+      "size": 2598,
+      "s3_path": "LOADS/2026/09/21/Часы.markup.csv",
+      "import_date": "2026-09-21T14:55:00.696980",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "e6e73fcb-6213-4062-be54-3749b53a46d8",
+      "file_name": "микроволновка.markup.csv",
+      "size": 2958,
+      "s3_path": "LOADS/2026/09/21/микроволновка.markup.csv",
+      "import_date": "2026-09-21T14:55:01.260947",
+      "file_type": "LOADS"
+    },
+    {
+      "id": "6357debe-e4da-4e52-a875-d0eb2c206d7f",
+      "file_name": "793263e1-fdee-4bf5-8c2f-8bca48570512.h5",
+      "size": 178760,
+      "s3_path": "H5/2026/09/21/793263e1-fdee-4bf5-8c2f-8bca48570512.h5",
+      "import_date": "2026-09-21T15:10:26.555947",
+      "file_type": "H5"
+    },
+    {
+      "id": "35dfa150-1f63-4bd9-a882-0caddfe58bf5",
+      "file_name": "model-bada7647-afe7-487f-aa14-11b044f04638-20260921-151426.zip",
+      "size": 15425,
+      "s3_path": "REPORT_ZIP/2026/09/21/model-bada7647-afe7-487f-aa14-11b044f04638-20260921-151426.zip",
+      "import_date": "2026-09-21T15:14:27.109448",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "f0d33cfa-d69f-468a-8842-a15fd25550ee",
+      "file_name": "step1_99.h5",
+      "size": 177728,
+      "s3_path": "H5/2026/09/21/step1_99.h5",
+      "import_date": "2026-09-21T16:04:49.643182",
+      "file_type": "H5"
+    },
+    {
+      "id": "74e2b53b-39b9-4033-bd61-c07fcf98aca2",
+      "file_name": "stft9984-pruned-step1.h5",
+      "size": 173632,
+      "s3_path": "H5/2026/09/21/stft9984-pruned-step1.h5",
+      "import_date": "2026-09-21T16:06:21.947499",
+      "file_type": "H5"
+    },
+    {
+      "id": "46e71529-fbbc-4436-a446-29d1fa780189",
+      "file_name": "step2_99.h5",
+      "size": 97280,
+      "s3_path": "H5/2026/09/21/step2_99.h5",
+      "import_date": "2026-09-21T22:06:25.474190",
+      "file_type": "H5"
+    },
+    {
+      "id": "10370af9-77c9-40d2-816f-30aa29b6da1d",
+      "file_name": "stft9984-qat-step2.h5",
+      "size": 97288,
+      "s3_path": "H5/2026/09/22/stft9984-qat-step2.h5",
+      "import_date": "2026-09-21T22:07:14.814062",
+      "file_type": "H5"
+    },
+    {
+      "id": "a9e827aa-f74d-45c3-9b35-78eb1cfc6488",
+      "file_name": "inference-bada7647-afe7-487f-aa14-11b044f04638-20260922-101111.zip",
+      "size": 55989,
+      "s3_path": "REPORT_ZIP/2026/09/22/inference-bada7647-afe7-487f-aa14-11b044f04638-20260922-101111.zip",
+      "import_date": "2026-09-22T10:11:11.153988",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "0977e578-3507-49d7-9b36-0a465d02fa16",
+      "file_name": "step2.h5",
+      "size": 165848,
+      "s3_path": "H5/2026/09/22/step2.h5",
+      "import_date": "2026-09-22T20:12:12.946493",
+      "file_type": "H5"
+    },
+    {
+      "id": "83fbe860-327c-405f-a333-d292a87b6b85",
+      "file_name": "stft-prev2026-qat-step2.h5",
+      "size": 165848,
+      "s3_path": "H5/2026/09/23/stft-prev2026-qat-step2.h5",
+      "import_date": "2026-09-22T20:13:43.508380",
+      "file_type": "H5"
+    },
+    {
+      "id": "9ea50003-bd49-464a-b7fe-479b5f71ad53",
+      "file_name": "tiny_pruned_export.h5",
+      "size": 67984,
+      "s3_path": "H5/2026/09/23/tiny_pruned_export.h5",
+      "import_date": "2026-09-23T05:27:11.961799",
+      "file_type": "H5"
+    },
+    {
+      "id": "954ec422-ec97-480b-aa35-a2f125c90358",
+      "file_name": "model-92f3cc34-1003-41cb-b74b-eba471727653-20260923-052220.zip",
+      "size": 475983,
+      "s3_path": "REPORT_ZIP/2026/09/23/model-92f3cc34-1003-41cb-b74b-eba471727653-20260923-052220.zip",
+      "import_date": "2026-09-23T05:22:20.865490",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "13fc6618-1725-4c05-8121-4bb800c10c1b",
+      "file_name": "model-92f3cc34-1003-41cb-b74b-eba471727653-20260923-054439.zip",
+      "size": 4469,
+      "s3_path": "REPORT_ZIP/2026/09/23/model-92f3cc34-1003-41cb-b74b-eba471727653-20260923-054439.zip",
+      "import_date": "2026-09-23T05:44:40.137797",
+      "file_type": "REPORT_ZIP"
+    },
+    {
+      "id": "344649e0-68cd-49ab-b4ce-d3e9c1ffa664",
+      "file_name": "stftspike-step1.h5",
+      "size": 67984,
+      "s3_path": "H5/2026/09/23/stftspike-step1.h5",
+      "import_date": "2026-09-23T05:45:25.757969",
+      "file_type": "H5"
+    },
+    {
+      "id": "5ed06e2c-d0ca-46c6-8033-0029fe6ed40d",
+      "file_name": "ft1_qat_export.h5",
+      "size": 97280,
+      "s3_path": "H5/2026/09/23/ft1_qat_export.h5",
+      "import_date": "2026-09-23T05:54:34.398559",
+      "file_type": "H5"
+    },
+    {
+      "id": "9a4f12ef-8982-425c-85e1-a94dbf88fdb3",
+      "file_name": "stftspike-qat-step2.h5",
+      "size": 97288,
+      "s3_path": "H5/2026/09/23/stftspike-qat-step2.h5",
+      "import_date": "2026-09-23T05:54:37.229081",
+      "file_type": "H5"
+    }
+  ],
+  "count": 388
+}
