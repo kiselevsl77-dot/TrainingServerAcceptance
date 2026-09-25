@@ -144,7 +144,12 @@ def text_of(base: str, route: str) -> str:
 
 def test_vertical_slice_through_live_server(pult: str) -> None:
     """Процесс испытаний проходит через пульт: от сессии до протокола и выгрузки."""
-    assert "Пульт испытаний" in text_of(pult, "/")
+    with urllib.request.urlopen(f"{pult}/") as page:
+        assert page.headers["Content-Type"].startswith("text/html")
+        assert page.headers["Content-Disposition"] is None, (
+            "страница интерфейса должна открываться в браузере, а не скачиваться"
+        )
+        assert "Пульт испытаний" in page.read().decode("utf-8")
 
     state = api(pult, "/api/state")
     assert state["stand"]["configured"] is True

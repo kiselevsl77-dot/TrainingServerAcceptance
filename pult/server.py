@@ -12,7 +12,10 @@ view-моделями (`pult/view.py`), а браузер только рису�
 * **прогон не параллелен**: тяжёлые действия («Следующая», «Пачка tech») держат
   замок `_run_lock`, поэтому случайный двойной клик не отправляет проверку дважды;
 * **статику отдаём с проверкой пути**: запрос не может выйти за `pult/web`
-  (`Path.resolve()` + проверка родителя), даже если в URL пришли `..`.
+  (`Path.resolve()` + проверка родителя), даже если в URL пришли `..`;
+* **статика — для отображения, а не для скачивания**: страница и её подресурсы уходят
+  без `Content-Disposition` (у `Raw` признак `download`), `attachment` остаётся только
+  у выгрузок вроде CSV протокола — иначе браузер скачивает `index.html` вместо показа.
 
 Запуск: `python -m pult.server` (по умолчанию `http://127.0.0.1:8502`).
 """
@@ -103,11 +106,39 @@ class ApiError(Exception):
 
 @dataclass
 class Raw:
-    """Ответ не в JSON: CSV-выгрузка или файл отчёта."""
+    """Ответ не в JSON: файл интерфейса, CSV-выгрузка или файл отчёта.
 
-    text: str
-    content_type: str = "text/csv; charset=utf-8"
+    Важное различие: `download=True` — файл отдаётся **вложением**
+    (`Content-Disposition: attachment`), так уходит только выгрузка (CSV протокола).
+    Статика интерфейса (`index.html`, `app.js`, `styles.css`) отдаётся без этого
+    заголовка: иначе браузер скачивает страницу вместо того, чтобы её показать,
+    а подресурсы (стили, скрипт) не применяются.
+
+    Тело хранится **байтами**: статика — это файлы, и не всякий из них текст
+    (`favicon.ico`, PNG, шрифты), поэтому чтение «как текста» здесь неуместно.
+    """
+
+    data: bytes
+    content_type: str = "text/plain; charset=utf-8"
     filename: str = ""
+    download: bool = False
+
+    @property
+    def text(self) -> str:
+        """Тело как текст UTF-8: удобно для CSV, HTML и проверок в тестах."""
+        return self.data.decode("utf-8")
+
+    @classmethod
+    def of_text(
+        cls,
+        text: str,
+        *,
+        content_type: str = "text/plain; charset=utf-8",
+        filename: str = "",
+        download: bool = False,
+    ) -> Raw:
+        """Текстовый ответ: кодирование в UTF-8 собрано в одном месте."""
+        return cls(text.encode("utf-8"), content_type, filename, download)
 
 
 @dataclass
@@ -145,7 +176,11 @@ class PultApp:
         return self.static(path)
 
     def static(self, path: str) -> Raw:
-        """Файл интерфейса из `pult/web`; выйти за пределы каталога нельзя."""
+        """Файл интерфейса из `pult/web`; выйти за пределы каталога нельзя.
+
+        Отдаётся файлом для **отображения** (`download=False`): страница и её
+        подресурсы должны открыться в браузере, а не скачаться (`IR-P-4`).
+        """
         root = Path(self.web_dir or Path.cwd()).resolve()
         relative = unquote(path).lstrip("/") or "index.html"
         candidate = (root / relative).resolve()
@@ -156,11 +191,7 @@ class PultApp:
         if not candidate.is_file():
             raise ApiError(f"файл {relative} не найден", kind="http", status=404)
         mime = MIME_TYPES.get(candidate.suffix.lower(), "application/octet-stream")
-        return Raw(
-            candidate.read_text(encoding="utf-8"),
-            content_type=mime,
-            filename=candidate.name,
-        )
+        return Raw(candidate.read_bytes(), content_type=mime)
 
     # -- общие помощники -----------------------------------------------------
     def session(self) -> TestSession:
@@ -910,7 +941,12 @@ class PultApp:
             query=str(query.get("q") or ""),
         )
         if str(query.get("format") or "").lower() == "csv":
-            return Raw(view.protocol_csv(filtered), filename="protocol.csv")
+            return Raw.of_text(
+                view.protocol_csv(filtered),
+                content_type="text/csv; charset=utf-8",
+                filename="protocol.csv",
+                download=True,
+            )
         return {
             "session": {"id": session.session_id, "status": session.status},
             "summary": view.protocol_summary(session, programme),
@@ -1005,16 +1041,20 @@ class PultHandler(BaseHTTPRequestHandler):
         return {str(key): value for key, value in data.items()}
 
     def _ok(self, result: Any) -> None:
-        """Ответ: `Raw` отдаётся как есть, остальное — в конверте `{ok, data}`."""
+        """Ответ: `Raw` отдаётся как есть, остальное — в конверте `{ok, data}`.
+
+        `Content-Disposition: attachment` ставится **только** для скачиваемых файлов
+        (`Raw.download`): иначе браузер сохраняет страницу интерфейса вместо показа.
+        """
         if isinstance(result, Raw):
-            body = result.text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", result.content_type)
-            self.send_header("Content-Length", str(len(body)))
-            if result.filename:
+            self.send_header("Content-Length", str(len(result.data)))
+            if result.download and result.filename:
                 self.send_header("Content-Disposition", f'attachment; filename="{result.filename}"')
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(result.data)
             return
         self._json(200, {"ok": True, "data": result})
 

@@ -204,14 +204,17 @@ def test_unknown_route_and_method_are_reported(pult: PultApp) -> None:
 
 
 def test_static_serves_interface_and_blocks_traversal(pult: PultApp) -> None:
-    """Страница пульта отдаётся, а выход за `pult/web` запрещён."""
+    """Страница пульта отдаётся для показа, а выход за `pult/web` запрещён."""
     index = get(pult, "/")
     assert isinstance(index, Raw)
     assert "Пульт испытаний" in index.text
     assert index.content_type.startswith("text/html")
+    assert index.download is False, "страницу отдаём для показа, а не вложением"
+    assert index.filename == ""
     script = get(pult, "/app.js")
     assert isinstance(script, Raw)
     assert script.content_type.startswith("text/javascript")
+    assert script.download is False
     with pytest.raises(ApiError) as escape:
         get(pult, "/../server.py")
     assert escape.value.status in (403, 404)
@@ -342,6 +345,8 @@ def test_vertical_slice_through_api(pult: PultApp) -> None:
     assert csv.text.startswith("№;Проверка")
     assert check_id in csv.text
     assert csv.filename == "protocol.csv"
+    assert csv.download is True, "выгрузка протокола — файл на скачивание"
+    assert csv.content_type.startswith("text/csv")
 
     journal = get(pult, "/api/journal")
     assert journal["rows"]
@@ -462,3 +467,65 @@ def test_http_layer_envelope_static_and_bad_body(pult: PultApp) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_static_is_served_for_rendering_not_download(pult: PultApp) -> None:
+    """Страница и подресурсы уходят для показа: без `Content-Disposition`.
+
+    Регресс-страж дефекта первого запуска: пока статика отдавалась вложением,
+    браузер скачивал `index.html`, стили и скрипт не применялись, и пульт
+    выглядел «мёртвой статической страницей».
+    """
+    server = serve(pult, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        expected = {
+            "/": "text/html",
+            "/app.js": "text/javascript",
+            "/styles.css": "text/css",
+        }
+        for route, mime in expected.items():
+            with urllib.request.urlopen(f"{base}{route}") as response:
+                assert response.status == 200
+                assert response.headers["Content-Type"].startswith(mime), route
+                assert response.headers["Content-Disposition"] is None, (
+                    f"{route}: статика отдана вложением — браузер её скачает, а не покажет"
+                )
+                assert response.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_protocol_csv_is_served_as_attachment(pult: PultApp) -> None:
+    """Выгрузку протокола, наоборот, отдаём файлом: `attachment` + имя."""
+    _ready_session(pult)
+    server = serve(pult, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(f"{base}/api/protocol?format=csv") as response:
+            assert response.headers["Content-Type"].startswith("text/csv")
+            assert response.headers["Content-Disposition"] == 'attachment; filename="protocol.csv"'
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_static_reads_binary_files_as_bytes(tmp_path: Path) -> None:
+    """Не-текстовый файл (иконка, шрифт) отдаётся байтами, а не падает на чтении."""
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<html>ok</html>", encoding="utf-8")
+    payload = bytes(range(256))
+    (web / "favicon.ico").write_bytes(payload)
+    app = PultApp(state=PultState(), web_dir=web)
+    icon = app.static("/favicon.ico")
+    assert icon.data == payload
+    assert icon.content_type == "image/x-icon"
+    assert icon.download is False
