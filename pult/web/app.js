@@ -73,6 +73,41 @@ function button(label, className, handle) {
   return element;
 }
 
+/** KPI-плитки: подпись и значение (шапки «Протокол» и «Программа»). */
+function fillKpi(element, items) {
+  element.textContent = "";
+  items.forEach(([label, value]) => {
+    const box = document.createElement("div");
+    box.className = "kpi__item";
+    const title = document.createElement("span");
+    title.className = "kpi__label";
+    title.textContent = label;
+    const number = document.createElement("span");
+    number.className = "kpi__value";
+    number.textContent = text(value);
+    box.appendChild(title);
+    box.appendChild(number);
+    element.appendChild(box);
+  });
+}
+
+/** Наполняет `select` значениями: первым идёт «все» с пустым значением. */
+function fillSelect(element, empty, options, valueOf, labelOf) {
+  const current = element.value;
+  element.textContent = "";
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = empty;
+  element.appendChild(first);
+  options.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = valueOf(item);
+    option.textContent = labelOf(item);
+    element.appendChild(option);
+  });
+  element.value = current;
+}
+
 /** Шапка: стенд, сессия, программа, фаза, прогресс и «что дальше» (`SCR-201`). */
 function renderHeader(data) {
   const stand = data.stand || {};
@@ -217,8 +252,7 @@ function renderProtocol(data) {
   document.getElementById("protocol-meta").textContent =
     `в программе ${text(summary.programme_size)} · закрыто ${text(summary.closed)} (${text(summary.coverage)})`;
   const kpi = document.getElementById("protocol-kpi");
-  kpi.textContent = "";
-  [
+  fillKpi(kpi, [
     ["Успех", summary.passed],
     ["Отказ", summary.failed],
     ["Блокировано", summary.blocked],
@@ -227,19 +261,7 @@ function renderProtocol(data) {
     ["Не выполнено", summary.not_run],
     ["Повторов", summary.repeats],
     ["Снято", summary.suspended],
-  ].forEach(([label, value]) => {
-    const box = document.createElement("div");
-    box.className = "kpi__item";
-    const title = document.createElement("span");
-    title.className = "kpi__label";
-    title.textContent = label;
-    const number = document.createElement("span");
-    number.className = "kpi__value";
-    number.textContent = text(value);
-    box.appendChild(title);
-    box.appendChild(number);
-    kpi.appendChild(box);
-  });
+  ]);
   document.getElementById("protocol-csv").href = "/api/protocol?format=csv";
   fillTable(document.querySelector("#protocol-table tbody"), data.rows || [], (row) => [
     row.in_programme ? row.order : "—",
@@ -281,6 +303,436 @@ function renderJournal(data) {
     });
     box.appendChild(line);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Планирование: каталог → наборы → программа (UC-05, UC-06)
+// ---------------------------------------------------------------------------
+/** Состояние страницы: последние виды с сервера, отметки каталога и открытый набор. */
+const planning = { catalog: null, sets: null, programme: null, picked: new Set(), openSet: "" };
+
+/** Фильтры каталога: фильтрует сервер, браузер только передаёт выбор оператора. */
+function catalogQuery() {
+  const params = new URLSearchParams();
+  ["q", "section", "class"].forEach((key) => {
+    const value = document.getElementById(`catalog-${key}`).value.trim();
+    if (value) {
+      params.set(key, value);
+    }
+  });
+  return params.toString();
+}
+
+/** Счётчик выбранных проверок: отметки живут до перезагрузки страницы. */
+function renderPicked() {
+  document.getElementById("catalog-selected").textContent = `выбрано ${planning.picked.size}`;
+}
+
+/** Каталог: фильтры, массовый выбор и «в набор» (`UC-05`). */
+function renderCatalog(data) {
+  const rows = data.rows || [];
+  const summary = data.summary || {};
+  document.getElementById("catalog-meta").textContent =
+    `описано ${text(summary.checks_implemented)} из ${text(summary.checks_total)} проверок · показано ${text(rows.length)}`;
+  fillSelect(
+    document.getElementById("catalog-section"),
+    "все разделы",
+    data.sections || [],
+    (item) => item.key,
+    (item) => `${item.key} · ${item.title}`
+  );
+  fillSelect(
+    document.getElementById("catalog-class"),
+    "все классы",
+    data.classes || [],
+    (item) => item.key,
+    (item) => item.label
+  );
+
+  fillTable(document.querySelector("#catalog-table tbody"), rows, (row) => {
+    const mark = document.createElement("input");
+    mark.type = "checkbox";
+    mark.checked = planning.picked.has(row.check_id);
+    mark.addEventListener("change", () => {
+      if (mark.checked) {
+        planning.picked.add(row.check_id);
+      } else {
+        planning.picked.delete(row.check_id);
+      }
+      renderPicked();
+    });
+    const membership = [
+      row.in_set ? "в наборе" : "",
+      row.in_programme ? "в программе" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return [
+      mark,
+      row.check_id,
+      row.title,
+      row.check_class,
+      row.section,
+      row.requirement,
+      membership || "—",
+      `${text(row.status_icon)} ${text(row.status)}`,
+    ];
+  });
+  renderPicked();
+}
+
+/** Библиотека наборов: статус, ревизия, состав и правки (`UC-05`). */
+function renderSets(data) {
+  const summary = data.summary || {};
+  const rows = data.rows || [];
+  document.getElementById("sets-meta").textContent =
+    `наборов ${text(summary.sets)} · утверждено ${text(summary.approved)} · черновиков ${text(summary.drafts)} · проверок ${text(summary.checks)}`;
+  fillSelect(
+    document.getElementById("catalog-set"),
+    "выберите набор",
+    rows,
+    (item) => item.set_id,
+    (item) => `${item.set_id} · ${item.title}`
+  );
+
+  fillTable(document.querySelector("#sets-table tbody"), rows, (row) => {
+    const actions = document.createElement("span");
+    actions.appendChild(button("состав", "btn btn--tiny", () => showSetItems(row.set_id)));
+    if (row.approved) {
+      actions.appendChild(
+        button("ревизия", "btn btn--tiny", () =>
+          planningAction(
+            "/api/sets",
+            { action: "revise", set_id: row.set_id, comment: "переоткрытие набора" },
+            `Набор ${row.set_id}: открыта новая ревизия`
+          )
+        )
+      );
+    } else {
+      actions.appendChild(
+        button("утвердить", "btn btn--tiny btn--primary", () =>
+          planningAction(
+            "/api/sets",
+            { action: "approve", set_id: row.set_id, comment: "утверждено с пульта" },
+            `Набор ${row.set_id} утверждён`
+          )
+        )
+      );
+    }
+    actions.appendChild(
+      button("удалить", "btn btn--tiny btn--ghost", () => {
+        const ask = row.approved
+          ? `Набор ${row.set_id} утверждён: удаление требует подтверждения (FR-P-67). Удалить?`
+          : `Удалить набор ${row.set_id}?`;
+        if (window.confirm(ask)) {
+          planningAction(
+            "/api/sets",
+            { action: "delete", set_id: row.set_id, force: row.approved },
+            `Набор ${row.set_id} удалён`
+          );
+        }
+      })
+    );
+    return [
+      row.set_id,
+      row.title,
+      row.section,
+      `${row.approved ? "✅" : "✎"} ${text(row.status)}`,
+      row.revision,
+      row.checks,
+      row.mandatory,
+      row.in_programme ? "да" : "—",
+      row.overlap ? text(row.overlap) : "—",
+      actions,
+    ];
+  });
+  renderSetItems();
+}
+
+/** Состав открытого набора: порядок, обязательность и удаление проверок (`FR-P-66`). */
+function renderSetItems() {
+  const body = document.querySelector("#set-items-table tbody");
+  const meta = document.getElementById("set-items-meta");
+  const row = ((planning.sets || {}).rows || []).find((item) => item.set_id === planning.openSet);
+  if (!row) {
+    body.textContent = "";
+    meta.textContent = "набор не выбран — нажмите «состав» в строке";
+    return;
+  }
+  meta.textContent =
+    `${row.set_id} · ревизия ${text(row.revision)} · проверок ${text(row.checks)}` +
+    (row.approved ? " · утверждён: правка только новой ревизией" : "");
+  fillTable(body, row.items || [], (item) => {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(item.mandatory);
+    box.addEventListener("change", () =>
+      planningAction(
+        "/api/sets",
+        { action: "mandatory", set_id: row.set_id, check_id: item.check_id, mandatory: box.checked },
+        `Проверка ${item.check_id}: обязательность ${box.checked ? "включена" : "снята"}`
+      )
+    );
+    const actions = document.createElement("span");
+    actions.appendChild(button("↑", "btn btn--tiny", () => setItemAction(row.set_id, item.check_id, -1)));
+    actions.appendChild(button("↓", "btn btn--tiny", () => setItemAction(row.set_id, item.check_id, 1)));
+    actions.appendChild(
+      button("✕", "btn btn--tiny btn--ghost", () =>
+        planningAction(
+          "/api/sets",
+          { action: "remove", set_id: row.set_id, check_ids: [item.check_id] },
+          `Проверка ${item.check_id} убрана из набора ${row.set_id}`
+        )
+      )
+    );
+    return [item.order, item.check_id, item.title, item.check_class, box, actions];
+  });
+}
+
+/** Открывает состав набора (повторный клик обновляет вид). */
+function showSetItems(setId) {
+  planning.openSet = setId;
+  renderSetItems();
+}
+
+/** Сдвиг проверки в составе набора (↑/↓). */
+function setItemAction(setId, checkId, delta) {
+  planningAction(
+    "/api/sets",
+    { action: "move", set_id: setId, check_id: checkId, delta },
+    `Порядок набора ${setId}: проверка ${checkId} сдвинута`
+  );
+}
+
+/** Программа сессии: покрытие, ревизии, дельта и пункты (`UC-06`). */
+function renderProgramme(data) {
+  const programme = data.programme || {};
+  const rows = programme.rows || [];
+  const coverage = programme.coverage || [];
+  document.getElementById("planning-meta").textContent = data.session
+    ? `сессия ${text(data.session)}`
+    : "сессия не выбрана: программу собирать не в чем (вкладка «Сессии»)";
+  document.getElementById("programme-meta").textContent =
+    `ревизия ${text(programme.revision)} · ${text(programme.status_label)} · пунктов ${text(programme.size)} · обязательных ${text(programme.mandatory)}`;
+  fillKpi(document.getElementById("programme-kpi"), [
+    ["Пунктов", programme.size],
+    ["Обязательных", programme.mandatory],
+    ["Наборов", (programme.selected_sets || []).length],
+    ["Разделов", coverage.length],
+    ["Не покрыто", coverage.filter((row) => row.uncovered).length],
+    ["Пересечений", rows.filter((row) => row.sources_count > 1).length],
+    ["Вне каталога", rows.filter((row) => !row.in_catalog).length],
+  ]);
+
+  const setsBox = document.getElementById("programme-sets");
+  setsBox.textContent = "";
+  (data.sets || []).forEach((row) => {
+    const label = document.createElement("label");
+    label.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(row.in_programme);
+    box.dataset.setId = row.set_id;
+    const caption = document.createElement("span");
+    caption.textContent = `${row.set_id} · ${text(row.title)} (${text(row.checks)})`;
+    label.appendChild(box);
+    label.appendChild(caption);
+    setsBox.appendChild(label);
+  });
+  if (!(data.sets || []).length) {
+    setsBox.textContent = "наборов нет: соберите их в каталоге выше";
+  }
+
+  const warnings = document.getElementById("programme-warnings");
+  warnings.textContent = "";
+  (programme.warnings || []).forEach((line) => {
+    const item = document.createElement("div");
+    item.textContent = line;
+    warnings.appendChild(item);
+  });
+  warnings.hidden = (programme.warnings || []).length === 0;
+
+  fillTable(document.querySelector("#coverage-table tbody"), coverage, (row) => [
+    `${text(row.title)} (${text(row.section)})`,
+    row.in_programme,
+    row.implemented,
+    row.planned,
+    row.target,
+    row.uncovered ? `⚠ ${text(row.missing)}` : "—",
+  ]);
+
+  fillTable(document.querySelector("#revisions-table tbody"), programme.revisions || [], (row) => {
+    const actions = document.createElement("span");
+    if (!row.current) {
+      actions.appendChild(
+        button("вернуть", "btn btn--tiny btn--ghost", () =>
+          planningAction(
+            "/api/programme",
+            { action: "restore", revision: row.revision, comment: "возврат ревизии" },
+            `Программа: возвращена ревизия ${text(row.revision)}`
+          )
+        )
+      );
+    }
+    return [
+      row.revision,
+      row.at,
+      row.author,
+      row.comment || "—",
+      row.size,
+      actions,
+    ];
+  });
+
+  const deltaBox = document.getElementById("delta-rows");
+  deltaBox.textContent = "";
+  programmeDeltaLines(programme.delta).forEach(([kind, line]) => {
+    const item = document.createElement("div");
+    item.className = `outcome${kind ? ` outcome--${kind}` : ""}`;
+    item.textContent = line;
+    deltaBox.appendChild(item);
+  });
+
+  fillTable(document.querySelector("#programme-table tbody"), rows, (item) => {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = Boolean(item.mandatory);
+    box.addEventListener("change", () => programmeMandatory(item.check_id, box.checked));
+    const actions = document.createElement("span");
+    actions.appendChild(button("↑", "btn btn--tiny", () => programmeMove(item.check_id, -1)));
+    actions.appendChild(button("↓", "btn btn--tiny", () => programmeMove(item.check_id, 1)));
+    return [
+      item.order,
+      item.check_id,
+      item.title,
+      item.check_class,
+      box,
+      item.sources || (item.in_catalog ? "" : "не описана в каталоге"),
+      `${text(item.icon)} ${text(item.status)}`,
+      actions,
+    ];
+  });
+}
+
+/** Строки дельты: что добавилось и что ушло против предыдущей ревизии (`SCR-102`). */
+function programmeDeltaLines(delta) {
+  const data = delta || {};
+  if (data.missing) {
+    return [["bad", `ревизия ${text(data.revision)} в архиве не найдена — сравнить не с чем`]];
+  }
+  if (data.revision === null || data.revision === undefined) {
+    return [["", "предыдущей ревизии нет: это первая ревизия программы"]];
+  }
+  const lines = [["", `против ревизии ${text(data.revision)}`]];
+  (data.added || []).forEach((checkId) => lines.push(["ok", `+ ${checkId}`]));
+  (data.removed || []).forEach((checkId) => lines.push(["bad", `− ${checkId}`]));
+  if (!(data.added || []).length && !(data.removed || []).length) {
+    lines.push(["", "состав не изменился"]);
+  }
+  return lines;
+}
+
+/** Правки программы: сдвиг пункта по порядку (только черновик, `FR-P-13`). */
+function programmeMove(checkId, delta) {
+  planningAction(
+    "/api/programme",
+    { action: "move", check_id: checkId, delta },
+    `Пункт ${checkId} сдвинут вручную`
+  );
+}
+
+/** Признак «обязательная» у пункта программы (смоук-минимум, `FR-P-70`). */
+function programmeMandatory(checkId, mandatory) {
+  planningAction(
+    "/api/programme",
+    { action: "mandatory", check_id: checkId, mandatory },
+    `Пункт ${checkId}: обязательность ${mandatory ? "включена" : "снята"}`
+  );
+}
+
+/** Наборы, отмеченные галочками в зоне программы: из них собирается ревизия. */
+function selectedSetIds() {
+  return Array.from(document.querySelectorAll("#programme-sets input[type=checkbox]"))
+    .filter((box) => box.checked)
+    .map((box) => box.dataset.setId);
+}
+
+/** Действие страницы планирования: вызов, сообщение и перезагрузка трёх зон. */
+async function planningAction(path, body, message) {
+  const data = await act(path, body);
+  if (!data) {
+    return;
+  }
+  if (message) {
+    flash("ok", message);
+  }
+  await refreshPlanning();
+}
+
+/** Загрузка страницы планирования: каталог, наборы и программа одним заходом. */
+async function refreshPlanning() {
+  try {
+    const query = catalogQuery();
+    const [catalog, sets, programme] = await Promise.all([
+      call("GET", `/api/catalog${query ? `?${query}` : ""}`),
+      call("GET", "/api/sets"),
+      call("GET", "/api/programme"),
+    ]);
+    planning.catalog = catalog;
+    planning.sets = sets;
+    planning.programme = programme;
+    renderCatalog(catalog);
+    renderSets(sets);
+    renderProgramme(programme);
+  } catch (error) {
+    flash("error", `[${error.kind || "?"}] ${error.message}`);
+  }
+}
+
+/** Каталог → набор: массовый выбор с признаком «обязательная» (`FR-P-65`, `FR-P-70`). */
+function addPickedToSet() {
+  const setId = document.getElementById("catalog-set").value;
+  if (!setId) {
+    flash("error", "Выберите набор, в который добавить проверки");
+    return;
+  }
+  const checkIds = Array.from(planning.picked);
+  if (!checkIds.length) {
+    flash("error", "Отметьте проверки в каталоге");
+    return;
+  }
+  planningAction(
+    "/api/sets",
+    {
+      action: "save",
+      set_id: setId,
+      check_ids: checkIds,
+      mandatory: document.getElementById("catalog-mandatory").checked,
+    },
+    `В набор ${setId} добавлено проверок: ${checkIds.length}`
+  );
+}
+
+/** Новый набор из отмеченных проверок: раздел берётся у первой из них (`FR-P-65`). */
+function createSetFromPicked() {
+  const checkIds = Array.from(planning.picked);
+  if (!checkIds.length) {
+    flash("error", "Отметьте проверки в каталоге");
+    return;
+  }
+  const title = document.getElementById("catalog-new-title").value.trim();
+  const first = ((planning.catalog || {}).rows || []).find((row) => row.check_id === checkIds[0]);
+  planningAction(
+    "/api/sets",
+    {
+      action: "save",
+      title: title || `Набор ${checkIds[0]}`,
+      section: first ? first.section : "",
+      check_ids: checkIds,
+      mandatory: document.getElementById("catalog-mandatory").checked,
+    },
+    `Создан набор из ${checkIds.length} проверок`
+  );
 }
 
 /** Действие оператора: вызов, сообщение и обновление экрана в одном месте. */
@@ -326,6 +778,8 @@ function journalQuery() {
 async function loadPanel(name) {
   if (name === "run") {
     renderRun(await call("GET", "/api/run"));
+  } else if (name === "planning") {
+    await refreshPlanning();
   } else if (name === "sessions") {
     renderSessions(await call("GET", "/api/sessions"));
   } else if (name === "protocol") {
@@ -345,6 +799,12 @@ async function refresh() {
   }
 }
 
+/** Панель из адреса страницы: `#planning` открывает вкладку по ссылке (`IR-P-4`). */
+function panelFromHash() {
+  const name = (window.location.hash || "").replace("#", "");
+  return ["run", "planning", "sessions", "protocol", "journal"].includes(name) ? name : "run";
+}
+
 /** Показывает панель и подгружает её данные. */
 async function showPanel(name) {
   active = name;
@@ -354,7 +814,8 @@ async function showPanel(name) {
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("is-active", panel.id === `panel-${name}`);
   });
-  await loadPanel(name);
+  window.location.hash = name;
+  await refresh();
 }
 
 /** Подписки на действия оператора. */
@@ -396,8 +857,68 @@ function bind() {
   ["journal-errors", "journal-request", "journal-response"].forEach((id) => {
     document.getElementById(id).addEventListener("change", () => loadPanel("journal"));
   });
+
+  // Планирование: фильтры каталога, массовый выбор и правки наборов/программы (`UC-05`, `UC-06`)
+  document.getElementById("planning-refresh").addEventListener("click", refreshPlanning);
+  document.getElementById("catalog-add").addEventListener("click", addPickedToSet);
+  document.getElementById("catalog-create").addEventListener("click", createSetFromPicked);
+  document.getElementById("catalog-all").addEventListener("click", () => {
+    ((planning.catalog || {}).rows || []).forEach((row) => planning.picked.add(row.check_id));
+    renderCatalog(planning.catalog || {});
+  });
+  document.getElementById("catalog-none").addEventListener("click", () => {
+    planning.picked.clear();
+    renderCatalog(planning.catalog || {});
+  });
+  ["catalog-q", "catalog-section", "catalog-class"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", refreshPlanning);
+  });
+  document.getElementById("catalog-q").addEventListener("keyup", (event) => {
+    if (event.key === "Enter") {
+      refreshPlanning();
+    }
+  });
+  document.getElementById("programme-rebuild").addEventListener("click", () => {
+    const setIds = selectedSetIds();
+    if (!setIds.length) {
+      flash("error", "Отметьте хотя бы один набор для программы");
+      return;
+    }
+    planningAction(
+      "/api/programme",
+      { action: "rebuild", set_ids: setIds },
+      `Программа пересобрана из наборов: ${setIds.length}`
+    );
+  });
+  document.getElementById("programme-approve").addEventListener("click", () =>
+    planningAction(
+      "/api/programme",
+      {
+        action: "approve",
+        comment: "утверждено с пульта",
+        reduction: document.getElementById("programme-reduction").value.trim(),
+      },
+      "Ревизия программы утверждена: прогон пойдёт по ней"
+    )
+  );
+  document.getElementById("programme-revise").addEventListener("click", () =>
+    planningAction(
+      "/api/programme",
+      {
+        action: "revise",
+        comment: document.getElementById("programme-reduction").value.trim() || "переоткрытие программы",
+      },
+      "Открыта новая ревизия программы (черновик)"
+    )
+  );
+  window.addEventListener("hashchange", () => {
+    const name = panelFromHash();
+    if (name !== active) {
+      showPanel(name);
+    }
+  });
 }
 
 bind();
-refresh();
+showPanel(panelFromHash());
 window.setInterval(refresh, 15000);

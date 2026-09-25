@@ -417,6 +417,7 @@ class PultApp:
         return {
             "summary": catalog.catalog_summary(),
             "sections": [{"key": group.key, "title": group.title} for group in catalog.groups()],
+            "classes": view.class_options(),
             "statuses": list(view.status_labels()),
             "total": len(rows),
             "rows": view.filter_rows(rows, query=str(query.get("q") or "")),

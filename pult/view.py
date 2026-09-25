@@ -187,6 +187,15 @@ def class_label(check_class: str | CheckClass) -> str:
     return CLASS_LABELS.get(key, key)
 
 
+def class_options() -> list[dict[str, str]]:
+    """Классы проверок для фильтра каталога: ключ и подпись (`SCR-101`).
+
+    Список отдаёт сервер, чтобы браузер не повторял справочник классов у себя
+    (правило архитектуры: подписи живут в Python).
+    """
+    return [{"key": str(item), "label": class_label(item)} for item in CheckClass]
+
+
 def is_confirmable(check_class: str | CheckClass) -> bool:
     """True, если проверке нужна карточка запуска (`live`/`heavy`, `FR-P-19`)."""
     return str(check_class) in (str(CheckClass.LIVE), str(CheckClass.HEAVY))
@@ -872,6 +881,26 @@ def sets_rows(
                 "in_programme": str(item.set_id) in selected,
                 "overlap": sum(1 for check_id in check_ids if check_id in in_programme),
                 "check_ids": check_ids,
+                "items": _set_item_rows(item.items),
+            }
+        )
+    return rows
+
+
+def _set_item_rows(items: Iterable[Any]) -> list[dict[str, Any]]:
+    """Состав набора для списка правки: порядок, идентификатор, название проверки, обязательность."""
+    rows: list[dict[str, Any]] = []
+    for entry in items:
+        check_id = str(getattr(entry, "check_id", "") or "")
+        spec = catalog.find(check_id)
+        rows.append(
+            {
+                "order": int(getattr(entry, "order", 0) or 0),
+                "check_id": check_id,
+                "title": "" if spec is None else spec.title,
+                "check_class": "" if spec is None else class_label(spec.check_class),
+                "mandatory": bool(getattr(entry, "mandatory", False)),
+                "in_catalog": spec is not None,
             }
         )
     return rows

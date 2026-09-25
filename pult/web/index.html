@@ -34,6 +34,7 @@
 
     <nav class="tabs">
       <button class="tab is-active" data-panel="run" type="button">Прогон</button>
+      <button class="tab" data-panel="planning" type="button">Планирование</button>
       <button class="tab" data-panel="sessions" type="button">Сессии</button>
       <button class="tab" data-panel="protocol" type="button">Протокол</button>
       <button class="tab" data-panel="journal" type="button">Лента обмена</button>
@@ -61,6 +62,178 @@
           </thead>
           <tbody></tbody>
         </table>
+      </section>
+
+      <section class="panel" id="panel-planning">
+        <div class="panel__head">
+          <h2>Планирование</h2>
+          <span class="muted" id="planning-meta"></span>
+          <span class="grow"></span>
+          <button class="btn btn--ghost" id="planning-refresh" type="button">Обновить</button>
+        </div>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Каталог проверок</h3>
+            <span class="muted" id="catalog-meta"></span>
+            <span class="grow"></span>
+            <label class="check">поиск <input id="catalog-q" placeholder="TC-FILE или «удаление»" /></label>
+            <label class="check">раздел <select id="catalog-section"></select></label>
+            <label class="check">класс <select id="catalog-class"></select></label>
+            <button class="btn btn--tiny" id="catalog-all" type="button">выбрать все</button>
+            <button class="btn btn--tiny btn--ghost" id="catalog-none" type="button">снять</button>
+          </div>
+          <div class="zone__actions">
+            <span class="muted" id="catalog-selected">выбрано 0</span>
+            <label class="check">
+              <input type="checkbox" id="catalog-mandatory" /> обязательные (смоук-минимум)
+            </label>
+            <label class="check">в набор <select id="catalog-set"></select></label>
+            <button class="btn btn--tiny btn--primary" id="catalog-add" type="button">
+              Добавить в набор
+            </button>
+            <label class="check">новый набор <input id="catalog-new-title" placeholder="название" /></label>
+            <button class="btn btn--tiny" id="catalog-create" type="button">Создать из выбранных</button>
+          </div>
+          <table class="grid grid--scroll" id="catalog-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Проверка</th>
+                <th>Название</th>
+                <th>Класс</th>
+                <th>Раздел</th>
+                <th>Требование</th>
+                <th>Набор / программа</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Библиотека наборов</h3>
+            <span class="muted" id="sets-meta"></span>
+          </div>
+          <table class="grid" id="sets-table">
+            <thead>
+              <tr>
+                <th>Набор</th>
+                <th>Название</th>
+                <th>Раздел</th>
+                <th>Статус</th>
+                <th>Ревизия</th>
+                <th>Проверок</th>
+                <th>Обязательных</th>
+                <th>В программе</th>
+                <th>Пересечение</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="zone__sub">
+            <div class="zone__head">
+              <h4>Состав набора</h4>
+              <span class="muted" id="set-items-meta">набор не выбран — нажмите «состав» в строке</span>
+            </div>
+            <table class="grid" id="set-items-table">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Проверка</th>
+                  <th>Название</th>
+                  <th>Класс</th>
+                  <th>Обязательная</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Программа сессии</h3>
+            <span class="muted" id="programme-meta"></span>
+          </div>
+          <div class="kpi" id="programme-kpi"></div>
+          <div class="zone__actions">
+            <span class="muted">наборы в программе:</span>
+            <span class="checks" id="programme-sets"></span>
+          </div>
+          <div id="programme-warnings" class="warnings" hidden></div>
+          <div class="zone__actions">
+            <label class="check">
+              обоснование сокращения
+              <input id="programme-reduction" placeholder="почему объём меньше целевого" />
+            </label>
+            <button class="btn btn--tiny btn--primary" id="programme-rebuild" type="button">
+              Пересобрать программу
+            </button>
+            <button class="btn btn--tiny" id="programme-approve" type="button">Утвердить ревизию</button>
+            <button class="btn btn--tiny btn--ghost" id="programme-revise" type="button">
+              Новая ревизия
+            </button>
+          </div>
+          <div class="zone__sub">
+            <h4>Покрытие разделов</h4>
+            <table class="grid" id="coverage-table">
+              <thead>
+                <tr>
+                  <th>Раздел</th>
+                  <th>В программе</th>
+                  <th>Реализовано</th>
+                  <th>План</th>
+                  <th>Цель</th>
+                  <th>Не хватает</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="zone__sub">
+            <h4>Ревизии программы</h4>
+            <table class="grid" id="revisions-table">
+              <thead>
+                <tr>
+                  <th>Ревизия</th>
+                  <th>Когда</th>
+                  <th>Автор</th>
+                  <th>Комментарий</th>
+                  <th>Проверок</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="zone__sub">
+            <h4>Дельта с предыдущей ревизией</h4>
+            <div class="outcomes" id="delta-rows"></div>
+          </div>
+          <div class="zone__sub">
+            <h4>Пункты программы</h4>
+            <table class="grid grid--scroll" id="programme-table">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Проверка</th>
+                  <th>Название</th>
+                  <th>Класс</th>
+                  <th>Обязательная</th>
+                  <th>Происхождение</th>
+                  <th>Результат</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="panel" id="panel-sessions">

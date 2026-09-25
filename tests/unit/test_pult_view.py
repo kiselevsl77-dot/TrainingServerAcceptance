@@ -11,7 +11,9 @@ from __future__ import annotations
 from acceptance import results as results_api
 from acceptance import run_state
 from acceptance import session as session_api
+from acceptance import sets as sets_api
 from acceptance.checks import catalog
+from acceptance.checks.registry import CheckClass
 from acceptance.http_log import HttpExchange
 from acceptance.programme import Programme, ProgrammeItem
 from acceptance.queue import Queue, QueueItem, queue_for_revision
@@ -359,6 +361,29 @@ def test_outcome_rows_keep_stop_reason() -> None:
     assert row["stop_reason"] == "пункт требует карточки запуска"
     assert row["duration_ms"] == 41.7
     assert row["steps"] == 2
+
+
+def test_class_options_cover_registry() -> None:
+    """Фильтр классов приходит с сервера: ключи реестра и человекочитаемые подписи."""
+    options = view.class_options()
+    keys = [item["key"] for item in options]
+    assert keys == [str(item) for item in CheckClass]
+    assert all(item["label"] and item["label"] != item["key"] for item in options)
+
+
+def test_set_rows_include_composition_with_titles() -> None:
+    """Состав набора отдаётся строками с названиями: страница только рисует (`SCR-101`)."""
+    library = sets_api.library_from_catalog(author="Петров П.П.")
+    rows = view.sets_rows(library)
+    assert rows, "библиотека из каталога должна содержать наборы"
+    row = next(item for item in rows if item["items"])
+    first = row["items"][0]
+    assert first["order"] == 1
+    assert first["check_id"] == row["check_ids"][0]
+    assert first["title"], "название проверки берётся из каталога"
+    assert first["check_class"]
+    assert first["in_catalog"] is True
+    assert isinstance(first["mandatory"], bool)
 
 
 def test_catalog_rows_mark_membership_and_confirmable() -> None:

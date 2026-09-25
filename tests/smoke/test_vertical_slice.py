@@ -6,10 +6,12 @@
 
     1. страница интерфейса и шапка (`GET /`, `GET /api/state`);
     2. сессия: создание и старт (снимок «Начало»);
-    3. программа: сборка из наборов и утверждение ревизии;
+    3. планирование: каталог с фильтром → набор из отмеченных проверок (массовый выбор,
+       «обязательная») → утверждение набора → сборка программы по наборам → покрытие и
+       происхождение пунктов → утверждение ревизии с обоснованием сокращения;
     4. прогон: «▶ Следующая» и результат проверки с диапазоном журнала;
     5. протокол: закрытый пункт, CSV-выгрузка и лента обмена;
-    6. готовность отчёта.
+    6. готовность отчёта и фаза Ф2 (прогон пройден, снимка «Окончание» ещё нет).
 
 Стенд подменён `httpx.MockTransport`, сессии пишутся во временный каталог, библиотека
 наборов собирается из каталога проверок: тест не зависит от живого стенда и не трогает
@@ -167,11 +169,50 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
     assert started["snapshots"]["taken"]["start"] is True
     assert started["stand"]["build"] == "dev@83319ae1234"
 
-    rows = api(pult, "/api/sets")["rows"]
-    assert rows, "библиотека наборов должна собираться из каталога проверок"
-    rebuilt = api(pult, "/api/programme", {"action": "rebuild", "set_ids": [rows[0]["set_id"]]})
-    assert rebuilt["programme"]["size"] > 0
-    approved = api(pult, "/api/programme", {"action": "approve", "comment": "к прогону"})
+    catalog = api(pult, "/api/catalog?q=TC-SYS")
+    assert catalog["classes"], "фильтр классов приходит с сервера (справочник живёт в Python)"
+    picked = [str(row["check_id"]) for row in catalog["rows"]][:2]
+    assert picked, "каталог должен отдавать проверки раздела «Система»"
+
+    created = api(
+        pult,
+        "/api/sets",
+        {
+            "action": "save",
+            "title": "Смоук-срез",
+            "section": "TC-SYS",
+            "check_ids": picked,
+            "mandatory": True,
+        },
+    )
+    new_set = next(item for item in created["library"]["rows"] if item["title"] == "Смоук-срез")
+    assert new_set["checks"] == len(picked)
+    assert new_set["mandatory"] == len(picked), "массовый выбор ставит признак «обязательная»"
+    assert new_set["items"][0]["title"], "состав набора приходит с названиями проверок"
+
+    approved_set = api(
+        pult, "/api/sets", {"action": "approve", "set_id": new_set["set_id"], "comment": "к работе"}
+    )
+    stored_set = next(
+        item for item in approved_set["library"]["rows"] if item["set_id"] == new_set["set_id"]
+    )
+    assert stored_set["approved"] is True
+
+    rebuilt = api(pult, "/api/programme", {"action": "rebuild", "set_ids": [new_set["set_id"]]})
+    programme = rebuilt["programme"]
+    assert programme["size"] == len(picked)
+    assert programme["coverage"], "покрытие разделов считает сервер"
+    assert programme["rows"][0]["sources"], "у пункта программы видно происхождение"
+
+    approved = api(
+        pult,
+        "/api/programme",
+        {
+            "action": "approve",
+            "comment": "к прогону",
+            "reduction": "смоук-минимум: остальные разделы вне среза приёмки",
+        },
+    )
     assert approved["programme"]["approved"] is True
 
     run = api(pult, "/api/run")
@@ -195,4 +236,7 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
 
     readiness = api(pult, "/api/report/readiness")
     assert isinstance(readiness["warnings"], list)
-    assert api(pult, "/api/state")["phase"]["code"] == "Ф1"
+    assert api(pult, "/api/run")["progress"]["pending"] == 0, "незакрытых пунктов после прогона нет"
+    assert api(pult, "/api/state")["phase"]["code"] == "Ф2", (
+        "прогон пройден целиком: фаза — оценка и фиксация, снимка «Окончание» ещё нет"
+    )
