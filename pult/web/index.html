@@ -36,8 +36,8 @@
     <nav class="tabs">
       <button class="tab is-active" data-panel="run" type="button">Прогон</button>
       <button class="tab" data-panel="planning" type="button">Планирование</button>
+      <button class="tab" data-panel="results" type="button">Результаты</button>
       <button class="tab" data-panel="sessions" type="button">Сессии</button>
-      <button class="tab" data-panel="protocol" type="button">Протокол</button>
       <button class="tab" data-panel="journal" type="button">Лента обмена</button>
     </nav>
 
@@ -322,28 +322,175 @@
         </form>
       </section>
 
-      <section class="panel" id="panel-protocol">
+      <section class="panel" id="panel-results">
         <div class="panel__head">
-          <h2>Протокол проверок</h2>
-          <span class="muted" id="protocol-meta"></span>
+          <h2>Результаты испытаний</h2>
+          <span class="muted" id="results-meta"></span>
           <span class="grow"></span>
-          <a class="btn btn--ghost" id="protocol-csv" href="/api/protocol?format=csv">Выгрузить CSV</a>
+          <label class="check">
+            <input type="checkbox" id="results-compositions" /> состав датасетов сразу
+          </label>
+          <button class="btn btn--ghost" id="results-refresh" type="button">Обновить данные</button>
         </div>
-        <div class="kpi" id="protocol-kpi"></div>
-        <table class="grid" id="protocol-table">
-          <thead>
-            <tr>
-              <th>№</th>
-              <th>Проверка</th>
-              <th>Название</th>
-              <th>Результат</th>
-              <th>Способ</th>
-              <th>Журнал</th>
-              <th>Повторов</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Данные стенда</h3>
+            <span class="muted" id="results-data-meta"></span>
+          </div>
+          <div class="kpi" id="results-data-kpi"></div>
+          <div class="warnings" id="results-data-warnings" hidden></div>
+          <div class="zone__sub">
+            <h4>$Файлы</h4>
+            <table class="grid grid--scroll" id="results-files">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Тип</th>
+                  <th>Размер</th>
+                  <th>Импорт</th>
+                  <th>Путь</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="zone__sub">
+            <h4>Записи RAW + markup</h4>
+            <span class="muted" id="results-records-meta"></span>
+            <table class="grid grid--scroll" id="results-records">
+              <thead>
+                <tr>
+                  <th>Запись</th>
+                  <th>Файлов</th>
+                  <th>RAW</th>
+                  <th>markup</th>
+                  <th>Состояние</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="zone__sub">
+            <h4>$Нагрузки</h4>
+            <table class="grid" id="results-loads">
+              <thead>
+                <tr>
+                  <th>Нагрузка</th>
+                  <th>Название</th>
+                  <th>Описание</th>
+                  <th>Создана</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="zone__sub">
+            <h4>$Датасеты и состав</h4>
+            <table class="grid" id="results-datasets">
+              <thead>
+                <tr>
+                  <th>Датасет</th>
+                  <th>Тип</th>
+                  <th>Описание</th>
+                  <th>Создан</th>
+                  <th>Состав</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <table class="grid" id="results-composition-table" hidden>
+              <thead>
+                <tr>
+                  <th>Датасет</th>
+                  <th>Источник</th>
+                  <th>Файлов</th>
+                  <th>RAW</th>
+                  <th>markup</th>
+                  <th>Объём</th>
+                  <th>Состав</th>
+                  <th>Задача</th>
+                  <th>Зафиксирован</th>
+                  <th>Достоверность</th>
+                  <th>Заметка</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="outcomes" id="results-composition"></div>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Протокол проверок</h3>
+            <span class="muted" id="protocol-meta"></span>
+            <span class="grow"></span>
+            <label class="check">результат <select id="protocol-status"></select></label>
+            <label class="check">раздел <select id="protocol-section"></select></label>
+            <label class="check">поиск <input id="protocol-q" placeholder="TC-SYS или «удаление»" /></label>
+            <a class="btn btn--ghost" id="protocol-csv" href="/api/protocol?format=csv">⬇ CSV выборки</a>
+          </div>
+          <div class="kpi" id="protocol-kpi"></div>
+          <table class="grid grid--scroll" id="protocol-table">
+            <thead>
+              <tr>
+                <th>№</th>
+                <th>Проверка</th>
+                <th>Название</th>
+                <th>Результат</th>
+                <th>Способ</th>
+                <th>Журнал</th>
+                <th>Повторов</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="zone__sub">
+            <h4>Требуют внимания: отказы, снятые и пропущенные</h4>
+            <div class="outcomes" id="protocol-attention"></div>
+          </div>
+          <div class="zone__sub">
+            <h4>Выполнено вне программы</h4>
+            <div class="outcomes" id="protocol-outside"></div>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Отчёт и завершение сессии</h3>
+            <span class="muted" id="report-meta"></span>
+            <span class="grow"></span>
+            <button class="btn btn--ghost" id="snapshot-end" type="button">📸 Снимок «Окончание»</button>
+            <button class="btn btn--primary" id="report-build" type="button">💾 Сформировать комплект</button>
+          </div>
+          <div class="zone__sub">
+            <h4>Полнота отчёта</h4>
+            <div class="points" id="report-points"></div>
+            <div class="warnings" id="report-warnings" hidden></div>
+          </div>
+          <div class="zone__sub">
+            <h4>Сверка снимков «Начало» ↔ «Окончание»</h4>
+            <div class="outcomes" id="snapshot-delta"></div>
+          </div>
+          <div class="zone__sub">
+            <h4>Комплект отчёта</h4>
+            <div class="outcomes" id="report-files"></div>
+          </div>
+          <div class="zone__sub">
+            <h4>Завершение сессии</h4>
+            <p class="hint" id="finish-hint"></p>
+            <div class="row">
+              <input id="finish-decision" placeholder="итоговое решение: годен / годен с замечаниями / …" size="52" />
+              <label class="check">
+                <input type="checkbox" id="finish-close" checked /> закрыть сессию (снимок «Окончание» снимается сразу)
+              </label>
+              <button class="btn btn--primary" id="finish-session" type="button">✅ Завершить сессию</button>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section class="panel" id="panel-journal">

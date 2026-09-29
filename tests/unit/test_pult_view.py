@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from acceptance import results as results_api
 from acceptance import run_card as run_card_api
 from acceptance import run_state
@@ -383,6 +385,90 @@ def test_journal_body_notes_explain_empty_bodies() -> None:
 
     cut = view.journal_row(_record(body_truncated=True), body_limit=4096)
     assert cut["request_note"] == "тело обрезано по лимиту 4096 символов"
+
+
+def test_results_page_labels_are_built_in_python() -> None:
+    """Пункты полноты отчёта и сводка данных стенда собирает сервер (`FR-P-48`, `UC-03`).
+
+    Проверяем именно то, что интерфейс получает готовым: подписи, значения и «в порядке ли
+    пункт». Браузер не решает, что считать готовностью отчёта (архитектура B).
+    """
+    stats: dict[str, Any] = {
+        "checks": {
+            "implemented": 69,
+            "done": 12,
+            "passed": 10,
+            "failed": 1,
+            "blocked": 1,
+            "not_run": 57,
+        },
+        "notes": {"total": 3, "p0": 1, "p1": 2, "incomplete": 1},
+        "tasks": {"observed": 4},
+        "artifacts": {"total": 5, "kinds": {"json": 4, "md": 1}},
+        "test_entities": {"total": 2, "pending": 1},
+        "session": {"filled": True, "status": "идёт", "duration_seconds": 10, "build": "dev@1"},
+    }
+    points = {
+        item["label"]: item
+        for item in view.report_points(stats, snapshots={"taken": {"start": True, "end": False}})
+    }
+    assert points["Проверок выполнено"]["value"] == "12 из 69"
+    assert points["Проверок выполнено"]["ok"] is False, "непройденные пункты не «готовы»"
+    assert points["Проверок с отказом"]["ok"] is False
+    assert points["Снимки стенда «Начало» / «Окончание»"]["value"] == "есть / нет"
+    assert points["Замечания к API"]["value"] == "всего 3 · P0 1 · P1 2 · без воспроизведения 1"
+    assert points["Артефактов в сессии"]["value"] == "5 · json 4, md 1"
+    assert points["`__TEST__`-сущности"]["ok"] is False
+
+    clean: dict[str, Any] = dict(stats)
+    clean["checks"] = dict(stats["checks"])
+    clean["checks"].update({"done": 69, "failed": 0, "blocked": 0, "not_run": 0})
+    clean["notes"] = {"total": 0, "p0": 0, "p1": 0, "incomplete": 0}
+    clean["test_entities"] = {"total": 1, "pending": 0}
+    assert all(
+        item["ok"]
+        for item in view.report_points(clean, snapshots={"taken": {"start": True, "end": True}})
+    )
+
+    summary = view.data_summary(
+        {
+            "files": [1, 2],
+            "records": [1],
+            "records_attention": 1,
+            "loads": [],
+            "datasets": [1, 2, 3],
+            "errors": {"files": "", "loads": "нет связи со стендом", "datasets": ""},
+        }
+    )
+    assert [item["value"] for item in summary] == ["2", "1", "1", "0", "3", "1"]
+    assert [item["label"] for item in summary][0] == "файлов"
+
+    options = view.status_options()
+    assert options and all(item["value"] and item["label"] for item in options)
+    assert view.option_rows(["System", "", "System"]) == [
+        {"value": "System", "label": "System"},
+    ]
+
+
+def test_report_view_carries_points_from_snapshots() -> None:
+    """`report_view` добавляет пункты и видит снимки сессии (`FR-P-48`)."""
+    session = _session()
+    session_api.set_snapshot(session, session_api.SNAP_START, {"counts": {"files": 1}})
+    readiness = {
+        "checks": {"implemented": 69, "done": 0, "passed": 0, "failed": 0, "not_run": 69},
+        "notes": {"total": 0, "p0": 0, "p1": 0, "incomplete": 0},
+        "tasks": {"observed": 0},
+        "artifacts": {"total": 0},
+        "test_entities": {"total": 0, "pending": 0},
+        "session": {"filled": True},
+        "warnings": ["нет снимка стенда «окончание»"],
+        "ready": False,
+    }
+    result = view.report_view(readiness, snapshots=view.snapshot_view(session))
+    assert result["ready"] is False and result["warnings"] == ["нет снимка стенда «окончание»"]
+    assert result["stats"]["checks"]["implemented"] == 69
+    shots = {item["label"]: item for item in result["points"]}
+    assert shots["Снимки стенда «Начало» / «Окончание»"]["value"] == "есть / нет"
 
 
 def test_outcome_rows_keep_stop_reason() -> None:

@@ -484,6 +484,15 @@ async function runAction(path, body, message) {
   return data;
 }
 
+/** Делает сессию текущей: используется кнопками списка сессий (`FR-P-4`). */
+async function openSession(sessionId) {
+  await actRefresh(
+    "/api/sessions",
+    { action: "select", session_id: sessionId },
+    `Сессия ${text(sessionId)} открыта`
+  );
+}
+
 /** Сессии: список на диске, выбор текущей, создание и жизненный цикл (`FR-P-2`…`FR-P-4`). */
 function renderSessions(data) {
   document.getElementById("sessions-meta").textContent = data.current
@@ -515,13 +524,10 @@ function renderSessions(data) {
         );
       } else if (row.status === "идёт") {
         actions.appendChild(
-          button("завершить", "btn btn--tiny", () =>
-            actRefresh(
-              `/api/sessions/${encodeURIComponent(row.id)}/finish`,
-              { close: true },
-              `Сессия ${text(row.id)} завершена`
-            )
-          )
+          button("завершить…", "btn btn--tiny btn--primary", () => {
+            openSession(row.id);
+            showPanel("results");
+          })
         );
       }
       return actions;
@@ -529,13 +535,12 @@ function renderSessions(data) {
   ]);
 }
 
-/** Протокол: KPI и строки результатов, включая «вне программы» (`SCR-401`). */
+/** Зона 2: протокол — KPI, фильтры, таблица и «что требует внимания» (`SCR-401`). */
 function renderProtocol(data) {
   const summary = data.summary || {};
   document.getElementById("protocol-meta").textContent =
-    `в программе ${text(summary.programme_size)} · закрыто ${text(summary.closed)} (${text(summary.coverage)})`;
-  const kpi = document.getElementById("protocol-kpi");
-  fillKpi(kpi, [
+    `в программе ${text(summary.programme_size)} · закрыто ${text(summary.closed)} (${text(summary.coverage)}) · всего строк ${text(data.total)}`;
+  fillKpi(document.getElementById("protocol-kpi"), [
     ["Успех", summary.passed],
     ["Отказ", summary.failed],
     ["Блокировано", summary.blocked],
@@ -545,8 +550,17 @@ function renderProtocol(data) {
     ["Повторов", summary.repeats],
     ["Снято", summary.suspended],
   ]);
-  document.getElementById("protocol-csv").href = "/api/protocol?format=csv";
-  fillTable(document.querySelector("#protocol-table tbody"), data.rows || [], (row) => [
+  const status = document.getElementById("protocol-status");
+  const section = document.getElementById("protocol-section");
+  fillSelect(status, "все результаты", data.statuses || [], (item) => item.value, (item) => item.label);
+  fillSelect(section, "все разделы", data.sections || [], (item) => item.value, (item) => item.label);
+  // Выбранное сервер возвращает вместе с данными: перерисовка не сбрасывает фильтр.
+  status.value = text(data.status);
+  section.value = text(data.section);
+  document.getElementById("protocol-q").value = text(data.query);
+  document.getElementById("protocol-csv").href = `/api/protocol?format=csv${resultsQuery()}`;
+  const rows = data.rows || [];
+  fillTable(document.querySelector("#protocol-table tbody"), rows, (row) => [
     row.in_programme ? row.order : "—",
     row.check_id,
     `${text(row.title)}${row.in_programme ? "" : " (вне программы)"}`,
@@ -554,11 +568,243 @@ function renderProtocol(data) {
     row.origin,
     row.journal,
     row.repeats,
+    row.reason,
   ]);
+  renderLines(
+    "protocol-attention",
+    rows.filter((row) => row.reason),
+    (row) => `${text(row.check_id)} · ${text(row.result)} · ${text(row.reason)}`
+  );
+  renderLines(
+    "protocol-outside",
+    rows.filter((row) => !row.in_programme),
+    (row) => `${text(row.check_id)} · ${text(row.result)} · ${text(row.origin)}`
+  );
+}
+
+/** Простые строки блока: подпись строки приходит готовой, браузер только печатает. */
+function renderLines(elementId, rows, lineOf) {
+  const box = document.getElementById(elementId);
+  box.textContent = "";
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.textContent = "нет строк";
+    box.appendChild(empty);
+    return;
+  }
+  rows.forEach((row) => {
+    const line = document.createElement("div");
+    line.textContent = lineOf(row);
+    box.appendChild(line);
+  });
+}
+
+/** Склейка непустых частей подписи через « · » (та же типографика, что в Python). */
+function joinText(parts) {
+  return parts.map((part) => text(part)).filter((part) => part).join(" · ");
+}
+
+/** Состояние страницы «Результаты»: фильтры протокола и выбранный состав (`SCR-401`). */
+const resultsView = { data: null, composition: "" };
+
+/** Запрос страницы: фильтры протокола и режим чтения составов датасетов (`UC-19`). */
+function resultsQuery(force) {
+  const params = new URLSearchParams();
+  const status = text(document.getElementById("protocol-status").value);
+  const section = text(document.getElementById("protocol-section").value);
+  const needle = document.getElementById("protocol-q").value.trim();
+  if (status) {
+    params.set("status", status);
+  }
+  if (section) {
+    params.set("section", section);
+  }
+  if (needle) {
+    params.set("q", needle);
+  }
+  if (document.getElementById("results-compositions").checked) {
+    params.set("compositions", "1");
+  }
+  if (force) {
+    params.set("refresh", "1");
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/** Страница «Результаты»: данные стенда, протокол и отчёт-завершение (`SCR-401`/`SCR-404`). */
+function renderResults(data) {
+  const session = data.session || {};
+  document.getElementById("results-meta").textContent = session.id
+    ? `сессия ${text(session.id)} · ${text(session.status)}`
+    : "сессия не выбрана";
+  renderResultsData(data.data || {}, data.data_summary || []);
+  renderProtocol(data.protocol || {});
+  renderResultsReport(data.report || {}, data.snapshots || {}, session);
+}
+
+/** Зона 1: данные стенда — файлы, записи, `$Нагрузки` и `$Датасеты` с составом (`UC-03`). */
+function renderResultsData(data, summary) {
+  fillKpi(
+    document.getElementById("results-data-kpi"),
+    summary.map((item) => [item.label, item.value])
+  );
+  const errors = data.errors || {};
+  const lines = Object.entries(errors)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}: ${value}`);
+  (data.written || []).forEach((checkId) =>
+    lines.push(`закрыто по факту запроса: ${checkId}`)
+  );
+  renderLines("results-data-warnings", lines, (line) => line);
+  document.getElementById("results-data-warnings").hidden = lines.length === 0;
+
+  fillTable(document.querySelector("#results-files tbody"), data.files || [], (row) => [
+    row.name,
+    row.type,
+    row.size_text,
+    row.imported_at,
+    row.path,
+  ]);
+  document.getElementById("results-records-meta").textContent =
+    `требуют внимания: ${text(data.records_attention)}`;
+  fillTable(document.querySelector("#results-records tbody"), data.records || [], (row) => [
+    row.row_kind,
+    row.record_id || row.base_name,
+    row.version,
+    row.group_size,
+    row.duplicate,
+  ]);
+  fillTable(document.querySelector("#results-loads tbody"), data.loads || [], (row) => [
+    row.id,
+    row.name,
+    row.description,
+    row.created_at,
+  ]);
+  fillTable(document.querySelector("#results-datasets tbody"), data.datasets || [], (row) => [
+    row.name,
+    row.type,
+    row.description,
+    row.created_at,
+    compositionText(row.composition),
+    button("прочитать состав", "btn btn--tiny", () => {
+      resultsView.composition = row.id;
+      refreshResults();
+    }),
+  ]);
+  const chosen = (data.datasets || []).find((row) => row.id === resultsView.composition);
+  renderComposition(chosen ? chosen.composition : null);
+}
+
+/** Подпись состава датасета: источник факта и числа (считает Python, `UC-19`). */
+function compositionText(composition) {
+  if (!composition) {
+    return "не читался";
+  }
+  return joinText([
+    composition.source_label,
+    `файлов ${text(composition.files)}`,
+    `RAW ${text(composition.raw)}`,
+    `markup ${text(composition.markup)}`,
+    composition.trusted ? "достоверно" : "требует проверки",
+  ]);
+}
+
+/** Состав выбранного датасета: подпись, строки состава и заметка (`UC-19`). */
+function renderComposition(composition) {
+  const table = document.getElementById("results-composition-table");
+  const box = document.getElementById("results-composition");
+  box.textContent = "";
+  table.hidden = !composition;
+  fillTable(
+    document.querySelector("#results-composition-table tbody"),
+    composition ? composition.rows || [] : [],
+    (row) => [
+      row.name,
+      row.source,
+      row.files,
+      row.raw,
+      row.markup,
+      row.size,
+      row.counts,
+      row.task_id,
+      row.captured_at,
+      row.confidence,
+      row.note,
+    ]
+  );
+  if (!composition) {
+    return;
+  }
+  const head = document.createElement("div");
+  head.textContent = joinText([compositionText(composition), composition.note]);
+  box.appendChild(head);
 }
 
 /** Состояние ленты обмена: открытая запись и незаконченные правки повтора (`FR-P-24`). */
 const journalView = { open: 0, drafts: {} };
+
+/** Зона 3: готовность отчёта, сверка снимков «Начало»/«Окончание» и завершение (`SCR-404`). */
+function renderResultsReport(report, snapshots, session) {
+  document.getElementById("report-meta").textContent = report.ready
+    ? "полнота отчёта: замечаний нет"
+    : `полноты не хватает: ${(report.warnings || []).length}`;
+  const points = document.getElementById("report-points");
+  points.textContent = "";
+  (report.points || []).forEach((point) => {
+    const line = document.createElement("div");
+    line.className = `point point--${point.ok ? "ok" : "bad"}`;
+    line.textContent = `${point.ok ? "✅" : "⚠️"} ${text(point.label)}: ${text(point.value)}`;
+    points.appendChild(line);
+  });
+  renderLines("report-warnings", report.warnings || [], (line) => line);
+  document.getElementById("report-warnings").hidden = !(report.warnings || []).length;
+
+  const start = snapshots.taken || {};
+  renderLines("snapshot-delta", snapshots.delta || [], (row) =>
+    `${text(row.counter)}: начало ${text(row.before)} → окончание ${text(row.after)}${row.delta ? ` (${text(row.delta)})` : ""}`
+  );
+  const notes = (snapshots.labels || []).map(
+    (item) => `снимок «${text(item.label)}»: ${item.taken ? text(item.at) : "не снят"}`
+  );
+  notes.push(`реестры «Начало» / «Окончание»: ${start.start ? "есть" : "нет"} / ${start.end ? "есть" : "нет"}`);
+  if (snapshots.errors) {
+    notes.push(snapshots.errors);
+  }
+  resultsView.snapshotNotes = notes;
+  renderReportFiles();
+
+  const hint = document.getElementById("finish-hint");
+  hint.textContent = session.can_finish
+    ? "Завершение снимет снимок «Окончание», сверит реестры с «Началом» и закроет сессию; решение обязательно."
+    : "Сессия закрыта: страница показывает протокол и комплект отчёта.";
+  document.getElementById("finish-session").disabled = !session.can_finish;
+  document.getElementById("snapshot-end").disabled = !session.can_finish;
+}
+
+/** Строки комплекта отчёта: что собрано на диск и чего не хватает (`FR-P-50`). */
+function renderReportKit(data) {
+  resultsView.kit = data;
+  renderReportFiles();
+}
+
+/** Блок «Комплект отчёта»: снимки сессии плюс файлы последней сборки. */
+function renderReportFiles() {
+  const kit = resultsView.kit || {};
+  const lines = [...(resultsView.snapshotNotes || [])];
+  Object.entries(kit.paths || {}).forEach(([key, path]) => lines.push(`собрано · ${key}: ${path}`));
+  (kit.annexes || []).forEach((name) => lines.push(`приложение: ${name}`));
+  (kit.missing || []).forEach((name) => lines.push(`не найдено: ${name}`));
+  renderLines("report-files", lines, (line) => line);
+}
+
+/** Загрузка страницы «Результаты» одним запросом; `force` — перечитать реестры стенда. */
+async function refreshResults(force) {
+  const data = await call("GET", `/api/results${resultsQuery(force)}`);
+  resultsView.data = data;
+  renderResults(data);
+}
 
 /** Лента обмена: записи журнала с независимой подробностью тел (`FR-P-21`). */
 function renderJournal(data) {
@@ -1137,8 +1383,8 @@ async function loadPanel(name) {
     await refreshPlanning();
   } else if (name === "sessions") {
     renderSessions(await call("GET", "/api/sessions"));
-  } else if (name === "protocol") {
-    renderProtocol(await call("GET", "/api/protocol"));
+  } else if (name === "results") {
+    await refreshResults();
   } else if (name === "journal") {
     renderJournal(await call("GET", `/api/journal?${journalQuery()}`));
   }
@@ -1158,7 +1404,7 @@ async function refresh() {
 function panelFromHash() {
   const raw = (window.location.hash || "").replace("#", "");
   const [name, argument] = raw.split("/");
-  const known = ["run", "planning", "sessions", "protocol", "journal"];
+  const known = ["run", "planning", "results", "sessions", "journal"];
   return { panel: known.includes(name) ? name : "run", argument: argument || "" };
 }
 
@@ -1220,6 +1466,51 @@ function bind() {
         ? "Автообновление включено (раз в 15 секунд)"
         : "Автообновление выключено: экран обновляется кнопкой «Обновить» и действиями"
     );
+  });
+
+  // «Результаты»: данные стенда, протокол, отчёт и завершение сессии (`SCR-401`, `SCR-404`)
+  document.getElementById("results-refresh").addEventListener("click", () => refreshResults(true));
+  document.getElementById("results-compositions").addEventListener("change", refreshResults);
+  ["protocol-status", "protocol-section"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", refreshResults);
+  });
+  document.getElementById("protocol-q").addEventListener("keyup", (event) => {
+    if (event.key === "Enter") {
+      refreshResults();
+    }
+  });
+  document.getElementById("snapshot-end").addEventListener("click", async () => {
+    const session = (resultsView.data || {}).session || {};
+    await actRefresh(
+      `/api/sessions/${encodeURIComponent(text(session.id))}/snapshot`,
+      { phase: "end" },
+      "Снимок «Окончание» снят: реестры сверены с «Началом»"
+    );
+  });
+  document.getElementById("report-build").addEventListener("click", async () => {
+    const data = await act("/api/report/build", { build: true });
+    if (data) {
+      renderReportKit(data);
+      flash("ok", `Комплект отчёта собран: файлов ${Object.keys(data.paths || {}).length}`);
+      await refreshResults();
+    }
+  });
+  document.getElementById("finish-session").addEventListener("click", async () => {
+    const session = (resultsView.data || {}).session || {};
+    const conclusion = document.getElementById("finish-decision").value.trim();
+    if (!conclusion) {
+      flash("error", "Укажите итоговое решение сессии: без него отчёт неполон");
+      return;
+    }
+    const data = await act(`/api/sessions/${encodeURIComponent(text(session.id))}/finish`, {
+      close: document.getElementById("finish-close").checked,
+      conclusion,
+    });
+    if (data) {
+      document.getElementById("finish-decision").value = "";
+      flash("ok", data.closed ? "Сессия закрыта, решение зафиксировано" : "Снимок «Окончание» снят, сессия не закрыта");
+      await refresh();
+    }
   });
 
   // Прогон: команды и формы живут на вкладке «Прогон» (правило одной команды, `IR-P-4`)

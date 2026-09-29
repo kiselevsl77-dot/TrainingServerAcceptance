@@ -148,6 +148,26 @@ def status_labels() -> tuple[str, ...]:
     return STATUS_ORDER
 
 
+def status_options() -> list[dict[str, str]]:
+    """Варианты фильтра «результат»: значение — статус, подпись — статус с пиктограммой."""
+    return [
+        {"value": status, "label": f"{status_icon(status)} {status}"} for status in STATUS_ORDER
+    ]
+
+
+def option_rows(values: Iterable[Any]) -> list[dict[str, str]]:
+    """Варианты фильтра-списка: значения без повторов («все» добавляет интерфейс)."""
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for value in values:
+        item = str(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        rows.append({"value": item, "label": item})
+    return rows
+
+
 def queue_state_label(state: str) -> str:
     """Подпись состояния пункта очереди («ожидает», «выполняется», …)."""
     text = str(state)
@@ -1383,11 +1403,120 @@ def dataset_rows(
 # ---------------------------------------------------------------------------
 # Отчёт и реквизиты сессии
 # ---------------------------------------------------------------------------
-def report_view(readiness: Mapping[str, Any]) -> dict[str, Any]:
+def report_points(
+    stats: Mapping[str, Any], *, snapshots: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Пункты полноты отчёта (`FR-P-48`): значение, подпись и «в порядке ли пункт».
+
+    Список собирает сервер, браузер печатает готовые строки и не решает, что считать
+    готовностью (архитектура B). Пункты совпадают с проверками `report.readiness`:
+    реквизиты, снимки, объём прогона, отказы, замечания, `$Задачи`, артефакты и уборка
+    `__TEST__`-сущностей.
+    """
+    checks = dict(stats.get("checks") or {})
+    notes = dict(stats.get("notes") or {})
+    tasks = dict(stats.get("tasks") or {})
+    artifacts = dict(stats.get("artifacts") or {})
+    entities = dict(stats.get("test_entities") or {})
+    session = dict(stats.get("session") or {})
+    shots = dict(snapshots or {})
+    taken = dict(shots.get("taken") or {})
+    start = bool(taken.get("start"))
+    end = bool(taken.get("end"))
+    implemented = int(checks.get("implemented") or 0)
+    done = int(checks.get("done") or 0)
+    failed = int(checks.get("failed") or 0)
+    blocked = int(checks.get("blocked") or 0)
+    not_run = int(checks.get("not_run") or 0)
+    notes_total = int(notes.get("total") or 0)
+    p0 = int(notes.get("p0") or 0)
+    p1 = int(notes.get("p1") or 0)
+    incomplete = int(notes.get("incomplete") or 0)
+    kinds = ", ".join(
+        f"{name} {count}" for name, count in sorted((artifacts.get("kinds") or {}).items())
+    )
+    return [
+        {
+            "label": "Реквизиты сессии",
+            "value": "заполнены" if session.get("filled") else "не заполнены",
+            "ok": bool(session.get("filled")),
+        },
+        {
+            "label": "Снимки стенда «Начало» / «Окончание»",
+            "value": f"{'есть' if start else 'нет'} / {'есть' if end else 'нет'}",
+            "ok": bool(start and end),
+        },
+        {
+            "label": "Проверок выполнено",
+            "value": f"{done} из {implemented}",
+            "ok": implemented > 0 and not_run == 0,
+        },
+        {
+            "label": "Проверок с отказом",
+            "value": str(failed),
+            "ok": failed == 0,
+        },
+        {
+            "label": "Блокировано API",
+            "value": str(blocked),
+            "ok": True,
+        },
+        {
+            "label": "Замечания к API",
+            "value": join_parts(
+                f"всего {notes_total}",
+                f"P0 {p0}",
+                f"P1 {p1}",
+                f"без воспроизведения {incomplete}",
+            ),
+            "ok": p0 == 0 and incomplete == 0,
+        },
+        {
+            "label": "Задач `$Задачи` наблюдено",
+            "value": str(int(tasks.get("observed") or 0)),
+            "ok": True,
+        },
+        {
+            "label": "Артефактов в сессии",
+            "value": join_parts(str(int(artifacts.get("total") or 0)), kinds),
+            "ok": True,
+        },
+        {
+            "label": "`__TEST__`-сущности",
+            "value": f"создано {int(entities.get('total') or 0)} · не удалено {int(entities.get('pending') or 0)}",
+            "ok": not int(entities.get("pending") or 0),
+        },
+    ]
+
+
+def data_summary(data: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Сводка данных стенда: сколько чего прочитано и что не прочиталось (`UC-03`)."""
+    errors = dict(data.get("errors") or {})
+    return [
+        {"label": "файлов", "value": str(len(data.get("files") or []))},
+        {"label": "записей RAW+markup", "value": str(len(data.get("records") or []))},
+        {"label": "требуют внимания", "value": str(int(data.get("records_attention") or 0))},
+        {"label": "нагрузок", "value": str(len(data.get("loads") or []))},
+        {"label": "датасетов", "value": str(len(data.get("datasets") or []))},
+        {
+            "label": "разделов не прочитано",
+            "value": str(sum(1 for value in errors.values() if value)),
+        },
+    ]
+
+
+def report_view(
+    readiness: Mapping[str, Any], *, snapshots: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Готовность отчёта: «чего не хватает» и KPI (`FR-P-48`, `FR-P-49`)."""
     warnings = [str(item) for item in (readiness.get("warnings") or [])]
     payload = {key: value for key, value in readiness.items() if key != "warnings"}
-    return {"ready": not warnings, "warnings": warnings, "stats": payload}
+    return {
+        "ready": not warnings,
+        "warnings": warnings,
+        "stats": payload,
+        "points": report_points(payload, snapshots=snapshots),
+    }
 
 
 #: Поля реквизитов сессии (`SessionInfo`): имя → подпись в форме.

@@ -379,9 +379,17 @@ class PultApp:
         session_api.set_snapshot(session, session_api.SNAP_END, snapshot)
         self.state.set_stand_status(snapshot)
         self.save(session)
-        prepared = view.report_view(report_api.readiness(session))
+        prepared = view.report_view(
+            report_api.readiness(session), snapshots=view.snapshot_view(session)
+        )
         conclusion = str(payload.get("conclusion") or session.info.conclusion or "").strip()
         closed = bool(payload.get("close", True))
+        if closed and not conclusion:
+            raise ApiError(
+                "Укажите итоговое решение сессии (годен / годен с замечаниями / …): "
+                "без него отчёт неполон",
+                status=422,
+            )
         if closed:
             session_api.close_session(session, conclusion=conclusion or None)
         self.save(session)
@@ -1117,25 +1125,74 @@ class PultApp:
         return {
             "session": {"id": session.session_id, "status": session.status},
             "summary": view.protocol_summary(session, programme),
-            "statuses": list(view.status_labels()),
-            "sections": sorted({str(row["section"]) for row in rows if row.get("section")}),
+            "statuses": view.status_options(),
+            "sections": view.option_rows(
+                sorted({str(row["section"]) for row in rows if row.get("section")})
+            ),
+            "status": str(query.get("status") or ""),
+            "section": str(query.get("section") or ""),
+            "query": str(query.get("q") or ""),
             "total": len(rows),
             "rows": filtered,
+        }
+
+    def api_results(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`GET /api/results` — страница «Результаты» одним заходом (`UC-03`, `UC-19`, `SCR-401`).
+
+        Три зоны сразу: данные стенда (файлы, записи RAW+markup, `$Нагрузки`, `$Датасеты`,
+        `$Модели`), протокол проверок с KPI и готовность отчёта со снимками
+        «Начало»/«Окончание». Фильтры протокола — те же, что у `GET /api/protocol`.
+        Один запрос на страницу: интерфейс не собирает её из четырёх вызовов (`NFR-P-5`).
+        """
+        session = self.session()
+        programme = self.programme(session)
+        data = self.api_data(query=query, payload=payload)
+        rows = view.protocol_rows(session, programme)
+        snapshots = view.snapshot_view(session)
+        return {
+            "session": view.session_form_view(session),
+            "data": data,
+            "data_summary": view.data_summary(data),
+            "protocol": {
+                "summary": view.protocol_summary(session, programme),
+                "statuses": view.status_options(),
+                "sections": view.option_rows(
+                    sorted({str(row["section"]) for row in rows if row.get("section")})
+                ),
+                "status": str(query.get("status") or ""),
+                "section": str(query.get("section") or ""),
+                "query": str(query.get("q") or ""),
+                "total": len(rows),
+                "rows": view.filter_rows(
+                    rows,
+                    status=str(query.get("status") or ""),
+                    section=str(query.get("section") or ""),
+                    query=str(query.get("q") or ""),
+                ),
+            },
+            "report": view.report_view(report_api.readiness(session), snapshots=snapshots),
+            "snapshots": snapshots,
         }
 
     def api_report_readiness(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
         """`GET /api/report/readiness` — полнота сессии и «чего не хватает» (`FR-P-48`)."""
-        return view.report_view(report_api.readiness(self.session()))
+        session = self.session()
+        return view.report_view(
+            report_api.readiness(session), snapshots=view.snapshot_view(session)
+        )
 
     def api_report_build(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
         """`POST /api/report/build` — комплект отчёта без обращений к стенду (`FR-P-50`)."""
         session = self.session()
+        shots = view.snapshot_view(session)
         if not bool(payload.get("build", True)):
-            return {"readiness": view.report_view(report_api.readiness(session))}
+            return {"readiness": view.report_view(report_api.readiness(session), snapshots=shots)}
         try:
             paths = report_api.save_report(session, journal_records=self.state.journal_records())
         except (OSError, ValueError, TypeError, KeyError) as exc:
@@ -1145,7 +1202,7 @@ class PultApp:
             "paths": {str(key): path.as_posix() for key, path in paths.items()},
             "annexes": sorted(str(key) for key in annexes),
             "missing": [str(item) for item in missing],
-            "readiness": view.report_view(report_api.readiness(session)),
+            "readiness": view.report_view(report_api.readiness(session), snapshots=shots),
         }
 
 
@@ -1292,6 +1349,7 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/journal", "api_journal"),
     ("POST", "/api/journal/repeat", "api_journal_repeat"),
     ("GET", "/api/protocol", "api_protocol"),
+    ("GET", "/api/results", "api_results"),
     ("GET", "/api/data", "api_data"),
     ("GET", "/api/report/readiness", "api_report_readiness"),
     ("POST", "/api/report/build", "api_report_build"),

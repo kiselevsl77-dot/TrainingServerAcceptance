@@ -533,3 +533,28 @@ body {
   padding: 5px 8px;
 }
 
+/* «Результаты»: пункты полноты отчёта (SCR-404) */
+.points {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.point {
+  border-left: 3px solid var(--line);
+  background: var(--panel-2);
+  padding: 5px 9px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.point--ok {
+  border-left-color: var(--ok);
+}
+
+.point--bad {
+  border-left-color: var(--warn);
+  color: var(--warn);
+}
+

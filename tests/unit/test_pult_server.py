@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -451,6 +452,64 @@ def test_journal_rows_explain_empty_bodies(pult: PultApp, monkeypatch: pytest.Mo
     off = get(pult, "/api/journal")
     assert off["bodies_logged"] is False
     assert "журналирование тел выключено" in off["rows"][-1]["request_note"]
+
+
+def test_app_js_declares_functions_at_top_level(pult: PultApp) -> None:
+    """Скрипт страницы: все функции объявлены на верхнем уровне (`IR-P-4`).
+
+    Регресс-страж: вложенная функция не видна обработчикам, и страница «Результаты»
+    упала с «refreshResults is not defined», хотя `node --check` молчал, а HTTP-тесты
+    (они не исполняют JS) этого не видели. Поймала живая проверка браузером.
+    """
+    script = get(pult, "/app.js").text
+    nested = [
+        line.strip() for line in script.splitlines() if re.match(r"\s+(?:async )?function ", line)
+    ]
+    assert nested == [], f"вложенные функции в app.js: {nested[:3]}"
+    for name in ("refreshResults", "renderResults", "renderProtocol", "renderJournal"):
+        assert f"function {name}(" in script
+
+
+def test_results_page_combines_three_zones(pult: PultApp) -> None:
+    """`GET /api/results` отдаёт данные стенда, протокол и готовность отчёта (`SCR-401`)."""
+    with pytest.raises(ApiError) as no_session:
+        get(pult, "/api/results")
+    assert no_session.value.status == 409, "без сессии страница результатов не рисуется"
+
+    _session_id, check_id = _ready_session(pult)
+    data = get(pult, "/api/results")
+    assert data["session"]["id"] and data["session"]["can_finish"] is True
+    assert [item["label"] for item in data["data_summary"]][:2] == ["файлов", "записей RAW+markup"]
+    assert data["data"]["files"] == [] and data["data"]["errors"]["files"] == ""
+    assert data["protocol"]["rows"]
+    statuses = {item["value"] for item in data["protocol"]["statuses"]}
+    assert statuses >= {"отказ"}, "фильтр результатов приходит значениями и подписями"
+    assert all(item["label"] for item in data["protocol"]["statuses"])
+    assert all(item["value"] for item in data["protocol"]["sections"])
+    assert [item["label"] for item in data["report"]["points"]][0] == "Реквизиты сессии"
+    assert data["snapshots"]["taken"]["start"] is True
+    assert data["snapshots"]["taken"]["end"] is False
+
+    # Фильтр протокола приходит вместе с данными: интерфейс не хранит выбор сам.
+    filtered = get(pult, "/api/results", q=check_id)
+    assert all(check_id in row["check_id"] for row in filtered["protocol"]["rows"])
+    assert filtered["protocol"]["query"] == check_id
+
+
+def test_session_finish_requires_conclusion(pult: PultApp) -> None:
+    """Завершение сессии без итогового решения отказывает: отчёт был бы неполон (`FR-P-48`)."""
+    session_id, _check = _ready_session(pult)
+    with pytest.raises(ApiError) as missing:
+        post(pult, f"/api/sessions/{session_id}/finish", close=True, conclusion="  ")
+    assert missing.value.status == 422
+
+    data = post(
+        pult, f"/api/sessions/{session_id}/finish", close=True, conclusion="годен с замечаниями"
+    )
+    assert data["closed"] is True
+    assert data["session"]["status"] == "завершена"
+    assert data["snapshots"]["taken"]["end"] is True, "снимок «Окончание» снимает завершение"
+    assert data["readiness"]["points"], "готовность отчёта приходит пунктами"
 
 
 def _with_checks(pult: PultApp, *, check_class: str, check_id: str = "") -> str:

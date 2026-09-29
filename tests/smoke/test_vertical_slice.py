@@ -255,7 +255,34 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
 
     readiness = api(pult, "/api/report/readiness")
     assert isinstance(readiness["warnings"], list)
+    assert readiness["points"], "готовность отчёта приходит пунктами полноты"
     assert api(pult, "/api/run")["progress"]["pending"] == 0, "незакрытых пунктов после прогона нет"
     assert api(pult, "/api/state")["phase"]["code"] == "Ф2", (
         "прогон пройден целиком: фаза — оценка и фиксация, снимка «Окончание» ещё нет"
     )
+
+    # Страница «Результаты» одним заходом: данные стенда, протокол и отчёт (`SCR-401`, `SCR-404`).
+    results = api(pult, "/api/results")
+    assert results["session"]["id"] == session_id
+    assert [item["label"] for item in results["data_summary"]][0] == "файлов"
+    assert results["protocol"]["rows"] and results["report"]["points"]
+    assert results["snapshots"]["taken"]["start"] is True
+
+    # Комплект отчёта и завершение сессии закрывают критерий MVP целиком.
+    kit = api(pult, "/api/report/build", {"build": True})
+    assert {"report_md", "report_json"} <= set(kit["paths"]), "комплект отчёта — md и json"
+    assert kit["paths"]["report_md"].endswith(".md") and kit["paths"]["report_json"].endswith(
+        ".json"
+    )
+    assert api(pult, "/api/state")["phase"]["code"] == "Ф2", (
+        "комплект собран, но снимка «Окончание» нет: фаза — оценка и фиксация"
+    )
+    finished = api(
+        pult,
+        f"/api/sessions/{session_id}/finish",
+        {"close": True, "conclusion": "годен с замечаниями"},
+    )
+    assert finished["closed"] is True and finished["session"]["status"] == "завершена"
+    assert finished["snapshots"]["taken"]["end"] is True, "завершение снимает снимок «Окончание»"
+    assert api(pult, "/api/state")["phase"]["code"] == "Ф4"
+    assert api(pult, "/api/state")["session"]["status"] == "завершена"
