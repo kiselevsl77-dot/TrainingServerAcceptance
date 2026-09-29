@@ -248,6 +248,10 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
 
     journal = api(pult, "/api/journal")
     assert journal["rows"] and "curl -X" in journal["rows"][-1]["curl"]
+    # У каждой записи либо тело, либо объяснение, почему его нет (`FR-P-21`):
+    # «(тело не сохранилось)» у GET — дефект первого запуска.
+    assert all(row["request_note"] or row["request"] for row in journal["rows"])
+    assert all(row["response_note"] or row["response"] for row in journal["rows"])
 
     readiness = api(pult, "/api/report/readiness")
     assert isinstance(readiness["warnings"], list)

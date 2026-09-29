@@ -761,16 +761,57 @@ def _size(label: str, value: Any) -> str:
     return f"{label} {number} Б"
 
 
+def body_note(
+    *,
+    body: str,
+    size: int | None,
+    content_type: str,
+    truncated: bool,
+    method: str = "",
+    bodies_logged: bool = True,
+    limit: int = 0,
+    kind: str = "запрос",
+) -> str:
+    """Что сказать оператору вместо пустого тела (`FR-P-21`).
+
+    Пустое тело — не всегда потеря данных: у `GET`/`HEAD` тела нет вовсе, у ответа `204`
+    его тоже нет, бинарные данные не сохраняются по замыслу, а при выключенном
+    журналировании тел (`PULT_LOG_BODIES=false`) тело есть, но его не пишут. Интерфейс
+    должен различать эти случаи, поэтому подпись считает сервер, а не пустая строка:
+    иначе оператор читает «тело не сохранилось» там, где сохранять было нечего.
+    """
+    if body:
+        if truncated and limit:
+            return f"тело обрезано по лимиту {limit} символов"
+        return ""
+    if not size:
+        if kind != "запрос":
+            return "тела нет: ответ без тела (204 или пустой ответ)"
+        return (
+            "тела нет: запрос без тела (GET/HEAD)"
+            if str(method).upper() in ("GET", "HEAD", "OPTIONS")
+            else "тела нет: запрос отправлен без тела"
+        )
+    if "multipart/form-data" in str(content_type).lower():
+        return f"тело не сохраняется: multipart/form-data, {size} байт (смотрите размер)"
+    if not bodies_logged:
+        return "тело не сохранялось: журналирование тел выключено (`PULT_LOG_BODIES`)"
+    return f"тело не сохраняется: не текстовый формат, {size} байт (смотрите размер)"
+
+
 def journal_row(
     record: Any,
     *,
     base_url: str = "",
     detail_request: bool = True,
     detail_response: bool = True,
+    bodies_logged: bool = True,
+    body_limit: int = 0,
 ) -> dict[str, Any]:
     """Запись ленты обмена: запрос и ответ с **независимой** подробностью (`FR-P-21`)."""
     body_request = str(record.request_body or "")
     body_response = str(record.response_body or "")
+    content_type = str(record.content_type or "")
     return {
         "seq": int(record.seq),
         "at": short_time(record.started_at, "%H:%M:%S"),
@@ -789,13 +830,32 @@ def journal_row(
         "truncated": bool(record.body_truncated),
         "request": body_request if detail_request else "",
         "response": body_response if detail_response else "",
+        "request_note": body_note(
+            body=body_request,
+            size=record.request_bytes,
+            content_type=content_type,
+            truncated=bool(record.body_truncated),
+            method=str(record.method),
+            bodies_logged=bodies_logged,
+            limit=body_limit,
+            kind="запрос",
+        ),
+        "response_note": body_note(
+            body=body_response,
+            size=record.response_bytes,
+            content_type=content_type,
+            truncated=bool(record.body_truncated),
+            bodies_logged=bodies_logged,
+            limit=body_limit,
+            kind="ответ",
+        ),
         "curl": curl_command(
             method=str(record.method),
             path=str(record.path),
             query=str(record.query or ""),
             body=body_request,
             base_url=base_url,
-            content_type=str(record.content_type or ""),
+            content_type=content_type,
         ),
     }
 
@@ -809,6 +869,8 @@ def journal_rows(
     label: str = "",
     detail_request: bool = True,
     detail_response: bool = True,
+    bodies_logged: bool = True,
+    body_limit: int = 0,
 ) -> list[dict[str, Any]]:
     """Хвост ленты обмена: фильтры по ошибкам и метке пункта (`FR-P-28`)."""
     items = list(records)
@@ -823,6 +885,8 @@ def journal_rows(
             base_url=base_url,
             detail_request=detail_request,
             detail_response=detail_response,
+            bodies_logged=bodies_logged,
+            body_limit=body_limit,
         )
         for record in tail
     ]

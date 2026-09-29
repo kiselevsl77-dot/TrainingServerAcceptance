@@ -19,6 +19,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,7 @@ from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.api import Apis
 from acceptance.config import PultConfig
-from acceptance.http_log import Journal, LoggingTransport
+from acceptance.http_log import HttpExchange, Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
 from client.http import ApiHttpClient
 from client.settings import TrainingServerSettings
@@ -412,6 +413,44 @@ def test_journal_repeat_appends_record(pult: PultApp) -> None:
     assert data["row"]["label"] == "проверка версии"
     assert data["row"]["curl"].startswith("curl -X GET")
     assert data["row"]["response"]
+
+
+def test_journal_rows_explain_empty_bodies(pult: PultApp, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Через API: пустое тело объясняется словами, выключатель тел виден в ответе (`FR-P-21`)."""
+    data = post(pult, "/api/journal/repeat", method="GET", path="/version", label="проверка версии")
+    assert data["row"]["request"] == ""
+    assert data["row"]["request_note"] == "тела нет: запрос без тела (GET/HEAD)"
+    assert data["row"]["response"] and data["row"]["response_note"] == ""
+
+    lenta = get(pult, "/api/journal")
+    assert lenta["bodies_logged"] is True
+
+    # Журналирование тел выключено: тело у стенда было, в ленту не попало.
+    runtime = pult.state.runtime()
+    assert runtime is not None
+    silent = replace(runtime, config=replace(runtime.config, log_bodies=False))
+    monkeypatch.setattr(PultState, "runtime", lambda self: silent)
+    journal = pult.state.journal()
+    journal.add(
+        HttpExchange(
+            seq=journal.next_seq(),
+            started_at="2026-09-29T12:00:00",
+            method="post",
+            path="/api/data/files",
+            query="",
+            status=200,
+            duration_ms=5.0,
+            request_bytes=128,
+            response_bytes=64,
+            content_type="application/json",
+            label="загрузка",
+            request_body="",
+            response_body="",
+        )
+    )
+    off = get(pult, "/api/journal")
+    assert off["bodies_logged"] is False
+    assert "журналирование тел выключено" in off["rows"][-1]["request_note"]
 
 
 def _with_checks(pult: PultApp, *, check_class: str, check_id: str = "") -> str:

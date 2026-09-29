@@ -337,6 +337,54 @@ def test_journal_rows_have_independent_detail_and_curl() -> None:
     assert view.journal_rows([_record(seq=1), _record(seq=2)], limit=1)[0]["seq"] == 2
 
 
+def test_journal_body_notes_explain_empty_bodies() -> None:
+    """Пустое тело объясняется словами, а не подозрением в потере данных (`FR-P-21`).
+
+    Дефект 29.09.2026: оператор видел «(тело не сохранилось)» у обычного `GET`, у
+    которого тела и не было. Подпись считает сервер — он один знает метод, размер,
+    тип содержимого и настройку `PULT_LOG_BODIES`.
+    """
+    empty = view.journal_row(
+        _record(request_bytes=0, response_bytes=0, request_body="", response_body="")
+    )
+    assert empty["request_note"] == "тела нет: запрос без тела (GET/HEAD)"
+    assert empty["response_note"] == "тела нет: ответ без тела (204 или пустой ответ)"
+
+    post = view.journal_row(
+        _record(method="post", request_bytes=0, request_body="", response_body="{}")
+    )
+    assert post["request_note"] == "тела нет: запрос отправлен без тела"
+
+    filled = view.journal_row(_record())
+    assert filled["request_note"] == "" and filled["response_note"] == ""
+
+    binary = view.journal_row(
+        _record(
+            request_bytes=4096,
+            request_body="",
+            content_type="application/octet-stream",
+        )
+    )
+    assert (
+        binary["request_note"]
+        == "тело не сохраняется: не текстовый формат, 4096 байт (смотрите размер)"
+    )
+
+    upload = view.journal_row(
+        _record(request_bytes=512, request_body="", content_type="multipart/form-data; boundary=x")
+    )
+    assert "multipart/form-data" in upload["request_note"]
+    assert "512 байт" in upload["request_note"]
+
+    off = view.journal_row(_record(request_bytes=64, request_body=""), bodies_logged=False)
+    assert off["request_note"] == (
+        "тело не сохранялось: журналирование тел выключено (`PULT_LOG_BODIES`)"
+    )
+
+    cut = view.journal_row(_record(body_truncated=True), body_limit=4096)
+    assert cut["request_note"] == "тело обрезано по лимиту 4096 символов"
+
+
 def test_outcome_rows_keep_stop_reason() -> None:
     """Итог прогона не теряет причину останова и диапазон журнала (`FR-P-30`)."""
 

@@ -948,11 +948,17 @@ class PultApp:
     def api_journal(
         self, *, query: Mapping[str, str], payload: Mapping[str, Any]
     ) -> dict[str, Any]:
-        """`GET /api/journal` — лента обмена: №, метод, путь, статус, тело и `curl` (`FR-P-21`)."""
+        """`GET /api/journal` — лента обмена: №, метод, путь, статус, тело и `curl` (`FR-P-21`).
+
+        Подписи «почему тела нет» тоже считает сервер: он один знает настройки
+        журналирования (`PULT_LOG_BODIES`, лимит тела) и не может ошибиться в отличие
+        от браузера, который видит только пустую строку.
+        """
         records = self.state.journal_records()
         journal = self.state.journal()
         base_url = self._base_url()
         limit = int(query.get("limit") or 50)
+        runtime = self.state.runtime()
         rows = view.journal_rows(
             records,
             base_url=base_url,
@@ -961,6 +967,8 @@ class PultApp:
             label=str(query.get("label") or ""),
             detail_request=_flag(query.get("request"), True),
             detail_response=_flag(query.get("response"), True),
+            bodies_logged=True if runtime is None else runtime.config.log_bodies,
+            body_limit=0 if runtime is None else runtime.config.body_limit,
         )
         return {
             "rows": rows,
@@ -968,6 +976,7 @@ class PultApp:
             "levels": ["DEBUG", "INFO", "WARNING", "ERROR"],
             "log_level": self.state.log_level(),
             "base_url": base_url,
+            "bodies_logged": True if runtime is None else runtime.config.log_bodies,
             "labels": sorted({str(record.label) for record in records if record.label}),
             "total": len(records),
         }

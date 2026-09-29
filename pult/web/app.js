@@ -147,7 +147,7 @@ function renderHeader(data) {
 }
 
 /** Состояние экрана прогона: последний вид и раскрытый пункт (только отображение). */
-const runView = { data: null, openRow: "" };
+const runView = { data: null, openRow: "", drafts: {} };
 
 /** Прогон: ревизия, режим, управление, строки пунктов и итоги (`SCR-301`). */
 function renderRun(data) {
@@ -274,14 +274,20 @@ function renderRunCard(card, runnable) {
   document.getElementById("run-card-note").textContent = text(card.note);
   const fields = document.getElementById("run-card-fields");
   fields.textContent = "";
+  const draft = runView.drafts[runCardCheckId()] || {};
   (card.fields || []).forEach((field) => {
     const label = document.createElement("label");
     label.textContent = field.label;
+    // Незаконченный ввод карточки переживает автообновление и смену вкладки:
+    // оператор не должен заново набирать подтверждение ресурсов.
+    const saved =
+      draft[field.name] !== undefined ? draft[field.name] : field.value;
     if (field.kind === "checkbox") {
       const input = document.createElement("input");
       input.type = "checkbox";
       input.id = `run-card-${field.name}`;
-      input.checked = Boolean(field.checked);
+      input.checked = Boolean(saved);
+      input.addEventListener("change", () => saveCardDraft(field.name, input.checked));
       label.appendChild(input);
     } else if (field.kind === "select") {
       const select = document.createElement("select");
@@ -292,13 +298,15 @@ function renderRunCard(card, runnable) {
         option.textContent = value;
         select.appendChild(option);
       });
-      select.value = text(field.value) || text((card.artifacts || [])[0]);
+      select.value = text(saved) || text((card.artifacts || [])[0]);
+      select.addEventListener("change", () => saveCardDraft(field.name, select.value));
       label.appendChild(select);
     } else {
       const input = document.createElement("input");
       input.id = `run-card-${field.name}`;
-      input.value = text(field.value);
+      input.value = text(saved);
       input.size = 34;
+      input.addEventListener("input", () => saveCardDraft(field.name, input.value));
       label.appendChild(input);
     }
     fields.appendChild(label);
@@ -330,6 +338,17 @@ function cardValues() {
   return values;
 }
 
+/** Незаконченный ввод карточки: помним по пункту и полю до сохранения или запуска. */
+function saveCardDraft(name, value) {
+  const checkId = runCardCheckId();
+  runView.drafts[checkId] = { ...runView.drafts[checkId], [name]: value };
+}
+
+/** Ввод карточки отработан: правки больше не нужны. */
+function clearCardDraft() {
+  delete runView.drafts[runCardCheckId()];
+}
+
 /** Ручная отметка `manual`: статус и заключение (`FR-P-32`). */
 function renderRunMark(mark, runnable) {
   const box = document.getElementById("run-mark");
@@ -349,6 +368,12 @@ function renderRunMark(mark, runnable) {
     select.appendChild(option);
   });
   select.value = text(mark.default_status);
+  // Заключение оператора тоже не теряется при автообновлении: его пишут руками.
+  const textBox = document.getElementById("run-mark-text");
+  const saved = runView.drafts[`mark:${text(mark.check_id)}`];
+  if (saved !== undefined && textBox.value === "") {
+    textBox.value = text(saved);
+  }
   document.getElementById("run-mark-save").disabled = !runnable;
 }
 
@@ -532,30 +557,43 @@ function renderProtocol(data) {
   ]);
 }
 
+/** Состояние ленты обмена: открытая запись и незаконченные правки повтора (`FR-P-24`). */
+const journalView = { open: 0, drafts: {} };
+
 /** Лента обмена: записи журнала с независимой подробностью тел (`FR-P-21`). */
 function renderJournal(data) {
   const summary = data.summary || {};
   document.getElementById("journal-meta").textContent =
-    `записей ${text(summary.total)} · ошибок ${text(summary.errors)} · запрос ${text(summary.request_bytes)} Б · ответ ${text(summary.response_bytes)} Б`;
+    `записей ${text(summary.total)} · ошибок ${text(summary.errors)} · запрос ${text(summary.request_bytes)} Б · ответ ${text(summary.response_bytes)} Б` +
+    (data.bodies_logged === false
+      ? " · тела не сохраняются (PULT_LOG_BODIES=false)"
+      : "");
   const box = document.getElementById("journal-rows");
   box.textContent = "";
   (data.rows || []).forEach((row) => {
     const line = document.createElement("details");
     line.className = `journal__row journal__row--${row.ok ? "ok" : "bad"}`;
+    line.dataset.seq = text(row.seq);
+    // Открытая запись переживает автообновление: браузер не должен «захлопывать»
+    // то, что оператор только что раскрыл (жалоба 29.09.2026).
+    line.open = Number(row.seq) === Number(journalView.open);
+    line.addEventListener("toggle", () => {
+      journalView.open = line.open ? Number(row.seq) : 0;
+    });
     const title = document.createElement("summary");
-    title.textContent = `#${text(row.seq)} ${text(row.at)} ${text(row.method)} ${text(row.path)} → ${text(row.status)} · ${text(row.duration_ms)} мс${row.label ? " · " + text(row.label) : ""}${row.error ? " · " + text(row.error) : ""}`;
+    title.textContent = `#${text(row.seq)} ${text(row.at)} ${text(row.method)} ${text(row.path)} → ${text(row.status)} · ${text(row.duration_ms)} мс${row.label ? " · " + text(row.label) : ""}${row.error ? " · " + text(row.error) : ""}${row.request_note ? " · " + text(row.request_note) : ""}`;
     line.appendChild(title);
     [
-      ["Запрос", row.request],
-      ["Ответ", row.response],
-      ["curl", row.curl],
-    ].forEach(([label, body]) => {
+      ["Запрос", row.request, row.request_note],
+      ["Ответ", row.response, row.response_note],
+      ["curl", row.curl, ""],
+    ].forEach(([label, body, note]) => {
       const caption = document.createElement("div");
       caption.className = "journal__label";
       caption.textContent = label;
       const pre = document.createElement("pre");
       pre.className = "journal__body";
-      pre.textContent = text(body) || "(тело не сохранялось)";
+      pre.textContent = text(body) || text(note) || "(тела нет)";
       line.appendChild(caption);
       line.appendChild(pre);
     });
@@ -566,17 +604,34 @@ function renderJournal(data) {
 
 /** Повтор вызова с правками: путь, метод и тело (`FR-P-24`). */
 function repeatBox(row) {
+  const seq = Number(row.seq);
+  const draft = journalView.drafts[seq] || {};
   const holder = document.createElement("div");
   holder.className = "journal__repeat";
   const path = document.createElement("input");
-  path.value = text(row.path);
+  path.value = text(draft.path !== undefined ? draft.path : row.path);
   path.size = 60;
   path.className = "journal__path";
+  path.dataset.role = "repeat-path";
+  path.addEventListener("input", () => {
+    journalView.drafts[seq] = { ...journalView.drafts[seq], path: path.value };
+  });
   const body = document.createElement("textarea");
   body.rows = 3;
-  body.value = text(row.request);
+  body.dataset.role = "repeat-body";
+  body.value = text(draft.body !== undefined ? draft.body : row.request);
+  body.addEventListener("input", () => {
+    journalView.drafts[seq] = { ...journalView.drafts[seq], body: body.value };
+  });
   const actions = document.createElement("div");
   actions.className = "row";
+  actions.appendChild(
+    button("⛓ ссылка на запись", "btn btn--tiny", () => {
+      journalView.open = seq;
+      window.location.hash = `journal/${seq}`;
+      flash("ok", `Ссылка на запись #${text(row.seq)}: ${window.location.href}`);
+    })
+  );
   actions.appendChild(
     button("⧉ повторить с правками", "btn btn--tiny", async () => {
       let parsed = null;
@@ -593,6 +648,7 @@ function repeatBox(row) {
         label: `повтор #${text(row.seq)}`,
       });
       if (answer) {
+        delete journalView.drafts[seq];
         flash("ok", `Повтор #${text(row.seq)} отправлен: ${text(answer.status)}`);
         await refresh();
       }
@@ -1098,22 +1154,56 @@ async function refresh() {
   }
 }
 
-/** Панель из адреса страницы: `#planning` открывает вкладку по ссылке (`IR-P-4`). */
+/** Панель из адреса страницы: `#planning`, `#journal/12` — открыть вкладку и запись (`IR-P-4`). */
 function panelFromHash() {
-  const name = (window.location.hash || "").replace("#", "");
-  return ["run", "planning", "sessions", "protocol", "journal"].includes(name) ? name : "run";
+  const raw = (window.location.hash || "").replace("#", "");
+  const [name, argument] = raw.split("/");
+  const known = ["run", "planning", "sessions", "protocol", "journal"];
+  return { panel: known.includes(name) ? name : "run", argument: argument || "" };
 }
 
 /** Показывает панель и подгружает её данные. */
-async function showPanel(name) {
+async function showPanel(name, argument) {
   active = name;
+  if (name === "journal" && argument) {
+    journalView.open = Number(argument) || 0;
+  }
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.panel === name);
   });
   document.querySelectorAll(".panel").forEach((panel) => {
     panel.classList.toggle("is-active", panel.id === `panel-${name}`);
   });
-  window.location.hash = name;
+  window.location.hash = argument ? `${name}/${argument}` : name;
+  await refresh();
+}
+
+/** Оператор вводит текст или правит поле: перерисовка панели помешает работе. */
+function busyTyping() {
+  const element = document.activeElement;
+  if (!element || !["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)) {
+    return false;
+  }
+  if (element.type === "checkbox" || element.type === "radio") {
+    return false;
+  }
+  return !element.dataset.allowRefresh;
+}
+
+/** Автообновление: фон не дёргает экран под руками оператора (`NFR-P-5`, жалоба 29.09.2026). */
+async function autoRefresh() {
+  const box = document.getElementById("auto-refresh");
+  if (box && !box.checked) {
+    return;
+  }
+  if (busyTyping()) {
+    try {
+      renderHeader(await call("GET", "/api/state"));
+    } catch (error) {
+      flash("error", `[${error.kind || "?"}] ${error.message}`);
+    }
+    return;
+  }
   await refresh();
 }
 
@@ -1123,6 +1213,14 @@ function bind() {
     tab.addEventListener("click", () => showPanel(tab.dataset.panel));
   });
   document.getElementById("btn-refresh").addEventListener("click", refresh);
+  document.getElementById("auto-refresh").addEventListener("change", (event) => {
+    flash(
+      "ok",
+      event.target.checked
+        ? "Автообновление включено (раз в 15 секунд)"
+        : "Автообновление выключено: экран обновляется кнопкой «Обновить» и действиями"
+    );
+  });
 
   // Прогон: команды и формы живут на вкладке «Прогон» (правило одной команды, `IR-P-4`)
   document.getElementById("run-next").addEventListener("click", async () => {
@@ -1154,13 +1252,17 @@ function bind() {
       flash("error", "Эту причину пульт устранить не может: проверьте .env и перезапустите");
     }
   });
-  document.getElementById("run-card-save").addEventListener("click", () =>
-    runAction(
-      `/api/checks/${encodeURIComponent(runCardCheckId())}`,
-      { action: "run-card", values: cardValues() },
-      "Карточка запуска сохранена"
-    )
-  );
+  document.getElementById("run-card-save").addEventListener("click", async () => {
+    const answer = await act(`/api/checks/${encodeURIComponent(runCardCheckId())}`, {
+      action: "run-card",
+      values: cardValues(),
+    });
+    if (answer) {
+      clearCardDraft();
+      flash("ok", "Карточка запуска сохранена");
+      await refresh();
+    }
+  });
   document.getElementById("run-card-run").addEventListener("click", async () => {
     const checkId = runCardCheckId();
     const saved = await act(`/api/checks/${encodeURIComponent(checkId)}`, {
@@ -1172,11 +1274,16 @@ function bind() {
     }
     const data = await act("/api/run", { action: "next" });
     if (data) {
+      clearCardDraft();
       runView.openRow = "";
       renderRun(data);
       flash("ok", `Пункт ${text(checkId)}: карточка подтверждена, запуск выполнен`);
       await refresh();
     }
+  });
+  document.getElementById("run-mark-text").addEventListener("input", (event) => {
+    const item = ((runView.data || {}).next || {}).item || {};
+    runView.drafts[`mark:${text(item.check_id)}`] = event.target.value;
   });
   document.getElementById("run-mark-save").addEventListener("click", async () => {
     const item = ((runView.data || {}).next || {}).item || {};
@@ -1187,6 +1294,7 @@ function bind() {
     });
     if (answer) {
       document.getElementById("run-mark-text").value = "";
+      delete runView.drafts[`mark:${text(item.check_id)}`];
       runView.openRow = "";
       flash("ok", `Отметка по пункту ${text(item.check_id)} записана`);
       await refresh();
@@ -1264,13 +1372,14 @@ function bind() {
     )
   );
   window.addEventListener("hashchange", () => {
-    const name = panelFromHash();
-    if (name !== active) {
-      showPanel(name);
+    const target = panelFromHash();
+    if (target.panel !== active || (target.argument && target.argument !== String(journalView.open))) {
+      showPanel(target.panel, target.argument);
     }
   });
+  window.setInterval(autoRefresh, 15000);
 }
 
 bind();
-showPanel(panelFromHash());
-window.setInterval(refresh, 15000);
+const start = panelFromHash();
+showPanel(start.panel, start.argument);
