@@ -362,6 +362,70 @@ def test_unknown_check_is_closed_as_skipped(wired: Any, library: sets_api.SetsLi
 
 
 # ---------------------------------------------------------------------------
+# M0: проверка описана в каталоге, сценария ещё нет
+# ---------------------------------------------------------------------------
+def test_check_without_scenario_is_not_closed_by_next(wired: Any, library: sets_api.SetsLibrary):
+    """«▶ Следующая» на проверке без сценария отказывает и **не** ставит статус.
+
+    Группы T6–T9 описаны в каталоге на этапе M0 раньше сценариев: если закрывать
+    такие пункты статусом «пропущена», протокол испытаний заявлял бы пропуск
+    проверки, которая ещё не выполнялась.
+    """
+    runtime, journal, client, session = wired
+    programme = _programme(library)
+    programme.add_check("TC-MOD-01")
+    queue = _queue(programme)
+
+    outcome = runner_api.execute_check(
+        queue, programme, session, runtime, check_id="TC-MOD-01", client=client
+    )
+
+    assert outcome.stopped is True
+    assert "сценарий проверки ещё не описан" in outcome.detail
+    assert "по вызовам" in outcome.detail
+    assert outcome.scenario_missing is True
+    assert not journal.records
+    assert session.checks == []
+    assert results_api.status_of(session, "TC-MOD-01") == str(CheckStatus.NOT_RUN)
+    assert _item(queue, "TC-MOD-01").is_pending
+    assert queue.stop_reason == outcome.detail
+
+
+def test_manual_check_without_scenario_still_asks_operator(
+    wired: Any, library: sets_api.SetsLibrary
+):
+    """Ручная проверка T6–T9 (TC-CLEAN-04) идёт обычным путём: нужна отметка оператора."""
+    runtime, journal, client, session = wired
+    programme = _programme(library, "SET-CLEAN")
+    queue = _queue(programme)
+
+    outcome = runner_api.execute_check(
+        queue, programme, session, runtime, check_id="TC-CLEAN-04", client=client
+    )
+
+    assert outcome.operator_required is True
+    assert not journal.records
+    assert results_api.status_of(session, "TC-CLEAN-04") == str(CheckStatus.NOT_RUN)
+    assert _item(queue, "TC-CLEAN-04").is_pending
+
+
+def test_batch_tech_stops_on_check_without_scenario(wired: Any, library: sets_api.SetsLibrary):
+    """«Пачка tech» доводит до проверки без сценария и останавливается с причиной."""
+    runtime, _journal, client, session = wired
+    # набор TC-MOD: первая проверка `tech`, вторая уже `live` — пачка берёт только первую
+    programme = _programme(library, "SET-MOD")
+    queue = _queue(programme)
+
+    outcomes = runner_api.run_batch_tech(queue, programme, session, runtime, client=client)
+
+    assert [item.check_id for item in outcomes] == ["TC-MOD-01"]
+    assert outcomes[0].stopped is True
+    assert outcomes[0].scenario_missing is True
+    assert "сценарий проверки ещё не описан" in outcomes[0].detail
+    assert results_api.status_of(session, "TC-MOD-02") == str(CheckStatus.NOT_RUN)
+
+
+# ---------------------------------------------------------------------------
 # Режим «по вызовам»
 # ---------------------------------------------------------------------------
 def test_mode_call_sends_one_call_and_leaves_result_empty(
@@ -451,6 +515,41 @@ def test_mode_call_without_client_keeps_item_pending(wired: Any, library: sets_a
     assert "клиент" in outcome.detail
     assert not journal.records
     assert _item(queue, check_id).is_pending
+
+
+def test_mode_call_refuses_check_without_operations(wired: Any, library: sets_api.SetsLibrary):
+    """Проверка без операций (источник — сессия/отчёт) «по вызовам» не закрывается."""
+    runtime, _journal, client, session = wired
+    programme = _programme(library, "SET-CLEAN")
+    queue = _queue(programme)
+    queue.set_mode(queue_api.MODE_CALL)
+
+    outcome = runner_api.execute_call(
+        queue, programme, session, runtime, check_id="TC-CLEAN-02", client=client
+    )
+
+    assert outcome.level == runner_api.LEVEL_CALL
+    assert outcome.stopped is True
+    assert "нет операций" in outcome.detail
+    assert session.checks == []
+    assert _item(queue, "TC-CLEAN-02").is_pending
+
+
+def test_mode_call_refuses_manual_check(wired: Any, library: sets_api.SetsLibrary):
+    """Ручная проверка «по вызовам» не выполняется: её закрывает оператор отметкой."""
+    runtime, _journal, client, session = wired
+    programme = _programme(library, "SET-CLEAN")
+    queue = _queue(programme)
+    queue.set_mode(queue_api.MODE_CALL)
+
+    outcome = runner_api.execute_call(
+        queue, programme, session, runtime, check_id="TC-CLEAN-04", client=client
+    )
+
+    assert outcome.stopped is True
+    assert "оператором" in outcome.detail
+    assert results_api.status_of(session, "TC-CLEAN-04") == str(CheckStatus.NOT_RUN)
+    assert _item(queue, "TC-CLEAN-04").is_pending
 
 
 def test_mode_call_requires_run_card_for_changing_check(wired: Any, library: sets_api.SetsLibrary):

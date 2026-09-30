@@ -1,8 +1,8 @@
-"""Тесты каталога проверок чек-листа (FR-T4, этапы T3–T5).
+"""Тесты каталога проверок чек-листа (FR-T4, этапы T3–T9).
 
 Главная проверка — **совпадение каталога с программой испытаний**: описания проверок
-групп `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD`, `TC-TASK`, `TC-DS` должны
-соответствовать таблицам `docs/02` (идентификатор, название, требования, класс).
+всех десяти групп (`TC-SYS`…`TC-CLEAN`) должны соответствовать таблицам `docs/02`
+(идентификатор, название, требования, класс).
 
 Дополнительно проверяется связность каталога с остальными частями пульта:
 
@@ -10,9 +10,11 @@
       пробы (`probe_paths`) — наоборот, **отсутствуют**: их отсутствие и подтверждается;
     * автоматические сценарии объявлены в модулях-владельцах и видны общему реестру
       `acceptance.checks.runner`;
+    * проверки без сценария (описаны на этапе M0, группы T6–T9) не запускаются
+      сценарием: их закрывает оператор («по вызовам» или ручная отметка);
     * у проверок с ожидаемым дефектом API есть шаблон замечания (`notes.note_from_check`);
     * модули проверок совпадают со справочником замечаний (`notes.MODULES`);
-    * структура каталога готова к этапам T6–T10 (10 групп, 69 проверок).
+    * каталог описывает полный состав программы испытаний (10 групп, 69 проверок).
 """
 
 from __future__ import annotations
@@ -44,7 +46,9 @@ GROUP_HEADINGS: dict[str, str] = {
     "## 13. TC-CLEAN": "TC-CLEAN",
 }
 
-#: Группы, наполненные в каталоге (этапы T3–T5).
+#: Группы, описанные в каталоге: все 10 (69 проверок). Группы `TC-MOD`…`TC-CLEAN`
+#: (21 проверка, этапы T6–T9) добавлены на этапе M0 **описаниями** — сценарии
+#: появятся позже, до тех пор проверки выполняются «по вызовам» или вручную.
 IMPLEMENTED_GROUPS: tuple[str, ...] = (
     "TC-SYS",
     "TC-FILE",
@@ -52,9 +56,13 @@ IMPLEMENTED_GROUPS: tuple[str, ...] = (
     "TC-LOAD",
     "TC-TASK",
     "TC-DS",
+    "TC-MOD",
+    "TC-TR",
+    "TC-INF",
+    "TC-CLEAN",
 )
 
-#: Состав классов по таблицам `docs/02` §4–§9. Замечание: сводка §14 для `TC-FILE`
+#: Состав классов по таблицам `docs/02` §4–§13. Замечание: сводка §14 для `TC-FILE`
 #: указывает «tech 10, live 4», но в таблице §5 у `TC-FILE-14` (удаление
 #: несуществующего файла) класс `tech` — каталог следует таблице, а не сводке.
 CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
@@ -64,10 +72,43 @@ CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
     "TC-LOAD": {"tech": 7},
     "TC-TASK": {"tech": 4, "live": 3, "manual": 1},
     "TC-DS": {"tech": 3, "live": 3, "heavy": 1},
+    "TC-MOD": {"tech": 4, "live": 3},
+    "TC-TR": {"tech": 1, "live": 1, "heavy": 4},
+    "TC-INF": {"tech": 2, "live": 1, "heavy": 1},
+    "TC-CLEAN": {"tech": 2, "live": 1, "manual": 1},
 }
 
-#: Проверки без автоматического сценария (выполняются только оператором).
-MANUAL_CHECKS: tuple[str, ...] = ("TC-SYS-06", "TC-REC-03", "TC-TASK-08")
+#: Проверки, которые закрывает оператор: класс `manual`, сценария нет.
+OPERATOR_CHECKS: tuple[str, ...] = ("TC-SYS-06", "TC-REC-03", "TC-TASK-08", "TC-CLEAN-04")
+
+#: Проверки без автоматического сценария (M0: описания есть, сценарии этапов
+#: T6–T9 — впереди). «▶ Следующая» отказывает и **не** ставит статус «пропущена».
+NO_SCENARIO_CHECKS: tuple[str, ...] = (
+    "TC-SYS-06",
+    "TC-REC-03",
+    "TC-TASK-08",
+    "TC-MOD-01",
+    "TC-MOD-02",
+    "TC-MOD-03",
+    "TC-MOD-04",
+    "TC-MOD-05",
+    "TC-MOD-06",
+    "TC-MOD-07",
+    "TC-TR-01",
+    "TC-TR-02",
+    "TC-TR-03",
+    "TC-TR-04",
+    "TC-TR-05",
+    "TC-TR-06",
+    "TC-INF-01",
+    "TC-INF-02",
+    "TC-INF-03",
+    "TC-INF-04",
+    "TC-CLEAN-01",
+    "TC-CLEAN-02",
+    "TC-CLEAN-03",
+    "TC-CLEAN-04",
+)
 
 CHECK_ROW = re.compile(
     r"^\|\s*(?P<id>TC-[A-Z]+-\d{2})\s*\|(?P<title>[^|]*)\|(?P<requirement>[^|]*)\|"
@@ -137,13 +178,13 @@ def test_group_classes_match_checklist(group_key: str):
 
 
 def test_catalog_is_ready_for_next_stages():
-    """Каталог описывает 10 групп; на этапах T3–T5 наполнены шесть групп (48 проверок)."""
+    """Каталог описывает полный состав программы испытаний: 10 групп, 69 проверок."""
     summary = catalog.catalog_summary()
 
     assert summary["groups_total"] == 10
     assert summary["checks_total"] == 69
-    assert summary["groups_implemented"] == 6
-    assert summary["checks_implemented"] == 48
+    assert summary["groups_implemented"] == 10
+    assert summary["checks_implemented"] == 69
     assert [group.key for group in catalog.groups(implemented_only=True)] == list(
         IMPLEMENTED_GROUPS
     )
@@ -163,10 +204,10 @@ def test_catalog_is_ready_for_next_stages():
         group = catalog.group(key)
         assert group is not None
         assert group.is_implemented and group.is_complete
-    pending = catalog.group("TC-MOD")
-    assert pending is not None
-    assert not pending.is_implemented
-    assert not pending.is_complete
+    # M0: проверки групп T6–T9 описаны, но сценариев у них пока нет
+    assert catalog.by_group("TC-MOD")[0].check_id == "TC-MOD-01"
+    assert all(spec.automation is None for spec in catalog.by_group("TC-MOD"))
+    assert summary["classes"] == {"tech": 44, "live": 15, "heavy": 6, "manual": 4}
 
 
 def test_check_ids_are_unique_and_looked_up():
@@ -184,11 +225,18 @@ def test_check_ids_are_unique_and_looked_up():
     assert catalog.stage_of("TC-DS-01") == "T5"
     assert catalog.group_of("TC-DS-01") == "TC-DS"
     assert len(catalog.by_group("TC-DS")) == 7
-    # группы следующих этапов ещё не наполнены — проверок в них нет
-    assert catalog.group_of("TC-MOD-01") == ""
-    assert catalog.stage_of("TC-MOD-01") == ""
-    assert catalog.group("TC-MOD") is not None
-    assert catalog.by_group("TC-MOD") == ()
+    # M0: группы T6–T9 описаны полностью (по таблицам docs/02)
+    assert len(catalog.by_group("TC-MOD")) == 7
+    assert len(catalog.by_group("TC-TR")) == 6
+    assert len(catalog.by_group("TC-INF")) == 4
+    assert len(catalog.by_group("TC-CLEAN")) == 4
+    assert catalog.stage_of("TC-MOD-01") == "T6"
+    assert catalog.stage_of("TC-TR-01") == "T7"
+    assert catalog.stage_of("TC-INF-01") == "T8"
+    assert catalog.stage_of("TC-CLEAN-01") == "T9"
+    assert ids[-1] == "TC-CLEAN-04"
+    assert catalog.find("TC-CLEAN-05") is None
+    assert catalog.group_of("TC-NOPE-01") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -210,12 +258,12 @@ def test_endpoints_exist_in_console_registry():
 def test_automations_are_declared():
     """Сценарии объявлены в модулях-владельцах и видны общему реестру `runner`."""
     automated = [spec for spec in catalog.CHECKS if spec.automation]
-    manual = [spec for spec in catalog.CHECKS if not spec.automation]
+    without = [spec for spec in catalog.CHECKS if not spec.automation]
 
-    assert [spec.check_id for spec in manual] == list(MANUAL_CHECKS)
+    assert [spec.check_id for spec in without] == list(NO_SCENARIO_CHECKS)
     for spec in automated:
         assert runner.scenario(spec) is not None, spec.check_id
-    for spec in manual:
+    for spec in without:
         assert runner.scenario(spec) is None, spec.check_id
 
     names = runner.automation_names()
@@ -226,6 +274,34 @@ def test_automations_are_declared():
     assert "tasks.external_observation" in names
     assert "files.round_trip" in names
     assert "loads.missing_path" not in names
+
+
+def test_checks_without_scenario_are_kept_for_operator():
+    """M0: описанные, но ещё не автоматизированные проверки закрывает оператор.
+
+    Группы `TC-MOD`…`TC-CLEAN` (21 проверка) появились в каталоге раньше сценариев:
+    каждая должна быть помечена классом из `docs/02`, иметь операции для режима
+    «по вызовам» **или** закрываться ручной отметкой, и ни одна из них не должна
+    числиться `manual` без описания шагов ручного выполнения.
+    """
+    described = [spec for spec in catalog.CHECKS if spec.check_id in NO_SCENARIO_CHECKS]
+    fresh = [spec for spec in described if spec.module in ("ML models", "Прочее")]
+    # Проверки, у которых источник факта — сессия и отчёт, а не операции стенда.
+    session_only = ("TC-CLEAN-02", "TC-CLEAN-03")
+
+    assert [spec.check_id for spec in fresh] == list(NO_SCENARIO_CHECKS[3:])
+    assert all(spec.automation is None for spec in fresh)
+    assert [spec.check_id for spec in described if spec.check_class == CheckClass.MANUAL] == (
+        list(OPERATOR_CHECKS)
+    )
+    for spec in fresh:
+        assert spec.requirement, spec.check_id
+        assert spec.expected, spec.check_id
+        assert spec.steps, spec.check_id
+        # источник факта: операции стенда, сессия/отчёт или решение оператора
+        assert (
+            spec.endpoints or spec.check_class == CheckClass.MANUAL or spec.check_id in session_only
+        ), spec.check_id
 
 
 def test_check_specs_are_filled_for_report():

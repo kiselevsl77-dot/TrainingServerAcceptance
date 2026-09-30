@@ -227,6 +227,40 @@ def is_manual(check_class: str | CheckClass) -> bool:
     return str(check_class) == str(CheckClass.MANUAL)
 
 
+#: Способы выполнения проверки: сценарий, «по вызовам», ручная отметка.
+SCENARIO_RUN = "сценарием"
+SCENARIO_CALL = "по вызовам"
+SCENARIO_OPERATOR = "вручную"
+
+
+def scenario_label(check_id: str) -> str:
+    """Чем выполняется проверка: сценарием, «по вызовам» или оператором.
+
+    Группы T6–T9 описаны в каталоге раньше сценариев (этап M0), поэтому подпись
+    честно показывает оператору способ выполнения: у такой проверки сценария нет,
+    и закрыть её можно вызовами (режим «по вызовам») или ручной отметкой.
+    """
+    spec = catalog.find(check_id)
+    if spec is None:
+        return ""
+    if is_manual(spec.check_class):
+        return SCENARIO_OPERATOR
+    return SCENARIO_RUN if spec.automation else SCENARIO_CALL
+
+
+def scenario_note(check_id: str) -> str:
+    """Предупреждение прогона для проверки без сценария (пусто, если сценарий есть)."""
+    spec = catalog.find(check_id)
+    if spec is None or spec.automation:
+        return ""
+    if is_manual(spec.check_class):
+        return f"{check_id}: проверка ручная — закройте её ручной отметкой"
+    return (
+        f"{check_id}: сценарий проверки ещё не описан — выполните её «по вызовам» "
+        "или отметьте вручную"
+    )
+
+
 def result_text(row: Mapping[str, Any]) -> str:
     """Строка результата для таблицы: «✅ успех · соответствует ожиданию»."""
     icon = str(row.get("icon") or status_icon(str(row.get("status") or "")))
@@ -618,6 +652,8 @@ def run_next_view(
         "confirm_note": str(confirm_note),
         "operator_required": bool(operator),
         "operator_note": str(operator_note),
+        "scenario": scenario_label(item.check_id),
+        "scenario_note": scenario_note(item.check_id),
         "steps": step_rows(item.check_id),
         "card": run_card_view(item, values=values, session_id=session_id, author=author),
         "payload": payload_view(item.check_id, session=session),
@@ -659,6 +695,7 @@ def outcome_rows(outcomes: Iterable[Any]) -> list[dict[str, Any]]:
                 "steps": int(getattr(outcome, "steps", 0) or 0),
                 "confirmation_required": bool(getattr(outcome, "confirmation_required", False)),
                 "operator_required": bool(getattr(outcome, "operator_required", False)),
+                "scenario_missing": bool(getattr(outcome, "scenario_missing", False)),
                 "hint": _outcome_hint(outcome),
             }
         )
@@ -679,6 +716,11 @@ def _outcome_hint(outcome: Any) -> str:
         )
     if bool(getattr(outcome, "operator_required", False)):
         return "ручная проверка: поставьте отметку с заключением (`FR-P-32`)"
+    if bool(getattr(outcome, "scenario_missing", False)):
+        return (
+            "сценарий проверки ещё не описан: выполните её «по вызовам» "
+            "или поставьте ручную отметку"
+        )
     return ""
 
 
@@ -1216,6 +1258,7 @@ def catalog_rows(
                 "requirement": spec.requirement,
                 "expected": spec.expected,
                 "automation": spec.automation or "",
+                "scenario": scenario_label(spec.check_id),
                 "blocked_by_api": spec.blocked_by_api or "",
                 "confirm_required": is_confirmable(spec.check_class),
                 "manual": is_manual(spec.check_class),

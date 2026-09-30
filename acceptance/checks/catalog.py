@@ -10,10 +10,15 @@
 инфраструктура чек-листа появилась сразу с рабочим сценарием. Этап T3 добавляет
 группы `TC-SYS`, `TC-FILE`, `TC-REC`, `TC-LOAD` (33 проверки) и вместе с ними —
 первую версию отчёта. Этап T5 добавляет группу `TC-DS` (7 проверок модуля
-«Datasets») вместе с учётом состава датасетов (`acceptance.dataset_composition`) —
-наполнено 48 проверок из 69. Структура каталога рассчитана на все 10 групп
-(69 проверок, `PLANNED_GROUPS`): группы T6–T10 добавляются без переделки —
-достаточно дописать кортеж проверок и зарегистрировать группу в `CHECKS_BY_GROUP`.
+«Datasets») вместе с учётом состава датасетов (`acceptance.dataset_composition`).
+
+Этап M0 описывает **весь состав программы испытаний** — 10 групп, 69 проверок
+(`PLANNED_GROUPS`): группы `TC-MOD`, `TC-TR`, `TC-INF`, `TC-CLEAN` (21 проверка)
+добавлены описаниями из `docs/02`, но **без сценариев** — они появляются на
+этапах T6–T9 (`acceptance/checks/{models,training,inference,cleanup}.py`). Пока
+сценария нет, проверка выполняется «по вызовам» (`MODE_CALL`) или ручной
+отметкой, а автоматический прогон пункта отказывает с причиной и **не** ставит
+статус «пропущена» (`acceptance/runner.execute_check`).
 
 Сверка каталога с таблицей чек-листа (`docs/02`): id, название, группа и класс —
 тест `tests/unit/test_checks_catalog.py` (по образцу `test_endpoints.py`).
@@ -1007,6 +1012,475 @@ TC_DS_SPECS: tuple[CheckSpec, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# TC-MOD — модуль «ML models» (FR-5, UC-15…UC-20) — этап T6
+#
+# Описания проверок добавлены раньше сценариев: чек-лист пульта ведёт **полный
+# состав** программы испытаний (69 проверок), а сама проверка выполняется «по
+# вызовам» (`MODE_CALL`) или ручной отметкой. Пока сценария нет, автоматический
+# прогон пункта **отказывает** с причиной и ничего не записывает в протокол
+# (`acceptance/runner.execute_check`, этап M0) — статусом «пропущена» проверка
+# не закрывается.
+# ---------------------------------------------------------------------------
+MODELS_MODULE = "ML models"
+
+TC_MOD_SPECS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        check_id="TC-MOD-01",
+        title="Каталог архитектур",
+        module=MODELS_MODULE,
+        requirement="UC-15",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/ml_models/architectures",
+            "Разобрать перечень: число архитектур и их идентификаторы",
+            "Проверить состав полей: `description`, `default_config`, `suitable_for_phases`",
+            "Зафиксировать перечень архитектур для создания модели",
+        ),
+        expected=(
+            "получен перечень архитектур с `description`, `default_config`, `suitable_for_phases`"
+        ),
+        endpoints=("get /api/ml_models/architectures",),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-02",
+        title="Создание модели",
+        module=MODELS_MODULE,
+        requirement="UC-16, BR-F4",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "GET /api/ml_models/architectures — выбрать архитектуру по фазам стенда",
+            "POST /api/ml_models/models с именем `__TEST__…` и выбранной `architecture`",
+            "Проверить ответ: `id`, `version`, `architecture`, `phase_type`, `output_size`",
+            "GET /api/ml_models/models — подтвердить, что модель видна в реестре",
+            "Зафиксировать судьбу модели (удаление — TC-MOD-07, самоочистка — TC-CLEAN-01)",
+        ),
+        expected=(
+            "`__TEST__`-модель создана; `architecture` проверена по каталогу; "
+            "отображается `version`"
+        ),
+        endpoints=(
+            "post /api/ml_models/models",
+            "get /api/ml_models/architectures",
+            "get /api/ml_models/models",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-03",
+        title="Валидация архитектуры и `signals`",
+        module=MODELS_MODULE,
+        requirement="BR-F4, NFR-5",
+        check_class=CheckClass.TECH,
+        steps=(
+            "POST /api/ml_models/models с неизвестной архитектурой",
+            "POST с привязкой `signals` к несуществующему `device_id`",
+            "POST без обязательных полей создания модели",
+            "Зафиксировать коды ответов и формат сообщения об ошибке",
+        ),
+        expected=(
+            "неизвестная архитектура → ошибка; привязка `signals` к несуществующему "
+            "`device_id` → ошибка (дешёвая проверка контракта, модель не создаётся)"
+        ),
+        endpoints=("post /api/ml_models/models",),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-04",
+        title="Загрузка готовой модели",
+        module=MODELS_MODULE,
+        requirement="UC-17",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Подготовить файл модели `.h5` и `metadata` (имя — `__TEST__…`)",
+            "POST /api/ml_models/models/upload (multipart)",
+            "Проверить ответ: `file_id`, модель появилась в `GET /api/ml_models/models`",
+            "Зафиксировать размер файла и поля `metadata`, принятые сервером",
+        ),
+        expected="`.h5` + `metadata` принят, получен `file_id`, модель появляется в списке",
+        endpoints=(
+            "post /api/ml_models/models/upload",
+            "get /api/ml_models/models",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-05",
+        title="Список моделей и фильтры",
+        module=MODELS_MODULE,
+        requirement="UC-18, NFR-4",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/ml_models/models — состав полей и `count`",
+            "Фильтры по одному: `model_id`, `architecture`, `version`, `name`, "
+            "`phase_type`, `output_size`, `device_id`",
+            "Срез `limit`/`offset` и неизвестный параметр",
+            "Зафиксировать, какие фильтры работают точно, а какие игнорируются",
+        ),
+        expected=(
+            "работают фильтры `model_id`/`architecture`/`version`/`name`/`phase_type`/"
+            "`output_size`/`device_id`"
+        ),
+        endpoints=("get /api/ml_models/models",),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-06",
+        title="Карточка модели и метрики",
+        module=MODELS_MODULE,
+        requirement="UC-19",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/ml_models/models — взять `model_id` из реестра",
+            "GET /api/ml_models/models/{model_id}",
+            "Зафиксировать метаданные, `metrics`, `updated_at`, `signals`, `signal_aliases`",
+            "Отдельно зафиксировать пустые `signals` (замечание к API)",
+        ),
+        expected=(
+            "метаданные, `metrics`, `updated_at`, `signals`, `signal_aliases` получены; "
+            "**`signals` пусты** (замечание)"
+        ),
+        endpoints=(
+            "get /api/ml_models/models",
+            "get /api/ml_models/models/{model_id}",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-MOD-07",
+        title="Удаление модели и связанного файла",
+        module=MODELS_MODULE,
+        requirement="UC-20, BR-F4, NFR-T4",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Зафиксировать число моделей и файлов в реестрах",
+            "DELETE /api/ml_models/models/{model_id} для `__TEST__`-модели",
+            "GET /api/ml_models/models/{model_id} и список — подтвердить отсутствие",
+            "Проверить связанный `.h5` в `GET /api/data/files`: каскад или отдельное удаление",
+            "Зафиксировать поведение повторного удаления",
+        ),
+        expected=(
+            "`__TEST__`-модель удалена; поведение связанного файла `.h5` "
+            "(каскад или отдельное удаление) зафиксировано"
+        ),
+        endpoints=(
+            "delete /api/ml_models/models/{model_id}",
+            "get /api/ml_models/models/{model_id}",
+            "get /api/data/files",
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# TC-TR — обучение, проверка модели, экспорт ONNX (FR-5, UC-21…UC-23, FSM-1) — T7
+#
+# Класс `heavy`: проверки расходуют ресурсы стенда (обучение модели), поэтому
+# каждая из них требует карточки запуска (`FR-P-19`) и отдельного решения
+# оператора о судьбе созданной модели.
+# ---------------------------------------------------------------------------
+TRAINING_MODULE = MODELS_MODULE
+
+TC_TR_SPECS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        check_id="TC-TR-01",
+        title="Контракт обучения без расхода ресурсов",
+        module=TRAINING_MODULE,
+        requirement="UC-21, NFR-5",
+        check_class=CheckClass.TECH,
+        steps=(
+            "GET /api/ml_models/models — взять `model_id` обученной ранее модели",
+            "POST /api/ml_models/models/{model_id}/train с несуществующим `dataset_id`",
+            "Пробы границ: `epochs` 0 и 1001, `batch_size` 0 и 257, `learning_rate` 0 и 1.1",
+            "Пробы аугментации вне 0.001–0.05 и 1–10",
+            "Зафиксировать коды ответов и сообщения валидации (обучение не запускать)",
+        ),
+        expected=(
+            "несуществующий `dataset_id` и выход за диапазоны (`epochs` 0/1001, "
+            "`batch_size` 0/257, `learning_rate` 0/1.1, аугментация вне 0.001–0.05 и 1–10) "
+            "→ ошибка валидации; задача обучения не создаётся"
+        ),
+        endpoints=(
+            "post /api/ml_models/models/{model_id}/train",
+            "get /api/ml_models/models",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-TR-02",
+        title="Запуск обучения",
+        module=TRAINING_MODULE,
+        requirement="UC-21, BR-F5",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "Выбрать `__TEST__`-модель и датасет для обучения, зафиксировать параметры",
+            "POST /api/ml_models/models/{model_id}/train — ожидается `task_id`",
+            "GET /api/tasks/ — найти задачу типа `training`",
+            "GET /api/tasks/{task_id} — вести монитором до терминального состояния",
+            "Зафиксировать параметры, длительность и последовательность статусов FSM-1",
+        ),
+        expected=(
+            "возвращён `task_id`; задача типа `training` отслежена монитором до "
+            "терминального состояния; зафиксированы параметры, длительность, статусы FSM-1"
+        ),
+        endpoints=(
+            "post /api/ml_models/models/{model_id}/train",
+            "get /api/tasks/",
+            "get /api/tasks/{task_id}",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-TR-03",
+        title="Управление обучением",
+        module=TRAINING_MODULE,
+        requirement="UC-28, FSM-1",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "Запустить обучение (задача типа `training`) с достаточной длительностью",
+            "POST /api/tasks/{task_id}/pause → ожидается `pausing`, затем `paused`",
+            "POST /api/tasks/{task_id}/resume → задача возвращается в `running`",
+            "POST /api/tasks/{task_id}/interrupt — прервать обучение (при необходимости)",
+            "Зафиксировать переходы FSM-1 и историю задачи",
+        ),
+        expected=(
+            "на реальной задаче обучения проверены переходы `pause`/`resume`/`interrupt` "
+            "(при необходимости — прерывание); результат зафиксирован"
+        ),
+        endpoints=(
+            "post /api/tasks/{task_id}/pause",
+            "post /api/tasks/{task_id}/resume",
+            "post /api/tasks/{task_id}/interrupt",
+            "get /api/tasks/{task_id}",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-TR-04",
+        title="Результат обучения",
+        module=TRAINING_MODULE,
+        requirement="UC-21, BR-F5",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "После терминального статуса задачи обучения запросить карточку модели",
+            "GET /api/ml_models/models/{model_id} — сравнить `metrics`, `version`, `updated_at` "
+            "со значениями до обучения",
+            "GET /api/ml_models/models — подтвердить, что модель видна с новой версией",
+            "Зафиксировать решение по `__TEST__`-модели: оставить артефактом или удалить",
+        ),
+        expected=(
+            "после завершения обновлены `metrics`, `version`, `updated_at`; решение по модели "
+            "(`__TEST__`) зафиксировано (оставить артефактом / удалить)"
+        ),
+        endpoints=(
+            "get /api/ml_models/models/{model_id}",
+            "get /api/ml_models/models",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-TR-05",
+        title="Проверка модели",
+        module=TRAINING_MODULE,
+        requirement="UC-22, BR-F5",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "POST /api/ml_models/{model_id}/check — запустить проверку обученной модели",
+            "GET /api/tasks/ — найти задачу типа `model-testing`",
+            "GET /api/tasks/{task_id} — вести до терминального состояния",
+            "Зафиксировать результаты проверки и `validation_info` модели",
+        ),
+        expected="создана задача `model-testing`; получены результаты проверки и `validation_info`",
+        endpoints=(
+            "post /api/ml_models/{model_id}/check",
+            "get /api/tasks/",
+            "get /api/tasks/{task_id}",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-TR-06",
+        title="Экспорт ONNX",
+        module=TRAINING_MODULE,
+        requirement="UC-23",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Выбрать модель для экспорта (обученную или загруженную)",
+            "GET /api/ml_models/models/{model_id}/download_onnx — скачать файл",
+            "Проверить имя файла, размер и совпадение с ожидаемым",
+            "Зафиксировать наличие или отсутствие `Content-Length`/`Range` в ответе",
+        ),
+        expected=(
+            "файл получен, размер и имя совпадают с ожидаемыми; фиксируется отсутствие "
+            "`Content-Length`/`Range` при необходимости"
+        ),
+        endpoints=(
+            "get /api/ml_models/models/{model_id}/download_onnx",
+            "get /api/ml_models/models",
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# TC-INF — инференс (FR-6, UC-24…UC-25, BR-R9) — этап T8
+#
+# Проверки опираются на модель, полученную в T6/T7 (`TC-MOD-*`, `TC-TR-*`):
+# синхронный инференс даёт результат сразу, асинхронный — задачу `inference`,
+# которую ведёт монитор задач (T4).
+# ---------------------------------------------------------------------------
+INFERENCE_MODULE = MODELS_MODULE
+
+TC_INF_SPECS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        check_id="TC-INF-01",
+        title="Асинхронный инференс по датасету",
+        module=INFERENCE_MODULE,
+        requirement="UC-24, BR-F6",
+        check_class=CheckClass.HEAVY,
+        steps=(
+            "Выбрать модель и датасет для инференса, зафиксировать параметры запуска",
+            "POST /api/ml_models/models/{model_id}/inference — ожидается `task_id`",
+            "GET /api/tasks/ — найти задачу типа `inference`",
+            "GET /api/tasks/{task_id} — вести монитором до терминального состояния",
+            "Зафиксировать результат задачи и связать его с проверкой (номер журнала)",
+        ),
+        expected=(
+            "возвращён `task_id`; задача `inference` отслежена монитором; результат привязан "
+            "к проверке"
+        ),
+        endpoints=(
+            "post /api/ml_models/models/{model_id}/inference",
+            "get /api/tasks/",
+            "get /api/tasks/{task_id}",
+            "get /api/datasets/",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-INF-02",
+        title="Синхронный инференс одного сэмпла",
+        module=INFERENCE_MODULE,
+        requirement="UC-25, BR-R9",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Выбрать модель и подготовить сэмпл сигналов (по фазам стенда)",
+            "POST /api/ml_models/models/{model_id}/inference/single",
+            "Проверить `classes[]`: `signal_num`, `device_ids`, `confidence`, `detected`",
+            "Проверить, что значения `confidence` лежат в допустимых пределах",
+        ),
+        expected=(
+            "получены `classes[]` с `signal_num`, `device_ids`, `confidence`, `detected`; "
+            "значения в допустимых пределах"
+        ),
+        endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+    ),
+    CheckSpec(
+        check_id="TC-INF-03",
+        title="Границы `threshold`",
+        module=INFERENCE_MODULE,
+        requirement="NFR-5",
+        check_class=CheckClass.TECH,
+        steps=(
+            "POST inference/single с `threshold = 0.0` — значение допустимо",
+            "POST inference/single с `threshold = 1.0` — значение допустимо",
+            "POST inference/single со значением вне диапазона (`-0.1`, `1.1`)",
+            "Зафиксировать коды ответов и сообщения валидации",
+        ),
+        expected="значения 0.0 и 1.0 допустимы; значение вне диапазона → ошибка валидации",
+        endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+    ),
+    CheckSpec(
+        check_id="TC-INF-04",
+        title="Повторяемость синхронного инференса",
+        module=INFERENCE_MODULE,
+        requirement="BR-R9",
+        check_class=CheckClass.TECH,
+        steps=(
+            "POST inference/single с одним и тем же сэмплом и параметрами",
+            "Повторить вызов второй раз с теми же данными",
+            "Сравнить `classes[]` двух ответов (`signal_num`, `device_ids`, `confidence`)",
+            "Расхождения зафиксировать как замечание",
+        ),
+        expected="результат повторяем (расхождения фиксируются как замечание)",
+        endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# TC-CLEAN — уборка и учёт ресурсов (FR-T1, FR-T8, FR-T10, NFR-T4) — этап T9
+#
+# Проверки не создают сущностей: они подводят итог по тому, что сделали другие
+# группы (`__TEST__`-файлы, датасеты, нагрузки, модели) и по снимкам стенда
+# «Начало»/«Окончание». Поэтому у TC-CLEAN-02…04 нет операций: источник факта —
+# сессия испытаний (перечень созданного/удалённого) и отчёт.
+# ---------------------------------------------------------------------------
+CLEANUP_MODULE = "Прочее"
+
+TC_CLEAN_SPECS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        check_id="TC-CLEAN-01",
+        title="Самоочистка тестовых сущностей",
+        module=CLEANUP_MODULE,
+        requirement="NFR-T4",
+        check_class=CheckClass.LIVE,
+        steps=(
+            "Взять перечень `__TEST__`-сущностей сессии (`session.test_entities`)",
+            "Удалить каждую: `DELETE /api/{file_id}`, `/api/datasets/{dataset_id}`, "
+            "`/api/ml_models/models/{model_id}`",
+            "GET реестры — подтвердить отсутствие удалённых сущностей",
+            "Сравнить реестры со снимком «Начало» и зафиксировать расхождения",
+            "Отметить удалённое в перечне сессии (учёт NFR-T4)",
+        ),
+        expected=("все созданные сущности удалены; реестры соответствуют снимку «Начало»"),
+        endpoints=(
+            "delete /api/{file_id}",
+            "delete /api/datasets/{dataset_id}",
+            "delete /api/ml_models/models/{model_id}",
+            "get /api/data/files",
+            "get /api/datasets/",
+            "get /api/ml_models/models",
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-CLEAN-02",
+        title="Перечень созданного и удалённого",
+        module=CLEANUP_MODULE,
+        requirement="NFR-T4, FR-T8",
+        check_class=CheckClass.TECH,
+        steps=(
+            "Собрать перечень `__TEST__`-сущностей из сессии испытаний",
+            "Проверить, что у каждой есть идентификатор, тип, действие и время",
+            "Сверить перечень с комплектом отчёта (`report.md`/`manifest.json`)",
+            "Зафиксировать неучтённые сущности как замечание",
+        ),
+        expected=(
+            "отчёт содержит перечень (`id`, тип, действие, время) по каждому `__TEST__`-объекту"
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-CLEAN-03",
+        title="Сверка снимков стенда",
+        module=CLEANUP_MODULE,
+        requirement="FR-T1, BR-R6",
+        check_class=CheckClass.TECH,
+        steps=(
+            "Взять снимки «Начало» и «Окончание» из сессии (счётчики реестров)",
+            "Вычислить дельту по каждому счётчику",
+            "Объяснить дельту созданными и удалёнными `__TEST__`-сущностями",
+            "Необъяснённые расхождения описать в отчёте как замечание",
+        ),
+        expected=(
+            "изменение счётчиков объясняется созданными/удалёнными сущностями; "
+            "расхождения описаны в отчёте"
+        ),
+    ),
+    CheckSpec(
+        check_id="TC-CLEAN-04",
+        title="Судьба артефактов ресурсоёмких проверок",
+        module=CLEANUP_MODULE,
+        requirement="FR-T10",
+        check_class=CheckClass.MANUAL,
+        steps=(
+            "Собрать список обученных моделей и ONNX-файлов, полученных в T7/T8",
+            "По каждому объекту принять решение: сохранить артефактом или удалить",
+            "Отметить решение оператора в сессии (`artifact`/`удалено`)",
+            "Проверить, что решения видны в комплекте отчёта",
+        ),
+        expected=(
+            "по каждой обученной модели/ONNX-файлу зафиксировано решение: сохранён как "
+            "артефакт испытаний или удалён"
+        ),
+    ),
+)
+
 #: Проверки по группам: ключ группы → кортеж описаний (заполняется по этапам).
 CHECKS_BY_GROUP: dict[str, tuple[CheckSpec, ...]] = {
     "TC-SYS": TC_SYS_SPECS,
@@ -1015,6 +1489,10 @@ CHECKS_BY_GROUP: dict[str, tuple[CheckSpec, ...]] = {
     "TC-LOAD": TC_LOAD_SPECS,
     "TC-TASK": TC_TASK_SPECS,
     "TC-DS": TC_DS_SPECS,
+    "TC-MOD": TC_MOD_SPECS,
+    "TC-TR": TC_TR_SPECS,
+    "TC-INF": TC_INF_SPECS,
+    "TC-CLEAN": TC_CLEAN_SPECS,
 }
 
 #: Группы каталога в порядке программы испытаний (`docs/02` §14).

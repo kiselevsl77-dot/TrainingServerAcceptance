@@ -538,6 +538,34 @@ def test_catalog_rows_mark_membership_and_confirmable() -> None:
     assert by_id["TC-SYS-01"]["in_programme"] is False
 
 
+def test_scenario_labels_name_how_check_runs() -> None:
+    """Способ выполнения проверки (`M0`): сценарий, «по вызовам» или ручная отметка."""
+    assert view.scenario_label("TC-SYS-01") == view.SCENARIO_RUN
+    assert view.scenario_label("TC-MOD-01") == view.SCENARIO_CALL
+    assert view.scenario_label("TC-CLEAN-04") == view.SCENARIO_OPERATOR
+    assert view.scenario_label("TC-NOPE-01") == ""
+
+    assert view.scenario_note("TC-SYS-01") == "", "у автоматизированной проверки — без оговорок"
+    assert "сценарий проверки ещё не описан" in view.scenario_note("TC-MOD-01")
+    assert "«по вызовам»" in view.scenario_note("TC-MOD-01")
+    assert "ручная" in view.scenario_note("TC-CLEAN-04")
+    assert view.scenario_note("TC-NOPE-01") == ""
+
+
+def test_catalog_rows_cover_full_programme_with_run_modes() -> None:
+    """Каталог отдаёт все 69 проверок программы и способ выполнения каждой (M0)."""
+    rows = view.catalog_rows()
+    modes = {
+        mode: sum(1 for row in rows if row["scenario"] == mode)
+        for mode in (view.SCENARIO_RUN, view.SCENARIO_CALL, view.SCENARIO_OPERATOR)
+    }
+
+    assert len(rows) == catalog.catalog_summary()["checks_total"] == 69
+    assert all(row["scenario"] for row in rows), "подпись способа есть у каждой строки"
+    assert modes == {view.SCENARIO_RUN: 45, view.SCENARIO_CALL: 20, view.SCENARIO_OPERATOR: 4}
+    assert view.catalog_rows(only_section="TC-CLEAN")[0]["scenario"] == view.SCENARIO_CALL
+
+
 # ---------------------------------------------------------------------------
 # Прогон: готовность, карточка запуска, payload, отметка и детали (`SCR-301`)
 # ---------------------------------------------------------------------------
@@ -747,6 +775,48 @@ def test_outcome_rows_hint_about_card_and_mark() -> None:
     mark_row = view.outcome_rows([_Mark()])[0]
     assert mark_row["operator_required"] is True
     assert "отметку" in mark_row["hint"]
+
+
+def test_next_view_warns_about_missing_scenario() -> None:
+    """Следующая проверка без сценария приходит со способом прогона и предупреждением.
+
+    Оператор видит это **до** нажатия «▶ Следующая»: иначе отказ ядра выглядел бы
+    как необъяснимая ошибка (`M0`, группы T6–T9).
+    """
+    item = _item("TC-MOD-01", check_class="tech", title="Каталог архитектур")
+
+    next_view = view.run_next_view(item)
+
+    assert next_view["scenario"] == view.SCENARIO_CALL
+    assert "сценарий проверки ещё не описан" in next_view["scenario_note"]
+    assert next_view["confirm_required"] is False
+    assert next_view["steps"] and next_view["payload"], "что вызывать — известно уже сейчас"
+
+
+def test_outcome_rows_hint_about_missing_scenario() -> None:
+    """Итог шага объясняет, что делать с проверкой без сценария (`M0`)."""
+
+    class _NoScenario:
+        check_id = "TC-MOD-01"
+        ok = False
+        icon = ""
+        state = "ожидает"
+        status = ""
+        verdict = ""
+        detail = "TC-MOD-01: сценарий проверки ещё не описан"
+        journal_range = ""
+        stopped = True
+        stop_reason = "TC-MOD-01: сценарий проверки ещё не описан"
+        duration_ms = 0.0
+        steps = 0
+        confirmation_required = False
+        operator_required = False
+        scenario_missing = True
+
+    row = view.outcome_rows([_NoScenario()])[0]
+    assert row["scenario_missing"] is True
+    assert "«по вызовам»" in row["hint"]
+    assert row["stop_reason"], "причина останова видна оператору"
 
 
 def test_readiness_reports_queue_built_from_another_revision() -> None:

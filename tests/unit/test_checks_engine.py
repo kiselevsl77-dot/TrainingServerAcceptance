@@ -144,18 +144,18 @@ def test_manual_statuses_and_group_stats():
 
 
 def test_overall_stats_cover_whole_checklist():
-    """Сводка по программе охватывает все наполненные группы каталога."""
+    """Сводка по программе охватывает все описанные группы каталога (M0: 69)."""
     session = _session()
     checks_engine.mark(session, SPEC, CheckStatus.PASSED, verdict="ок")
 
     stats = checks_engine.overall_stats(session)
 
-    assert stats["implemented"] == 48
+    assert stats["implemented"] == 69
     assert stats["program_total"] == 69
-    assert stats["total"] == 48
+    assert stats["total"] == 69
     assert stats["done"] == 1
     assert stats["passed"] == 1
-    assert stats["not_run"] == 47
+    assert stats["not_run"] == 68
 
 
 def test_checklist_rows_filter_by_group_status_and_text():
@@ -178,7 +178,7 @@ def test_checklist_rows_filter_by_group_status_and_text():
     assert {row["check_id"] for row in found} == {"TC-FILE-07", "TC-REC-02", "TC-REC-06"}
 
     live = checks_engine.checklist_rows(session, classes=("live",))
-    assert len(live) == 9
+    assert len(live) == 15
 
     datasets_rows = checks_engine.checklist_rows(session, groups=("TC-DS",))
     assert [row["check_id"] for row in datasets_rows] == [

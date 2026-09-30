@@ -772,6 +772,8 @@ class PultApp:
                 "blocked_by": str(ready["blocked_by"]),
                 "fix": dict(ready["fix"]),
                 "done": next_label(queue),
+                # проверка без сценария (группы T6–T9): предупреждение видно до нажатия
+                "notice": view.scenario_note(next_id) if next_id else "",
                 "item": view.run_next_view(
                     item, values=card, session=session, author=self._author()
                 ),

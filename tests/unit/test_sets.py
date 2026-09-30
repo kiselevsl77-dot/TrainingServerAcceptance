@@ -24,7 +24,7 @@ def revision_of(item: sets_api.CheckSet, number: int) -> sets_api.SetRevision:
 
 @pytest.fixture()
 def library() -> sets_api.SetsLibrary:
-    """Библиотека, собранная из каталога (7 наборов: 6 разделов + смоук-минимум)."""
+    """Библиотека из каталога: набор на каждый раздел + «смоук-минимум»."""
     return sets_api.library_from_catalog(author="Иванов И.И.")
 
 
@@ -252,7 +252,8 @@ def test_library_copy_creates_independent_draft(library: sets_api.SetsLibrary):
     assert clone.status == sets_api.SET_DRAFT
     assert clone.check_ids == source.check_ids
     assert clone.revisions == []
-    assert library.summary()["sets"] == 8
+    # библиотека: набор на каждый раздел каталога + смоук-минимум, плюс копия
+    assert library.summary()["sets"] == len(catalog.groups(implemented_only=True)) + 2
 
     clone.remove(["TC-SYS-01"])
     assert source.size == 6 and clone.size == 5
@@ -275,7 +276,10 @@ def test_library_section_rows_show_volume(library: sets_api.SetsLibrary):
     assert rows["TC-SYS"]["sets"] == 1
     assert rows["TC-SYS"]["checks"] == 6
     assert rows["TC-SYS"]["planned"] == 6
-    assert rows["TC-MOD"]["sets"] == 0  # раздел ещё не наполнен проверками
+    # разделы T6–T9 (M0) описаны в каталоге — в библиотеке у них есть свои наборы
+    assert rows["TC-MOD"]["sets"] == 1
+    assert rows["TC-MOD"]["checks"] == 7
+    assert rows["TC-MOD"]["planned"] == 7
 
 
 def test_library_round_trip_through_file(library: sets_api.SetsLibrary, tmp_path: Path):

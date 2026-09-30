@@ -280,6 +280,9 @@ class RunOutcome:
     stop_reason: str = ""
     confirmation_required: bool = False
     operator_required: bool = False
+    #: Проверка описана в каталоге, но сценария у неё ещё нет (этап M0, группы T6–T9):
+    #: интерфейс подсказывает оператору доступные способы — «по вызовам» или отметку.
+    scenario_missing: bool = False
 
     @property
     def ok(self) -> bool:
@@ -565,6 +568,25 @@ def execute_check(
             "проверка отсутствует в каталоге: исполнить её нельзя",
         )
 
+    # M0: описание проверки может быть в каталоге раньше сценария (группы
+    # `TC-MOD`…`TC-CLEAN`). Сценария нет — пункт **не** закрывается статусом
+    # «пропущена»: оператор выполняет проверку «по вызовам» или отмечает вручную.
+    if spec.automation is None and spec.check_class != CheckClass.MANUAL:
+        reason = (
+            f"{item.check_id}: сценарий проверки ещё не описан — выполните её "
+            "«по вызовам» или отметьте вручную"
+        )
+        queue.stop_reason = reason
+        return RunOutcome(
+            check_id=item.check_id,
+            state=item.state,
+            detail=reason,
+            stopped=True,
+            stop_reason=reason,
+            scenario_missing=True,
+            item=item,
+        )
+
     queue.begin(item.check_id)
     # прежний результат уходит в историю, новый результат движка ляжет поверх (FR-P-36)
     results_api.prepare_repeat(session, item.check_id)
@@ -583,7 +605,7 @@ def execute_check(
             session,
             item,
             programme,
-            "у проверки нет автоматического сценария (ручная проверка)",
+            "у проверки нет автоматического сценария: пункт закрыт как пропущенный",
         )
     if run_evidence:
         result.evidence["run_card"] = dict(run_evidence)
@@ -740,14 +762,36 @@ def execute_call(
             "проверка отсутствует в каталоге: исполнить её нельзя",
         )
 
+    if spec.check_class == CheckClass.MANUAL:
+        reason = f"{item.check_id}: проверка выполняется оператором — закройте её ручной отметкой"
+        queue.stop_reason = reason
+        return RunOutcome(
+            check_id=item.check_id,
+            level=LEVEL_CALL,
+            state=item.state,
+            detail=reason,
+            stopped=True,
+            stop_reason=reason,
+            scenario_missing=True,
+            item=item,
+        )
+
     steps = call_steps(spec)
     if not steps:
-        return _skip_item(
-            queue,
-            session,
-            item,
-            programme,
-            "у проверки нет операций для пошагового прогона: выполните её сценарием",
+        reason = (
+            f"{item.check_id}: у проверки нет операций для пошагового прогона — "
+            "выполните её сценарием или отметьте вручную"
+        )
+        queue.stop_reason = reason
+        return RunOutcome(
+            check_id=item.check_id,
+            level=LEVEL_CALL,
+            state=item.state,
+            detail=reason,
+            stopped=True,
+            stop_reason=reason,
+            scenario_missing=True,
+            item=item,
         )
 
     index = min(max(item.call_index, 0), len(steps) - 1)

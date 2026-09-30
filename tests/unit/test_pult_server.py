@@ -597,6 +597,65 @@ def test_run_mode_switch_is_saved_in_session(pult: PultApp) -> None:
     assert [item["value"] for item in back["modes"]["options"]] == ["only-remaining", "all"]
 
 
+def test_catalog_lists_all_programme_checks_with_run_modes(pult: PultApp) -> None:
+    """`GET /api/catalog` — все 69 проверок программы и способ выполнения каждой (`M0`)."""
+    data = get(pult, "/api/catalog")
+    rows = data["rows"]
+
+    assert data["summary"]["checks_implemented"] == 69
+    assert data["summary"]["groups_implemented"] == 10
+    assert len(rows) == 69
+    assert all(row["scenario"] for row in rows), "у каждой строки — способ выполнения"
+    modes = {row["scenario"] for row in rows}
+    assert modes == {"сценарием", "по вызовам", "вручную"}
+    fresh = {row["check_id"]: row for row in rows if row["check_id"].startswith("TC-MOD-")}
+    assert fresh["TC-MOD-01"]["scenario"] == "по вызовам"
+    assert fresh["TC-MOD-01"]["class_key"] == "tech"
+    assert fresh["TC-MOD-02"]["confirm_required"] is True, "live-проверка требует карточку"
+
+
+def test_run_warns_and_refuses_check_without_scenario(pult: PultApp) -> None:
+    """Проверка без сценария (M0): предупреждение до нажатия и отказ без статуса.
+
+    Отказ ядра не должен выглядеть как «проверка пропущена»: пункт остаётся
+    следующим, результат в протоколе — «не выполнена», а оператор получает
+    подсказку с доступными способами выполнения.
+    """
+    check_id = _with_checks(pult, check_class="tech", check_id="TC-MOD-01")
+
+    run = get(pult, "/api/run")
+    assert run["next"]["check_id"] == check_id
+    assert "сценарий проверки ещё не описан" in run["next"]["notice"]
+    assert run["next"]["item"]["scenario"] == "по вызовам"
+    assert run["next"]["item"]["steps"], "операции проверки видны сразу"
+
+    result = post(pult, "/api/run", action="next")
+    outcome = result["outcomes"][0]
+    assert outcome["check_id"] == check_id
+    assert outcome["stopped"] is True
+    assert outcome["scenario_missing"] is True
+    assert "«по вызовам»" in outcome["hint"]
+    assert not outcome["journal"], "на стенд ничего не ушло"
+
+    protocol = get(pult, "/api/protocol")
+    row = next(item for item in protocol["rows"] if item["check_id"] == check_id)
+    assert row["status"] == "не выполнена", "статус «пропущена» проверке не ставится"
+    assert get(pult, "/api/run")["next"]["check_id"] == check_id, "пункт остаётся следующим"
+
+
+def test_pages_show_run_modes_of_checks(pult: PultApp) -> None:
+    """Страницы несут способ выполнения проверки: колонка «Прогон» и предупреждение."""
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    script = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+    catalog_body = script[
+        script.index("function renderCatalog(") : script.index("function renderSets(")
+    ]
+
+    assert "<th>Прогон</th>" in html
+    assert "row.scenario" in catalog_body, "колонка «Прогон» рисуется из view-модели"
+    assert 'document.getElementById("run-notice")' in script, "предупреждение прогона на месте"
+
+
 def test_run_view_describes_next_item_and_tools(pult: PultApp) -> None:
     """Вид прогона несёт странице всё: пункт, шаги, payload, формы и «Пачку tech» (`FR-P-20`)."""
     _ready_session(pult)

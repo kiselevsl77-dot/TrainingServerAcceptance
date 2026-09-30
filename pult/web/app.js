@@ -973,6 +973,7 @@ function renderCatalog(data) {
       row.check_id,
       row.title,
       row.check_class,
+      row.scenario,
       row.section,
       row.requirement,
       membership || "—",
