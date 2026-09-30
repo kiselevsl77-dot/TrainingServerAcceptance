@@ -1168,6 +1168,10 @@ def test_static_reads_binary_files_as_bytes(tmp_path: Path) -> None:
 FILLED_DATASET = "11111111-1111-1111-1111-111111111111"
 #: Датасет, о котором пульту ничего не известно: состав недоступен (замечание P1).
 UNKNOWN_DATASET = "22222222-2222-2222-2222-222222222222"
+#: Копия «skfu-record-1.raw.csv» с другим `id` — тёзка. В состав датасета не входит,
+#: хотя имя совпадает: живой стенд держит до трёх копий одного имени, и отбор по имени
+#: показывал 312 строк вместо 104 (`llm_tasks/49`, задача 1а).
+TWIN_FILE = "cccc0000-0000-0000-0000-000000000002"
 FILL_TASK = "33333333-3333-3333-3333-333333333333"
 RAW_ONE = "aaaa0000-0000-0000-0000-000000000001"
 RAW_TWO = "aaaa0000-0000-0000-0000-000000000002"
@@ -1206,6 +1210,14 @@ STAND_FILES: list[dict[str, Any]] = [
         "file_name": "foreign-record-1.raw.csv",
         "size": 1024,
         "s3_path": "s3://stand/foreign-record-1.raw.csv",
+        "import_date": DATA_AT,
+        "file_type": "RAW",
+    },
+    {
+        "id": TWIN_FILE,
+        "file_name": "skfu-record-1.raw.csv",
+        "size": 2048,
+        "s3_path": "s3://stand/twin/skfu-record-1.raw.csv",
         "import_date": DATA_AT,
         "file_type": "RAW",
     },
@@ -1302,7 +1314,7 @@ def test_dataset_filter_narrows_files_and_records(data_stand: PultApp) -> None:
         "skfu-record-1.raw.csv",
         "skfu-record-1.markup.csv",
         "skfu-record-2.raw.csv",
-    ]
+    ], "тёзка (то же имя, чужой id) в состав не попадает"
     assert len(data["records"]) == 2, "записи тоже отобраны по составу"
     assert data["filter"]["applied"] is True
     assert data["filter"]["source"] == "server_task"
@@ -1338,11 +1350,14 @@ def test_dataset_filter_says_when_composition_is_unavailable(data_stand: PultApp
 
 
 def test_outside_filter_shows_files_not_in_any_dataset(data_stand: PultApp) -> None:
-    """«Файлы вне датасетов»: остаётся то, чего нет ни в одном составе (ответ 1 = б)."""
+    """«Файлы вне датасетов»: чужой файл и тёзка, которых нет ни в одном составе (ответ 1 = б)."""
     _ready_session(data_stand)
     data = get(data_stand, "/api/results", dataset="none")["data"]
 
-    assert [row["name"] for row in data["files"]] == ["foreign-record-1.raw.csv"]
+    assert sorted(row["name"] for row in data["files"]) == [
+        "foreign-record-1.raw.csv",
+        "skfu-record-1.raw.csv",
+    ], "тёзка с чужим id — вне датасетов, хотя имя совпадает с файлом состава"
     assert data["filter"]["mode"] == "outside"
     assert data["filter"]["applied"] is True
     assert data["filter"]["label"].startswith("файлы вне датасетов")
@@ -1353,7 +1368,12 @@ def test_outside_filter_shows_files_not_in_any_dataset(data_stand: PultApp) -> N
 
 
 def test_dataset_filter_can_force_source(data_stand: PultApp) -> None:
-    """`source=heuristic` заставляет читать состав как гипотезу (`read_composition(mode=…)`)."""
+    """`source=heuristic` заставляет читать состав как гипотезу (`read_composition(mode=…)`).
+
+    Гипотеза знает **только имена**: отличить тёзку (то же имя, другой `id`) нечем, поэтому
+    файлов больше, а подпись честно говорит «требует проверки» — именно для этого источник
+    и показывается рядом с составом (`llm_tasks/49`, задача 1а).
+    """
     _ready_session(data_stand)
     data = get(data_stand, "/api/results", dataset=FILLED_DATASET, source="heuristic")["data"]
 
@@ -1364,7 +1384,8 @@ def test_dataset_filter_can_force_source(data_stand: PultApp) -> None:
         "skfu-record-1.raw.csv",
         "skfu-record-1.markup.csv",
         "skfu-record-2.raw.csv",
-    ]
+        "skfu-record-1.raw.csv",
+    ], "состав по именам включает тёзку: id у гипотезы нет"
 
 
 def test_dataset_filter_rejects_unknown_dataset(data_stand: PultApp) -> None:

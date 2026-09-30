@@ -933,22 +933,26 @@ def test_model_rows_describe_registry() -> None:
 
 
 def test_row_selection_filters_by_id_name_and_outside() -> None:
-    """Отбор строк «Данных стенда»: `id` — основной ключ, имя — запасной (`llm_tasks/49`)."""
+    """Отбор строк «Данных стенда»: `id` решает, имя — когда `id` неизвестен (`llm_tasks/49`)."""
     keys = composition_api.FileKeys(ids=frozenset({"a"}), names=frozenset({"raw_2.csv"}))
     by_keys = view.RowSelection(keys=keys, applied=True)
 
-    assert by_keys.matches("a", "") is True
-    assert by_keys.matches("", "RAW_2.CSV") is True
-    assert by_keys.matches("b", "other.csv") is False
+    assert by_keys.matches_file("a", "") is True
+    assert by_keys.matches_file("", "RAW_2.CSV") is True
+    assert by_keys.matches_file("b", "raw_2.csv") is False, "тёзка с другим id не в составе"
+    assert by_keys.matches_file("b", "other.csv") is False
+    assert by_keys.matches_record(("b", "other.csv"), ("a", "")) is True
+    assert by_keys.matches_record(("b", "a"), ("c", "raw_2.csv")) is False
 
     outside = view.RowSelection(keys=keys, outside=True, applied=True)
-    assert outside.matches("b", "other.csv") is True
-    assert outside.matches("a", "") is False
+    assert outside.matches_file("b", "other.csv") is True
+    assert outside.matches_file("a", "") is False
 
     # Состав недоступен: фильтр не применяется, строки остаются (обман исключён).
-    assert view.RowSelection(applied=False).matches("b", "other.csv") is True
-    assert view.RowSelection(keys=keys).matches("b", "other.csv") is True
-    assert view.NO_SELECTION.matches("что угодно") is True
+    assert view.RowSelection(applied=False).matches_file("b", "other.csv") is True
+    assert view.RowSelection(keys=keys).matches_file("b", "other.csv") is True
+    assert view.NO_SELECTION.matches_file("что угодно") is True
+    assert view.NO_SELECTION.matches_record(("x", "y")) is True
 
 
 def test_file_rows_keep_row_shape_when_filtered() -> None:

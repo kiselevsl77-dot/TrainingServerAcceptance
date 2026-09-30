@@ -1261,15 +1261,25 @@ class FileKeys:
         """Сколько ключей всего (для подписи «сколько файлов учтено»)."""
         return len(self.ids | self.names)
 
-    def matches(self, *values: Any) -> bool:
-        """True, если хотя бы одно значение — идентификатор или имя файла состава."""
-        for value in values:
-            text = _as_id(value)
-            if not text:
-                continue
-            if text in self.ids or text.lower() in self.names:
-                return True
-        return False
+    def matches_row(self, file_id: Any = "", file_name: Any = "") -> bool:
+        """True, если строка реестра входит в состав (ключ выбирается по составу и строке).
+
+        Правило:
+
+        * у строки известен `id`, и у состава есть `id` → решает **`id`**;
+        * иначе (у состава идентификаторов нет — `heuristic`, локальный факт без `id`)
+          либо `id` строки неизвестен → решает **имя файла**.
+
+        Смешивать ключи нельзя: в реестре стенда есть **тёзки** (одно имя — до трёх
+        файлов с разными `id`), поэтому отбор «по `id` **или** имени» присоединял к
+        датасету чужие файлы. Проверено на живом стенде: состав из 104 файлов с `id`
+        давал 312 строк — 208 тёзок (`llm_tasks/49`, задача 1а).
+        """
+        row_id = _as_id(file_id)
+        if row_id and self.ids:
+            return row_id in self.ids
+        name = _as_id(file_name).lower()
+        return bool(name) and name in self.names
 
 
 def file_keys(compositions: Iterable[Any]) -> FileKeys:

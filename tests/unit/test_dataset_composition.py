@@ -399,11 +399,11 @@ def test_composition_rows_and_session_schema_v5(tmp_path: Path) -> None:
 
 
 def test_file_keys_match_ids_and_names() -> None:
-    """Ключи состава отбирают строки по `id`, а имена служат запасным ключом (`llm_tasks/49`).
+    """Ключи состава: `id` решает, имя — когда идентификатора нет (`llm_tasks/49`).
 
-    Источники состава неоднородны: задача наполнения отдаёт идентификаторы файлов
-    реестра, гипотеза — только имена и пути. Отбор строк «Данных стенда» обязан работать
-    и с тем, и с другим, иначе фильтр «по датасету» молча ничего не находит.
+    Источники состава неоднородны: задача наполнения отдаёт идентификаторы файлов реестра,
+    гипотеза — только имена и пути. Отбор строк «Данных стенда» обязан работать и с тем,
+    и с другим, иначе фильтр «по датасету» молча ничего не находит.
     """
     composition = dc.DatasetComposition(
         dataset_id="d1",
@@ -417,8 +417,31 @@ def test_file_keys_match_ids_and_names() -> None:
     keys = dc.file_keys([composition])
 
     assert keys.size == 4, "два id и два имени"
-    assert keys.matches("a") is True
-    assert keys.matches("", "b.markup.CSV") is True, "имя сравнивается без регистра"
-    assert keys.matches("z", "other.csv") is False
+    assert keys.matches_row("a", "A.raw.csv") is True
+    assert keys.matches_row("b", "как угодно.csv") is True, "id решает, имя не мешает"
+    assert keys.matches_row("", "b.markup.CSV") is True, "без id решает имя (без регистра)"
+    assert keys.matches_row("z", "other.csv") is False
     assert dc.file_keys([]).is_empty is True
     assert dc.file_keys([dc.unknown_composition("d2")]).is_empty is True
+
+
+def test_file_keys_do_not_take_namesakes() -> None:
+    """Тёзка с другим `id` в состав не входит — иначе в датасете окажутся чужие файлы.
+
+    Регресс с живого стенда: в реестре встречаются одноимённые файлы (до трёх копий),
+    и отбор «по `id` **или** имени» показывал 312 строк вместо 104 (`llm_tasks/49`, 1а).
+    """
+    composition = dc.DatasetComposition(
+        dataset_id="d1",
+        source=dc.SOURCE_SERVER_TASK,
+        files=(dc.CompositionFile(file_id="a", role=dc.ROLE_RAW, file_name="3-Принтер.raw.csv"),),
+    )
+    keys = dc.file_keys([composition])
+
+    assert keys.matches_row("a", "3-Принтер.raw.csv") is True
+    assert keys.matches_row("twin", "3-Принтер.raw.csv") is False, "чужой id — не наша строка"
+
+    heuristic = dc.FileKeys(names=frozenset({"3-принтер.raw.csv"}))
+    assert heuristic.matches_row("twin", "3-Принтер.raw.csv") is True, (
+        "у состава без id имя — единственный ключ (`heuristic`)"
+    )

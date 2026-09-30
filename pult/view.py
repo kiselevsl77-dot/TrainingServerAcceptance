@@ -1581,11 +1581,28 @@ class RowSelection:
     outside: bool = False
     applied: bool = False
 
-    def matches(self, *values: Any) -> bool:
-        """True, если строку с такими ключами нужно показать."""
+    def matches_file(self, file_id: Any = "", file_name: Any = "") -> bool:
+        """Показывать ли строку файла: ключ выбирает `FileKeys.matches_row`.
+
+        `applied=False` (состав недоступен) или пустые ключи означают «фильтр не
+        применён» — строку показываем; при `outside` условие переворачивается
+        («файлы вне датасетов»).
+        """
+        found = self.keys.matches_row(file_id, file_name)
         if not self.applied or self.keys.is_empty:
             return True
-        found = self.keys.matches(*values)
+        return not found if self.outside else found
+
+    def matches_record(self, *pairs: tuple[Any, Any]) -> bool:
+        """Показывать ли запись RAW + markup: достаточно совпадения raw **или** markup.
+
+        Пары — это «идентификатор, имя» для raw и markup: правило то же, что у файлов
+        (`id` решает, когда он известен и есть в составе), поэтому тёзка-файл не
+        притаскивает в датасет чужую запись.
+        """
+        found = any(self.keys.matches_row(file_id, name) for file_id, name in pairs)
+        if not self.applied or self.keys.is_empty:
+            return True
         return not found if self.outside else found
 
 
@@ -1599,12 +1616,13 @@ def file_rows(
     """Строки реестра `$Файлов`: имя, тип, размер, путь и дата импорта.
 
     `selection` — отбор по составу датасета: строки остаются те же, меняется их состав
-    (`id` файла — основной ключ, имя — запасной, см. `dataset_composition.FileKeys`).
+    (ключ выбирает `dataset_composition.FileKeys.matches_row`: `id` — когда он известен,
+    имя файла — когда идентификатора у строки или у состава нет).
     """
     chosen = selection or NO_SELECTION
     rows: list[dict[str, Any]] = []
     for item in files:
-        if not chosen.matches(getattr(item, "id", ""), getattr(item, "file_name", "")):
+        if not chosen.matches_file(getattr(item, "id", ""), getattr(item, "file_name", "")):
             continue
         size = int(getattr(item, "size", 0) or 0)
         rows.append(
@@ -1640,10 +1658,10 @@ def load_rows(loads: Iterable[Any]) -> list[dict[str, Any]]:
 def record_rows(overview: Any, *, selection: RowSelection | None = None) -> list[dict[str, Any]]:
     """Строки записей (RAW + markup) из объединённого обзора (`records.build_records`).
 
-    `selection` — отбор по составу датасета: строка остаётся, если её `raw_id` или
-    `markup_id` (или имена — запасной ключ) входят в состав. Обрезку и счётчик
-    «показано N из M» делает `page_rows`: раньше здесь стоял лимит 300 **без счётчика**,
-    и оператор считал неполный список полным.
+    `selection` — отбор по составу датасета: строка остаётся, если её raw или markup
+    входит в состав (ключ разбирает `RowSelection.matches_record` — `id` решает, когда
+    он известен). Обрезку и счётчик «показано N из M» делает `page_rows`: раньше здесь
+    стоял лимит 300 **без счётчика**, и оператор считал неполный список полным.
     """
     chosen = selection or NO_SELECTION
     rows = [dict(row) for row in overview.manifest_rows()]
@@ -1652,11 +1670,9 @@ def record_rows(overview: Any, *, selection: RowSelection | None = None) -> list
     return [
         row
         for row in rows
-        if chosen.matches(
-            row.get("raw_id"),
-            row.get("raw_name"),
-            row.get("markup_id"),
-            row.get("markup_name"),
+        if chosen.matches_record(
+            (row.get("raw_id"), row.get("raw_name")),
+            (row.get("markup_id"), row.get("markup_name")),
         )
     ]
 
