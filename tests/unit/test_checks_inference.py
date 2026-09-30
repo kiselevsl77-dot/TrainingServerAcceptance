@@ -23,6 +23,7 @@ from acceptance.checks.registry import CheckSpec, CheckStatus
 from acceptance.exchange import build_console_client
 from acceptance.http_log import Journal, LoggingTransport
 from acceptance.session import new_session
+from acceptance.tasks_monitor import TaskMonitor
 from client.http import ApiHttpClient
 from client.settings import TrainingServerSettings
 
@@ -31,6 +32,9 @@ Handler = Callable[[httpx.Request], httpx.Response]
 
 MODEL_ID = "3d2d1139-0000-4000-8000-000000000001"
 MODEL_FRESH = "70409613-0000-4000-8000-000000000002"
+DATASET_ID = "5f0a5b7e-0000-4000-8000-000000000001"
+TASK_UUID = "77777777-0000-4000-8000-000000000007"
+RUNTIME_UUID = "66666666-0000-4000-8000-000000000006"
 RAW_ID = "11111111-1111-4111-8111-111111111111"
 NON_ASCII_RAW = "33333333-3333-4333-8333-333333333333"
 DEVICE = "Antminer S19"
@@ -149,6 +153,8 @@ class FakeInference:
         validate_threshold: bool = True,
         confidence_drift: float = 0.0,
         flip_detected_on_second: bool = False,
+        confidence_scale: float = 1.0,
+        no_datasets: bool = False,
     ) -> None:
         self.models = [
             dict(item)
@@ -175,20 +181,76 @@ class FakeInference:
         self.validate_threshold = validate_threshold
         self.confidence_drift = confidence_drift
         self.flip_detected_on_second = flip_detected_on_second
+        self.confidence_scale = confidence_scale
+        self.no_datasets = no_datasets
         self.single_calls: list[dict[str, Any]] = []
+        #: Статус задачи инференса (`GET /api/tasks/{task_id}`).
+        self.task_status = "completed"
 
     def handler(self, request: httpx.Request) -> httpx.Response:
-        """Маршруты подменённого сервера: модели, файлы, инференс одного сэмпла."""
+        """Маршруты подменённого сервера: модели, файлы, датасеты, задачи, инференс."""
         path = request.url.path
         if path == "/api/ml_models/models":
             return httpx.Response(200, json={"models": self.models, "count": len(self.models)})
         if path == "/api/data/files":
             return httpx.Response(200, json={"files": self.files, "count": len(self.files)})
+        if path == "/api/datasets/":
+            rows: list[dict[str, Any]] = (
+                []
+                if self.no_datasets
+                else [
+                    {
+                        "id": DATASET_ID,
+                        "creation_date": "2026-09-01T10:00:00",
+                        "name": "skfu-train",
+                        "description": None,
+                        "type": "direct_fill",
+                    }
+                ]
+            )
+            return httpx.Response(200, json={"datasets": rows, "count": len(rows)})
+        if path.startswith("/api/tasks/"):
+            return self._task(request)
         if path.startswith("/api/data/file/") and path.endswith("/download"):
             return self._download(path.split("/")[4])
+        if path.endswith("/inference") and request.method == "POST":
+            return httpx.Response(
+                202,
+                json={
+                    "status": "accepted",
+                    "model_id": MODEL_ID,
+                    "dataset_id": DATASET_ID,
+                    "task_id": TASK_UUID,
+                    "threshold": 0.5,
+                    "message": "Инференс запущен",
+                },
+            )
         if path.endswith("/inference/single") and request.method == "POST":
             return self._single(request)
         return httpx.Response(404, json={"detail": "Not Found"})
+
+    def _task(self, request: httpx.Request) -> httpx.Response:
+        """Карточка задачи инференса (`GET /api/tasks/{task_id}`)."""
+        task_id = request.url.path.split("/")[3]
+        return httpx.Response(
+            200,
+            json={
+                "task_id": task_id,
+                "type": "inference",
+                "name": "inference",
+                "description": "",
+                "created_at": "2026-09-30T12:00:00",
+                "id": task_id,
+                "runtimes": [
+                    {
+                        "task_id": task_id,
+                        "status": self.task_status,
+                        "parameters": {},
+                        "id": RUNTIME_UUID,
+                    }
+                ],
+            },
+        )
 
     def _download(self, file_id: str) -> httpx.Response:
         found = next((item for item in self.files if str(item["id"]) == file_id), None)
@@ -222,9 +284,10 @@ class FakeInference:
         ):
             if not body.get(field):
                 return httpx.Response(422, json=_validation_error(field, "Field required"))
-        confidence = min(0.99, max(0.0, float(body.get("U_mult", 721)) / 1000)) + (
-            self.confidence_drift if len(self.single_calls) > 1 else 0.0
-        )
+        confidence = (
+            min(0.99, max(0.0, float(body.get("U_mult", 721)) / 1000))
+            + (self.confidence_drift if len(self.single_calls) > 1 else 0.0)
+        ) * self.confidence_scale
         detected = True
         if self.flip_detected_on_second and len(self.single_calls) > 1:
             detected = False
@@ -262,6 +325,7 @@ def stand(handler: Handler, check_id: str, **params: Any) -> Any:
         journal=journal,
         params=params,
         probe=check_runner.RawProbe(client=console, journal=journal),
+        monitor=TaskMonitor(apis.tasks, journal=journal, interval=0.0),
     )
 
 
@@ -380,3 +444,73 @@ def test_repeatability_skipped_without_trained_model():
     outcome = check_inference.evaluate(context)
 
     assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+
+
+# ---------------------------------------------------------------------------
+# TC-INF-02 — синхронный инференс одного сэмпла
+# ---------------------------------------------------------------------------
+def test_single_check_passes_with_classes():
+    """Сэмпл предсказан: классы с `signal_num`, `device_ids`, `confidence` (UC-25)."""
+    context = stand(FakeInference().handler, "TC-INF-02")
+
+    outcome = check_inference.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert len(outcome.evidence["classes"]) == 1
+    klass = outcome.evidence["classes"][0]
+    assert klass["signal_num"] == 0
+    assert klass["device_ids"] == [DEVICE]
+    assert 0.0 <= klass["confidence"] <= 1.0
+    assert klass["detected"] is True
+    assert outcome.evidence["sample"]["chunkID"].startswith("F8D79FE4")
+    assert "обнаружено нагрузок — 1" in outcome.verdict
+
+
+def test_single_check_fails_on_confidence_out_of_range():
+    """`confidence` вне 0…1 — отказ: ответ не соответствует ожиданию (BR-R9)."""
+    context = stand(FakeInference(confidence_scale=5.0).handler, "TC-INF-02")
+
+    outcome = check_inference.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "вне диапазона 0…1" in outcome.verdict
+
+
+# ---------------------------------------------------------------------------
+# TC-INF-01 — асинхронный инференс по датасету
+# ---------------------------------------------------------------------------
+def test_inference_start_monitors_task_and_links_journal():
+    """Инференс запущен, задача `inference` отслежена, результат связан с журналом."""
+    context = stand(FakeInference().handler, "TC-INF-01")
+
+    outcome = check_inference.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["response"]["task_id"] == TASK_UUID
+    assert outcome.evidence["dataset_label"] == "skfu-train"
+    assert outcome.evidence["watch"]["task_type"] == "inference"
+    assert outcome.evidence["watch"]["final"] == "completed"
+    assert outcome.evidence["journal"]["to"] is not None
+    assert outcome.evidence["journal"]["range"].startswith("#")
+
+
+def test_inference_start_reports_failed_task():
+    """Задача инференса завершилась ошибкой — отказ с финальным статусом."""
+    fake = FakeInference()
+    fake.task_status = "failed"
+    context = stand(fake.handler, "TC-INF-01")
+
+    outcome = check_inference.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "вместо completed" in outcome.verdict
+
+
+def test_inference_start_skipped_without_dataset():
+    """Датасета нет ни в параметрах, ни в реестре — «пропущена»: запускать не на чем."""
+    context = stand(FakeInference(no_datasets=True).handler, "TC-INF-01")
+
+    outcome = check_inference.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+    assert "датасет не выбран" in outcome.verdict

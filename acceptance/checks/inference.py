@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from acceptance.checks import ml_tasks
 from acceptance.checks.registry import CheckStatus
 from acceptance.checks.runner import (
     AutomationContext,
@@ -39,7 +40,7 @@ from acceptance.ml_samples import (
     pick_raw_file,
 )
 from client.errors import ApiError, ClientError, ServerUnavailableError
-from client.schemas import InferenceSingleResponse, ModelMetadata
+from client.schemas import InferenceSingleResponse, ModelMetadata, TaskType
 
 __all__ = [
     "AUTOMATIONS",
@@ -262,8 +263,148 @@ def _repeatability(context: AutomationContext) -> CheckOutcome:
     )
 
 
+def _inference_start(context: AutomationContext) -> CheckOutcome:
+    """TC-INF-01: асинхронный инференс по датасету и наблюдение за задачей (UC-24, BR-F6).
+
+    Проверка запускает инференс на выбранной модели и датасете, ставит задачу типа
+    `inference` на наблюдение и ведёт её монитором до терминального состояния.
+    Результат связывается с проверкой номером записи журнала — по нему в протоколе
+    видно, какие обмены относятся к этой задаче. Сущностей проверка не создаёт.
+    """
+    model = ml_tasks.trained_model_for(context)
+    dataset = ml_tasks.dataset_for(context)
+    threshold = ml_tasks.param_float(context, "threshold", DEFAULT_THRESHOLD)
+    evidence: dict[str, Any] = {
+        "model": ml_tasks.model_snapshot(model),
+        "dataset_id": str(dataset.id),
+        "dataset_label": str(dataset.name),
+        "threshold": threshold,
+        "timeout": ml_tasks.timeout_of(context),
+    }
+    problems: list[str] = []
+    notes: list[str] = []
+
+    try:
+        response = context.models_api().inference(
+            model.id, dataset_id=str(dataset.id), threshold=threshold
+        )
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return CheckOutcome(CheckStatus.FAILED, f"инференс не запущен: {exc}", evidence)
+
+    evidence["response"] = {
+        "task_id": str(response.task_id or ""),
+        "status": str(response.status or ""),
+        "message": str(response.message or ""),
+        "model_id": str(response.model_id or ""),
+        "dataset_id": str(response.dataset_id or ""),
+    }
+    try:
+        task_id = ml_tasks.register_task(
+            context, payload=response, task_type=TaskType.INFERENCE.value
+        )
+    except PreconditionError as exc:
+        problems.append(str(exc))
+    else:
+        watch = ml_tasks.watch_task(context, task_id=task_id, task_type=TaskType.INFERENCE.value)
+        evidence["watch"] = watch
+        problems.extend(ml_tasks.observation_problems(watch))
+        evidence["journal"] = {
+            "from": watch["journal_from"],
+            "to": watch["journal_seq"],
+            "range": f"#{watch['journal_from']}…#{watch['journal_seq']}"
+            if watch["journal_seq"]
+            else "",
+        }
+        if str(watch["task_type"]) != TaskType.INFERENCE.value:
+            notes.append(
+                f"тип задачи на стенде — «{watch['task_type'] or 'не определён'}», "
+                "ожидался `inference`"
+            )
+        if not watch["terminal"]:
+            notes.append(
+                "задача не завершилась: результат можно посмотреть в панели «Задачи» "
+                f"(`task_id={task_id}`)"
+            )
+
+    verdict = (
+        f"инференс запущен: задача {response.task_id} типа `inference`, финальный статус "
+        f"«{evidence.get('watch', {}).get('final_label') or response.status}»; "
+        f"журнал {evidence.get('journal', {}).get('range') or '—'}"
+    )
+    return ml_tasks.async_outcome(
+        verdict=verdict, evidence=evidence, problems=problems, notes=notes
+    )
+
+
+def _single_check(context: AutomationContext) -> CheckOutcome:
+    """TC-INF-02: синхронный инференс одного сэмпла — `classes[]` и пределы (UC-25, BR-R9).
+
+    Сэмпл берётся из строки RAW-файла стенда (шесть Base64-сигналов и шкалы), модель —
+    обученная. Проверяются состав `classes[]` (`signal_num`, `device_ids`,
+    `confidence`, `detected`) и границы `confidence` — значение вне 0…1 означает, что
+    ответ не соответствует ожиданию.
+    """
+    model = _picked_model(context)
+    sample = _read_sample(context)
+    threshold = _threshold(context)
+    evidence: dict[str, Any] = {
+        "model_id": str(model.id),
+        "model_label": model_label(model),
+        "sample": sample.as_evidence(),
+        "threshold": threshold,
+    }
+    problems: list[str] = []
+
+    try:
+        response = _single(context, str(model.id), sample, threshold)
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return CheckOutcome(CheckStatus.FAILED, f"инференс сэмпла не выполнен: {exc}", evidence)
+
+    classes: list[dict[str, Any]] = [
+        {
+            "signal_num": int(item.signal_num),
+            "device_ids": [str(value) for value in item.device_ids],
+            "confidence": float(item.confidence),
+            "detected": bool(item.detected),
+        }
+        for item in response.classes
+    ]
+    evidence["classes"] = classes
+    evidence["model_id_in_response"] = str(response.model_id or "")
+    evidence["threshold_in_response"] = response.threshold
+    if not classes:
+        problems.append("сервер вернул пустой список классов: предсказание не получено")
+    for item in classes:
+        confidence = float(item["confidence"])
+        if not 0.0 <= confidence <= 1.0:
+            problems.append(
+                f"класс {item['signal_num']}: `confidence`={confidence} вне диапазона 0…1"
+            )
+        if item["detected"] and not item["device_ids"]:
+            problems.append(
+                f"класс {item['signal_num']}: обнаружена нагрузка, но `device_ids` пуст"
+            )
+    if str(response.model_id or "") and str(response.model_id) != str(model.id):
+        problems.append(
+            f"в ответе другая модель: {response.model_id} вместо запрошенной {model.id}"
+        )
+
+    verdict = (
+        f"инференс сэмпла выполнен: классов {len(classes)}, порог {threshold}; "
+        f"обнаружено нагрузок — "
+        f"{sum(1 for item in classes if item['detected'])}"
+    )
+    return CheckOutcome(
+        CheckStatus.PASSED if not problems else CheckStatus.FAILED,
+        "; ".join(problems) or verdict,
+        evidence,
+    )
+
+
 #: Реестр сценариев модуля (ключ — `CheckSpec.automation`).
 AUTOMATIONS: dict[str, Any] = {
+    "inference.single": _single_check,
+    "inference.start": _inference_start,
     "inference.threshold_bounds": _threshold_bounds,
     "inference.repeatability": _repeatability,
 }

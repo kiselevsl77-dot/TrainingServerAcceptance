@@ -1229,6 +1229,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "get /api/tasks/",
             "get /api/tasks/{task_id}",
         ),
+        automation="training.start",
     ),
     CheckSpec(
         check_id="TC-TR-03",
@@ -1253,6 +1254,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "post /api/tasks/{task_id}/interrupt",
             "get /api/tasks/{task_id}",
         ),
+        automation="training.control",
     ),
     CheckSpec(
         check_id="TC-TR-04",
@@ -1275,6 +1277,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "get /api/ml_models/models/{model_id}",
             "get /api/ml_models/models",
         ),
+        automation="training.result",
     ),
     CheckSpec(
         check_id="TC-TR-05",
@@ -1294,6 +1297,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "get /api/tasks/",
             "get /api/tasks/{task_id}",
         ),
+        automation="training.check",
     ),
     CheckSpec(
         check_id="TC-TR-06",
@@ -1352,6 +1356,7 @@ TC_INF_SPECS: tuple[CheckSpec, ...] = (
             "get /api/tasks/{task_id}",
             "get /api/datasets/",
         ),
+        automation="inference.start",
     ),
     CheckSpec(
         check_id="TC-INF-02",
@@ -1370,6 +1375,7 @@ TC_INF_SPECS: tuple[CheckSpec, ...] = (
             "значения в допустимых пределах"
         ),
         endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+        automation="inference.single",
     ),
     CheckSpec(
         check_id="TC-INF-03",
