@@ -1036,17 +1036,23 @@ class PultApp:
 
     # -- данные стенда, протокол, отчёт -------------------------------------
     def api_data(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
-        """`GET /api/data` — файлы, записи RAW+markup, `$Нагрузки`, `$Датасеты` с составом.
+        """`GET /api/data` — файлы, записи RAW+markup, `$Нагрузки`, `$Датасеты`, `$Модели`.
 
         Составы датасетов читаются только по запросу (`id=…` для одного или
         `compositions=1` для всех): за каждым стоит обращение к `$Задачам` стенда
         (`GET /api/tasks/?task_type=dataset-fill`), а реестр должен открываться быстро.
         Проверки, подтверждённые этим чтением, закрываются по факту запроса (`UC-03`).
+
+        `counts` — сколько сущностей в реестрах стенда, `pages` — сколько строк показано
+        из скольких (`limit`, по умолчанию 200; `limit=0` — все). Числа считает сервер:
+        интерфейс печатает готовые подписи и не решает, что считать полным списком.
         """
         refresh = _flag(query.get("refresh"), False)
+        limit = _row_limit(query.get("limit"))
         files, files_error = self.state.files(refresh=refresh)
         loads, loads_error = self.state.loads(refresh=refresh)
         datasets, datasets_error = self.state.datasets(refresh=refresh)
+        models, models_error = self.state.models(refresh=refresh)
         overview = None
         records_error = ""
         if files:
@@ -1057,23 +1063,40 @@ class PultApp:
                 LOG.warning(records_error)
         session = self.state.current_session()
         written = [] if session is None else self.confirm_requests(session)
-        return {
-            "files": view.file_rows(files),
-            "records": [] if overview is None else view.record_rows(overview),
+        file_rows, file_page = view.page_rows(view.file_rows(files), limit=limit)
+        record_rows, record_page = view.page_rows(
+            [] if overview is None else view.record_rows(overview), limit=limit
+        )
+        data: dict[str, Any] = {
+            "files": file_rows,
+            "records": record_rows,
             "records_stats": {} if overview is None else overview.stats.to_dict(),
             "records_attention": 0 if overview is None else len(overview.requires_attention),
             "loads": view.load_rows(loads),
             "datasets": view.dataset_rows(
                 datasets, compositions=self._compositions(session, datasets, files, query)
             ),
+            "models": view.model_rows(models),
+            "limit": int(limit),
+            "counts": {
+                "files": len(files),
+                "records": 0 if overview is None else len(overview.manifest_rows()),
+                "loads": len(loads),
+                "datasets": len(datasets),
+                "models": len(models),
+            },
+            "pages": {"files": file_page, "records": record_page},
             "errors": {
                 "files": files_error or "",
                 "records": records_error,
                 "loads": loads_error or "",
                 "datasets": datasets_error or "",
+                "models": models_error or "",
             },
             "written": written,
         }
+        data["sections"] = view.data_sections(data)
+        return data
 
     def _compositions(
         self,
@@ -1206,6 +1229,23 @@ class PultApp:
             "missing": [str(item) for item in missing],
             "readiness": view.report_view(report_api.readiness(session), snapshots=shots),
         }
+
+
+def _row_limit(value: Any, default: int = view.DEFAULT_ROW_LIMIT) -> int:
+    """Лимит строк подразделов «Данных стенда»: пусто — по умолчанию, «0»/«все» — все.
+
+    Ошибка ввода не роняет страницу: 422 с понятным текстом, а не обрезанный список
+    «как получится» (`FR-P-25`).
+    """
+    text = str(value or "").strip().lower()
+    if not text:
+        return int(default)
+    if text in ("0", "all", "все"):
+        return 0
+    try:
+        return max(0, int(text))
+    except (TypeError, ValueError) as exc:
+        raise ApiError(f"лимит строк должен быть числом: {value!r}", status=422) from exc
 
 
 def _flag(value: Any, default: bool) -> bool:

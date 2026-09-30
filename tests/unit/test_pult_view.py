@@ -440,8 +440,9 @@ def test_results_page_labels_are_built_in_python() -> None:
             "errors": {"files": "", "loads": "нет связи со стендом", "datasets": ""},
         }
     )
-    assert [item["value"] for item in summary] == ["2", "1", "1", "0", "3", "1"]
+    assert [item["value"] for item in summary] == ["2", "1", "1", "0", "3", "0", "1"]
     assert [item["label"] for item in summary][0] == "файлов"
+    assert [item["label"] for item in summary][-2] == "моделей"
 
     options = view.status_options()
     assert options and all(item["value"] and item["label"] for item in options)
@@ -850,3 +851,77 @@ def test_dataset_and_composition_rows() -> None:
     empty = view.composition_view(None)
     assert empty["source_label"] == "состав недоступен"
     assert empty["trusted"] is False
+
+
+def test_page_rows_reports_shown_and_total() -> None:
+    """Обрезка списка видна оператору: «показано 200 из 250», `limit=0` — все строки (`UC-03`)."""
+    rows, page = view.page_rows([{"id": number} for number in range(250)])
+
+    assert len(rows) == view.DEFAULT_ROW_LIMIT == 200
+    assert page == {"shown": 200, "total": 250, "limited": True, "label": "показано 200 из 250"}
+
+    all_rows, full = view.page_rows([{"id": number} for number in range(250)], limit=0)
+    assert len(all_rows) == 250
+    assert full["limited"] is False and full["label"] == "показано 250 из 250"
+
+    short, tiny = view.page_rows([{"id": 1}])
+    assert len(short) == 1 and tiny["limited"] is False
+
+
+def test_data_sections_carry_registry_counters() -> None:
+    """Подразделы «Данных стенда» подписаны счётчиком реестра, а не длиной выборки."""
+    data: dict[str, Any] = {
+        "files": [{"id": 1}, {"id": 2}],
+        "records": [{"raw_id": "1"}],
+        "loads": [],
+        "datasets": [],
+        "models": [],
+        "counts": {"files": 388, "records": 129, "loads": 4, "datasets": 7, "models": 0},
+        "pages": {
+            "files": {"shown": 2, "total": 388, "limited": True, "label": "показано 2 из 388"},
+            "records": {"shown": 1, "total": 129, "limited": True, "label": "показано 1 из 129"},
+        },
+    }
+
+    sections = view.data_sections(data)
+
+    assert [item["key"] for item in sections] == [
+        "files",
+        "records",
+        "loads",
+        "datasets",
+        "models",
+    ]
+    assert [item["label"] for item in sections] == [
+        "$Файлы · 388",
+        "Записи RAW + markup · 129",
+        "$Нагрузки · 4",
+        "$Датасеты и состав · 7",
+        "$Модели · 0",
+    ]
+    assert sections[0]["page_label"] == "показано 2 из 388"
+    assert sections[0]["can_show_all"] is True and sections[0]["table"] == "results-files"
+    assert sections[2]["page_label"] == "" and sections[2]["can_show_all"] is False
+
+
+def test_model_rows_describe_registry() -> None:
+    """Строки `$Моделей`: архитектура, версия, фаза и время обновления (`UC-18`)."""
+    rows = view.model_rows(
+        [
+            {
+                "id": "m-1",
+                "name": "шахта",
+                "architecture": "cnn1d",
+                "version": "v3",
+                "phase_type": "three",
+                "output_size": 2,
+                "created_at": "2026-09-20T09:00:00",
+                "updated_at": "2026-09-25T10:12:00",
+            }
+        ]
+    )
+
+    assert rows[0]["name"] == "шахта" and rows[0]["architecture"] == "cnn1d"
+    assert rows[0]["version"] == "v3" and rows[0]["output_size"] == 2
+    assert rows[0]["updated_at"] == "25.09 10:12"
+    assert view.model_rows([]) == []

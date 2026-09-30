@@ -395,6 +395,24 @@ body {
   color: var(--muted);
 }
 
+/* Подразделы «Данных стенда» — нативные `<details>`: счётчик видно и в свёрнутом виде,
+   состояние переживает автообновление (перерисовываются только `tbody` и подписи). */
+details.zone__sub > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+details.zone__sub[open] > summary {
+  color: var(--text);
+}
+
+details.zone__sub > summary::marker {
+  color: var(--muted);
+}
+
 /* Длинные таблицы прокручиваются внутри зоны: шапка страницы остаётся на месте. */
 .grid--scroll {
   display: block;

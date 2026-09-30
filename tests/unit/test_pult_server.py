@@ -21,8 +21,10 @@ import threading
 import urllib.error
 import urllib.request
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -34,6 +36,7 @@ from acceptance.config import PultConfig
 from acceptance.http_log import HttpExchange, Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
 from client.http import ApiHttpClient
+from client.schemas import FileMetadataResponse
 from client.settings import TrainingServerSettings
 from pult.server import ApiError, PultApp, Raw, compile_route, serve
 from pult.state import PultState, Runtime
@@ -494,6 +497,83 @@ def test_results_page_combines_three_zones(pult: PultApp) -> None:
     filtered = get(pult, "/api/results", q=check_id)
     assert all(check_id in row["check_id"] for row in filtered["protocol"]["rows"])
     assert filtered["protocol"]["query"] == check_id
+
+
+def test_data_zone_has_sections_counters_and_details(pult: PultApp) -> None:
+    """Подразделы «Данных стенда»: счётчики из Python, `$Модели` и свёрнутая разметка.
+
+    Список в свёрнутом `<details>` обязан показывать число сущностей реестра
+    (`llm_tasks/49`, вопросы 2 = а и 4 = а), поэтому счётчики приходят в ответе API,
+    а не досчитываются браузером; состояние сворачивания живёт в DOM (`open`).
+    """
+    _ready_session(pult)
+    data = get(pult, "/api/data")
+
+    assert [item["key"] for item in data["sections"]] == [
+        "files",
+        "records",
+        "loads",
+        "datasets",
+        "models",
+    ]
+    assert [item["label"] for item in data["sections"]] == [
+        "$Файлы · 0",
+        "Записи RAW + markup · 0",
+        "$Нагрузки · 0",
+        "$Датасеты и состав · 0",
+        "$Модели · 0",
+    ]
+    assert data["counts"] == {"files": 0, "records": 0, "loads": 0, "datasets": 0, "models": 0}
+    assert data["pages"]["files"]["label"] == "показано 0 из 0"
+    assert data["limit"] == 200, "лимит строк по умолчанию — 200"
+    assert data["models"] == [] and data["errors"]["models"] == ""
+
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    details = re.findall(r'<details class="zone__sub"[^>]*>', html)
+    assert len(details) == 5, "каждый подраздел — отдельный <details>"
+    assert not any(" open" in tag for tag in details), "подразделы свёрнуты по умолчанию"
+    assert 'id="results-sub-models"' in html and '<summary id="results-files-count">' in html
+
+
+def test_data_lists_are_paged_with_counter(pult: PultApp, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Файлы обрезаются лимитом 200, счётчик говорит «показано N из M», `?limit=0` — все.
+
+    Прежний лимит 300 стоял в коде без счётчика: оператор считал список полным
+    (`llm_tasks/49`, вопрос 6 = а).
+    """
+    files = [
+        FileMetadataResponse(
+            id=uuid4(),
+            file_name=f"RAW_{number}.csv",
+            size=100,
+            s3_path=f"/raw/{number}",
+            import_date=datetime(2026, 9, 20, 9, 0, 0),
+            file_type="RAW",
+        )
+        for number in range(250)
+    ]
+    monkeypatch.setattr(PultState, "files", lambda self, refresh=False: (files, None))
+    _ready_session(pult)
+
+    data = get(pult, "/api/data")
+    assert len(data["files"]) == 200
+    assert data["counts"]["files"] == 250
+    assert data["pages"]["files"] == {
+        "shown": 200,
+        "total": 250,
+        "limited": True,
+        "label": "показано 200 из 250",
+    }
+    assert data["sections"][0]["can_show_all"] is True
+
+    everything = get(pult, "/api/data", limit="0")
+    assert len(everything["files"]) == 250
+    assert everything["pages"]["files"]["limited"] is False
+    assert everything["sections"][0]["can_show_all"] is False
+
+    with pytest.raises(ApiError) as bad_limit:
+        get(pult, "/api/data", limit="много")
+    assert bad_limit.value.status == 422, "неверный лимит не роняет страницу"
 
 
 def test_session_finish_requires_conclusion(pult: PultApp) -> None:

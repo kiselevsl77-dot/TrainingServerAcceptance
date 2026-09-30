@@ -40,7 +40,13 @@ from acceptance.paths import ensure_dirs
 from acceptance.session import TestSession
 from client.errors import ClientError
 from client.http import ApiHttpClient
-from client.schemas import CeleryTask, DatasetResponse, FileMetadataResponse, LoadItem
+from client.schemas import (
+    CeleryTask,
+    DatasetResponse,
+    FileMetadataResponse,
+    LoadItem,
+    ModelMetadata,
+)
 from client.settings import TrainingServerSettings, get_settings
 
 #: Текст состояния «стенд не настроен»: его показывают экраны вместо данных.
@@ -50,7 +56,12 @@ STAND_NOT_CONFIGURED = "Адрес испытуемого сервера не з
 FILES_TTL = 60.0
 LOADS_TTL = 60.0
 DATASETS_TTL = 30.0
+MODELS_TTL = 30.0
 TASKS_TTL = 15.0
+
+#: Время жизни кэша составов «все датасеты» (режим «вне датасетов»): за каждым составом
+#: стоит обращение к `$Задачам` стенда, поэтому повторные запросы страницы берут кэш.
+COMPOSITIONS_TTL = 60.0
 
 #: Верхняя граница выдачи при чтении реестра нагрузок (спецификацией не объявлена).
 LOAD_LIMIT = 1000
@@ -275,6 +286,25 @@ class PultState:
                 return [], _error_text(exc)
 
         return self._cached("datasets", DATASETS_TTL, load, refresh=refresh)
+
+    def models(self, *, refresh: bool = False) -> tuple[list[ModelMetadata], str | None]:
+        """Реестр `$Моделей` стенда: (модели, текст ошибки).
+
+        Нужен дважды: как подраздел «Данных стенда» (`UC-18`) и как варианты выбора
+        модели для проверок T6–T9 (`llm_tasks/49`, вопрос 4 = а). На подготовленном
+        стенде моделей может не быть вовсе — это не ошибка, а состояние (`[]`).
+        """
+
+        def load() -> tuple[list[ModelMetadata], str | None]:
+            runtime = self.runtime()
+            if runtime is None:
+                return [], STAND_NOT_CONFIGURED
+            try:
+                return list(runtime.apis.models.list_models()), None
+            except READ_ERRORS as exc:
+                return [], _error_text(exc)
+
+        return self._cached("models", MODELS_TTL, load, refresh=refresh)
 
     def tasks(
         self,

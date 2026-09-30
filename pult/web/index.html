@@ -341,11 +341,18 @@
           <div class="zone__head">
             <h3>Данные стенда</h3>
             <span class="muted" id="results-data-meta"></span>
+            <span class="grow"></span>
+            <button class="btn btn--tiny btn--ghost" id="results-collapse" type="button">Свернуть все</button>
+            <button class="btn btn--tiny btn--ghost" id="results-expand" type="button">Развернуть все</button>
           </div>
           <div class="kpi" id="results-data-kpi"></div>
           <div class="warnings" id="results-data-warnings" hidden></div>
-          <div class="zone__sub">
-            <h4>$Файлы</h4>
+
+          <!-- Подразделы свёрнуты по умолчанию: в свёрнутом виде видно счётчик из Python,
+               состояние сворачивания живёт в DOM и не сбрасывается автообновлением. -->
+          <details class="zone__sub" id="results-sub-files">
+            <summary id="results-files-count">$Файлы</summary>
+            <p class="muted" id="results-files-meta"></p>
             <table class="grid grid--scroll" id="results-files">
               <thead>
                 <tr>
@@ -358,10 +365,16 @@
               </thead>
               <tbody></tbody>
             </table>
-          </div>
-          <div class="zone__sub">
-            <h4>Записи RAW + markup</h4>
-            <span class="muted" id="results-records-meta"></span>
+            <div class="zone__actions">
+              <button class="btn btn--tiny btn--ghost" id="results-files-all" type="button" hidden>
+                показать все строки
+              </button>
+            </div>
+          </details>
+
+          <details class="zone__sub" id="results-sub-records">
+            <summary id="results-records-count">Записи RAW + markup</summary>
+            <p class="muted" id="results-records-meta"></p>
             <table class="grid grid--scroll" id="results-records">
               <thead>
                 <tr>
@@ -374,9 +387,15 @@
               </thead>
               <tbody></tbody>
             </table>
-          </div>
-          <div class="zone__sub">
-            <h4>$Нагрузки</h4>
+            <div class="zone__actions">
+              <button class="btn btn--tiny btn--ghost" id="results-records-all" type="button" hidden>
+                показать все строки
+              </button>
+            </div>
+          </details>
+
+          <details class="zone__sub" id="results-sub-loads">
+            <summary id="results-loads-count">$Нагрузки</summary>
             <table class="grid" id="results-loads">
               <thead>
                 <tr>
@@ -388,9 +407,10 @@
               </thead>
               <tbody></tbody>
             </table>
-          </div>
-          <div class="zone__sub">
-            <h4>$Датасеты и состав</h4>
+          </details>
+
+          <details class="zone__sub" id="results-sub-datasets">
+            <summary id="results-datasets-count">$Датасеты и состав</summary>
             <table class="grid" id="results-datasets">
               <thead>
                 <tr>
@@ -423,7 +443,25 @@
               <tbody></tbody>
             </table>
             <div class="outcomes" id="results-composition"></div>
-          </div>
+          </details>
+
+          <details class="zone__sub" id="results-sub-models">
+            <summary id="results-models-count">$Модели</summary>
+            <table class="grid" id="results-models">
+              <thead>
+                <tr>
+                  <th>Модель</th>
+                  <th>Архитектура</th>
+                  <th>Версия</th>
+                  <th>Фаза</th>
+                  <th>Выход</th>
+                  <th>Создана</th>
+                  <th>Обновлена</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
         </section>
 
         <section class="zone">

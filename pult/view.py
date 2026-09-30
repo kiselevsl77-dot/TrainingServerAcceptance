@@ -1382,10 +1382,106 @@ def load_rows(loads: Iterable[Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def record_rows(overview: Any, *, limit: int = 300) -> list[dict[str, Any]]:
-    """Строки записей (RAW + markup) из объединённого обзора (`records.build_records`)."""
-    rows = [dict(row) for row in overview.manifest_rows()]
-    return rows[: max(0, int(limit))] if limit else rows
+def record_rows(overview: Any) -> list[dict[str, Any]]:
+    """Строки записей (RAW + markup) из объединённого обзора (`records.build_records`).
+
+    Обрезку и счётчик «показано N из M» делает `page_rows`: раньше здесь стоял лимит
+    300 **без счётчика**, и оператор считал неполный список полным.
+    """
+    return [dict(row) for row in overview.manifest_rows()]
+
+
+def model_rows(models: Iterable[Any]) -> list[dict[str, Any]]:
+    """Строки реестра `$Моделей`: имя, архитектура, версия, фаза, выход и обновление.
+
+    Поля берутся из ответа (`ModelMetadata`), а не из выдуманной схемы: список нужен
+    и на «Результатах» (`UC-18`), и как варианты выбора модели для проверок T6–T9.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in models:
+        payload = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        rows.append(
+            {
+                "id": str(payload.get("id") or ""),
+                "name": str(payload.get("name") or ""),
+                "architecture": str(payload.get("architecture") or ""),
+                "version": str(payload.get("version") or ""),
+                "phase_type": str(payload.get("phase_type") or ""),
+                "output_size": int(payload.get("output_size") or 0),
+                "description": str(payload.get("description") or ""),
+                "created_at": short_time(payload.get("created_at")),
+                "updated_at": short_time(payload.get("updated_at")),
+            }
+        )
+    return rows
+
+
+#: Лимит строк в подразделах «Данных стенда»: реестр файлов бывает в сотни строк,
+#: а страница «Результаты» нужна для обзора. Оператор снимает лимит кнопкой
+#: «показать все» (`llm_tasks/49`, вопрос 6 = а).
+DEFAULT_ROW_LIMIT = 200
+
+#: Подразделы зоны «Данные стенда» (`SCR-401`): ключ, заголовок, ключ строк в ответе API.
+DATA_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("files", "$Файлы"),
+    ("records", "Записи RAW + markup"),
+    ("loads", "$Нагрузки"),
+    ("datasets", "$Датасеты и состав"),
+    ("models", "$Модели"),
+)
+
+
+def page_rows(
+    rows: Sequence[Any], *, limit: int = DEFAULT_ROW_LIMIT
+) -> tuple[list[Any], dict[str, Any]]:
+    """Отдаёт (строки для показа, страница со счётчиком).
+
+    Правило честности: обрезка списка **не выглядит** как «стенд отдал 200 файлов» —
+    рядом с таблицей стоит «показано 200 из 388». `limit=0` — показать всё: так
+    работает кнопка «показать все», и решает это сервер, а не браузер.
+    """
+    all_rows = list(rows)
+    total = len(all_rows)
+    shown = all_rows if not limit or total <= int(limit) else all_rows[: int(limit)]
+    return shown, {
+        "shown": len(shown),
+        "total": total,
+        "limited": len(shown) < total,
+        "label": f"показано {len(shown)} из {total}",
+    }
+
+
+def data_sections(data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Подразделы «Данных стенда»: подпись со счётчиком реестра и состояние списка.
+
+    Подписи считает Python: в свёрнутом `<details>` оператор видит число сущностей
+    (`$Файлы · 388`), а не только название; `page_label` говорит, что список обрезан
+    и это можно снять (`llm_tasks/49`, «Сворачивание подразделов»).
+    """
+    counts = dict(data.get("counts") or {})
+    pages = dict(data.get("pages") or {})
+    sections: list[dict[str, Any]] = []
+    for key, title in DATA_SECTIONS:
+        page = dict(pages.get(key) or {})
+        page_label = str(page.get("label") or "")
+        total = page.get("total")
+        if "total" not in page:
+            total = counts.get(key)
+        total = int(total if total is not None else len(data.get(key) or []))
+        sections.append(
+            {
+                "key": key,
+                "table": f"results-{key}",
+                "title": title,
+                "count": total,
+                "shown": int(page.get("shown") or len(data.get(key) or [])),
+                "limited": bool(page.get("limited")),
+                "can_show_all": bool(page.get("limited")),
+                "label": f"{title} · {total}" if counts or pages else title,
+                "page_label": page_label,
+            }
+        )
+    return sections
 
 
 def composition_view(composition: Any) -> dict[str, Any]:
@@ -1533,14 +1629,28 @@ def report_points(
 
 
 def data_summary(data: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Сводка данных стенда: сколько чего прочитано и что не прочиталось (`UC-03`)."""
+    """Сводка данных стенда: сколько чего прочитано и что не прочиталось (`UC-03`).
+
+    Числа берутся из `counts` (сколько сущностей в реестре стенда), а не из длины
+    показанного списка: списки обрезаются счётчиком «показано N из M», и KPI не должен
+    выдавать 200 файлов за весь реестр.
+    """
     errors = dict(data.get("errors") or {})
+    counts = dict(data.get("counts") or {})
+
+    def total(key: str) -> str:
+        """Число сущностей реестра: из `counts`, иначе — длина показанного списка."""
+        if key in counts:
+            return str(int(counts[key] or 0))
+        return str(len(data.get(key) or []))
+
     return [
-        {"label": "файлов", "value": str(len(data.get("files") or []))},
-        {"label": "записей RAW+markup", "value": str(len(data.get("records") or []))},
+        {"label": "файлов", "value": total("files")},
+        {"label": "записей RAW+markup", "value": total("records")},
         {"label": "требуют внимания", "value": str(int(data.get("records_attention") or 0))},
-        {"label": "нагрузок", "value": str(len(data.get("loads") or []))},
-        {"label": "датасетов", "value": str(len(data.get("datasets") or []))},
+        {"label": "нагрузок", "value": total("loads")},
+        {"label": "датасетов", "value": total("datasets")},
+        {"label": "моделей", "value": total("models")},
         {
             "label": "разделов не прочитано",
             "value": str(sum(1 for value in errors.values() if value)),

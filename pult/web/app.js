@@ -605,8 +605,8 @@ function joinText(parts) {
   return parts.map((part) => text(part)).filter((part) => part).join(" · ");
 }
 
-/** Состояние страницы «Результаты»: фильтры протокола и выбранный состав (`SCR-401`). */
-const resultsView = { data: null, composition: "" };
+/** Состояние страницы «Результаты»: фильтры протокола, выбранный состав и лимит строк. */
+const resultsView = { data: null, composition: "", all: false };
 
 /** Запрос страницы: фильтры протокола и режим чтения составов датасетов (`UC-19`). */
 function resultsQuery(force) {
@@ -626,6 +626,10 @@ function resultsQuery(force) {
   if (document.getElementById("results-compositions").checked) {
     params.set("compositions", "1");
   }
+  if (resultsView.all) {
+    // «Показать все строки»: лимит снимает сервер (`limit=0`), интерфейс только просит.
+    params.set("limit", "0");
+  }
   if (force) {
     params.set("refresh", "1");
   }
@@ -644,7 +648,7 @@ function renderResults(data) {
   renderResultsReport(data.report || {}, data.snapshots || {}, session);
 }
 
-/** Зона 1: данные стенда — файлы, записи, `$Нагрузки` и `$Датасеты` с составом (`UC-03`). */
+/** Зона 1: данные стенда — файлы, записи, `$Нагрузки`, `$Датасеты` и `$Модели` (`UC-03`). */
 function renderResultsData(data, summary) {
   fillKpi(
     document.getElementById("results-data-kpi"),
@@ -660,6 +664,14 @@ function renderResultsData(data, summary) {
   renderLines("results-data-warnings", lines, (line) => line);
   document.getElementById("results-data-warnings").hidden = lines.length === 0;
 
+  const sections = data.sections || [];
+  renderDataSections(sections);
+  document.getElementById("results-files-meta").textContent = sectionPage(sections, "files");
+  document.getElementById("results-records-meta").textContent = joinText([
+    sectionPage(sections, "records"),
+    `требуют внимания: ${text(data.records_attention)}`,
+  ]);
+
   fillTable(document.querySelector("#results-files tbody"), data.files || [], (row) => [
     row.name,
     row.type,
@@ -667,8 +679,6 @@ function renderResultsData(data, summary) {
     row.imported_at,
     row.path,
   ]);
-  document.getElementById("results-records-meta").textContent =
-    `требуют внимания: ${text(data.records_attention)}`;
   fillTable(document.querySelector("#results-records tbody"), data.records || [], (row) => [
     row.row_kind,
     row.record_id || row.base_name,
@@ -693,8 +703,49 @@ function renderResultsData(data, summary) {
       refreshResults();
     }),
   ]);
+  fillTable(document.querySelector("#results-models tbody"), data.models || [], (row) => [
+    row.name || row.id,
+    row.architecture,
+    row.version,
+    row.phase_type,
+    row.output_size,
+    row.created_at,
+    row.updated_at,
+  ]);
   const chosen = (data.datasets || []).find((row) => row.id === resultsView.composition);
   renderComposition(chosen ? chosen.composition : null);
+}
+
+/** Подразделы «Данных стенда»: счётчик в заголовке и кнопка «показать все» (`llm_tasks/49`).
+ *
+ *  Подписи («$Файлы · 388», «показано 200 из 388» и «показать все строки (388)») считает
+ *  Python: браузер печатает готовый текст и не решает, полон ли список.
+ */
+function renderDataSections(sections) {
+  sections.forEach((section) => {
+    const counter = document.getElementById(`results-${section.key}-count`);
+    if (counter) {
+      counter.textContent = text(section.label);
+    }
+    const showAll = document.getElementById(`results-${section.key}-all`);
+    if (showAll) {
+      showAll.hidden = !section.can_show_all;
+      showAll.textContent = `показать все строки (${text(section.count)})`;
+    }
+  });
+}
+
+/** Подпись обрезки подраздела («показано 200 из 388»); пусто — список полон. */
+function sectionPage(sections, key) {
+  const section = sections.find((item) => item.key === key);
+  return section ? text(section.page_label) : "";
+}
+
+/** Сворачивает или разворачивает подразделы «Данных стенда» (состояние живёт в DOM). */
+function setDataSectionsOpen(open) {
+  document.querySelectorAll("#panel-results details.zone__sub").forEach((box) => {
+    box.open = Boolean(open);
+  });
 }
 
 /** Подпись состава датасета: источник факта и числа (считает Python, `UC-19`). */
@@ -1476,6 +1527,19 @@ function bind() {
   // «Результаты»: данные стенда, протокол, отчёт и завершение сессии (`SCR-401`, `SCR-404`)
   document.getElementById("results-refresh").addEventListener("click", () => refreshResults(true));
   document.getElementById("results-compositions").addEventListener("change", refreshResults);
+  document.getElementById("results-collapse").addEventListener("click", () =>
+    setDataSectionsOpen(false)
+  );
+  document.getElementById("results-expand").addEventListener("click", () =>
+    setDataSectionsOpen(true)
+  );
+  ["files", "records"].forEach((key) => {
+    document.getElementById(`results-${key}-all`).addEventListener("click", () => {
+      resultsView.all = true;
+      flash("ok", "Лимит строк снят: показаны все строки списков данных стенда");
+      refreshResults();
+    });
+  });
   ["protocol-status", "protocol-section"].forEach((id) => {
     document.getElementById(id).addEventListener("change", refreshResults);
   });
