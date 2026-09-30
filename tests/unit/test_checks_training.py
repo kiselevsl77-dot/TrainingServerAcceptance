@@ -40,8 +40,8 @@ def spec_of(check_id: str) -> CheckSpec:
     return spec
 
 
-def model_payload() -> dict[str, Any]:
-    """Обученная модель реестра (`ModelMetadata`)."""
+def model_payload(*, metrics: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Модель реестра (`ModelMetadata`); обученная — с заполненными `metrics`."""
     return {
         "id": MODEL_ID,
         "file_id": "5932482e-0000-4000-8000-000000000002",
@@ -52,7 +52,7 @@ def model_payload() -> dict[str, Any]:
         "phase_type": "single",
         "output_size": 2,
         "config": {"architecture": "stft_mlp"},
-        "metrics": {"epochs": 3},
+        "metrics": {"epochs": 3} if metrics is None else metrics,
         "pruning_mask": None,
         "created_at": "2026-09-14T19:08:10",
         "updated_at": "2026-09-14T19:08:10",
@@ -66,6 +66,10 @@ def _validation_error(field: str, message: str) -> dict[str, Any]:
     return {"detail": [{"loc": ["body", field], "msg": message, "type": "value_error"}]}
 
 
+#: Содержимое ONNX в подменённом стенде: protobuf-подобное начало и домен `ai.onnx`.
+ONNX_BYTES = b"\x08\x07\x12\x0bai.onnx.pytorch" + b"\x00" * 500
+
+
 class FakeTraining:
     """Подменённый стенд: реестр моделей и `train` с проверкой диапазонов."""
 
@@ -75,20 +79,46 @@ class FakeTraining:
         models: list[dict[str, Any]] | None = None,
         datasets: tuple[str, ...] = (DATASET_ID,),
         accept_all: bool = False,
+        onnx_content: bytes | None = None,
+        onnx_file_name: str | None = "stft_mlp.onnx",
+        onnx_status: int = 200,
+        onnx_headers: dict[str, str] | None = None,
     ) -> None:
         self.models = [dict(item) for item in (models if models is not None else [model_payload()])]
         self.datasets = datasets
         self.accept_all = accept_all
+        self.onnx_content = ONNX_BYTES if onnx_content is None else onnx_content
+        self.onnx_file_name = onnx_file_name
+        self.onnx_status = onnx_status
+        self.onnx_headers = (
+            {
+                "content-type": "application/octet-stream",
+                "content-length": "512",
+                "accept-ranges": "bytes",
+            }
+            if onnx_headers is None
+            else onnx_headers
+        )
         self.calls: list[dict[str, Any]] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
-        """Маршруты подменённого сервера: список моделей и обучение."""
+        """Маршруты подменённого сервера: список моделей, обучение, экспорт ONNX."""
         path = request.url.path
         if path == "/api/ml_models/models":
             return httpx.Response(200, json={"models": self.models, "count": len(self.models)})
+        if path.endswith("/download_onnx") and request.method == "GET":
+            return self._onnx()
         if path.endswith("/train") and request.method == "POST":
             return self._train(request)
         return httpx.Response(404, json={"detail": "Not Found"})
+
+    def _onnx(self) -> httpx.Response:
+        if self.onnx_status != 200:
+            return httpx.Response(self.onnx_status, json={"detail": "ONNX export failed"})
+        headers = dict(self.onnx_headers)
+        if self.onnx_file_name:
+            headers["content-disposition"] = f'attachment; filename="{self.onnx_file_name}"'
+        return httpx.Response(self.onnx_status, content=self.onnx_content, headers=headers)
 
     def _train(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else {}
@@ -188,6 +218,100 @@ def test_contract_fails_and_reports_task_when_training_started():
 def test_contract_skipped_without_models():
     """Реестр моделей пуст — «пропущена»: пробы обучения выполнить не на чем."""
     context = stand(FakeTraining(models=[]).handler, "TC-TR-01")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+    assert "нет модели" in outcome.verdict
+
+
+# ---------------------------------------------------------------------------
+# TC-TR-06 — экспорт ONNX
+# ---------------------------------------------------------------------------
+def test_onnx_export_passes_with_headers():
+    """Файл получен: имя, размер, содержимое и заголовки потока (UC-23)."""
+    context = stand(FakeTraining().handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["file_name"] == "stft_mlp.onnx"
+    assert outcome.evidence["size"] == len(ONNX_BYTES)
+    assert outcome.evidence["onnx_marker"] is True
+    assert outcome.evidence["content_length"] == "512"
+    assert outcome.evidence["accept_ranges"] == "bytes"
+    assert outcome.evidence["status"] == 200
+    assert outcome.note == ""
+    assert outcome.evidence["sha256"]
+
+
+def test_onnx_export_notes_streaming_defect():
+    """Нет `Accept-Ranges` — примечание (замечание к потоковой отдаче), а не отказ."""
+    headers = {"content-type": "application/octet-stream"}
+    context = stand(FakeTraining(onnx_headers=headers).handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert "`Range`/`Accept-Ranges`" in outcome.note
+    assert "TC-FILE-09" in outcome.note
+    assert outcome.evidence["accept_ranges"] is None
+
+
+def test_onnx_export_notes_missing_marker():
+    """Файл без строки `onnx` — примечание: формат стоит проверить вручную."""
+    context = stand(FakeTraining(onnx_content=b"\x00" * 128).handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert "нет строки `onnx`" in outcome.note
+
+
+def test_onnx_export_fails_on_empty_file():
+    """Пустой файл — отказ: экспорт не дал результата."""
+    context = stand(FakeTraining(onnx_content=b"").handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "пустой файл" in outcome.verdict
+
+
+def test_onnx_export_fails_without_file_name():
+    """Сервер не передал имя файла — отказ: результат нельзя опознать."""
+    context = stand(FakeTraining(onnx_file_name=None).handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "не передал имя файла" in outcome.verdict
+
+
+def test_onnx_export_fails_when_export_errors():
+    """Сервер отказал в экспорте — отказ с текстом сервера."""
+    context = stand(FakeTraining(onnx_status=500).handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "экспорт ONNX не выполнен" in outcome.verdict
+
+
+def test_onnx_export_uses_first_model_without_metrics():
+    """Обученной модели нет — экспортируется первая модель реестра (без метрик)."""
+    models = [model_payload(metrics=None)]
+    context = stand(FakeTraining(models=models).handler, "TC-TR-06")
+
+    outcome = check_training.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert outcome.evidence["model_id"] == MODEL_ID
+
+
+def test_onnx_export_skipped_without_models():
+    """Реестр моделей пуст — «пропущена»: экспортировать нечего."""
+    context = stand(FakeTraining(models=[]).handler, "TC-TR-06")
 
     outcome = check_training.evaluate(context)
 

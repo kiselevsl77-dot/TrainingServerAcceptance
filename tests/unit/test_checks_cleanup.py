@@ -29,6 +29,7 @@ BASE_URL = "http://test.local"
 Handler = Callable[[httpx.Request], httpx.Response]
 
 FILE_ID = "11111111-1111-4111-8111-111111111111"
+DATASET_ID = "22222222-2222-4222-8222-222222222222"
 MODEL_ID = "3d2d1139-0000-4000-8000-000000000001"
 
 
@@ -39,15 +40,120 @@ def spec_of(check_id: str) -> CheckSpec:
     return spec
 
 
+class FakeRegistry:
+    """Подменённый стенд: реестры файлов, датасетов и моделей с удалением (TC-CLEAN-01)."""
+
+    def __init__(
+        self,
+        *,
+        files: list[dict[str, Any]] | None = None,
+        datasets: list[dict[str, Any]] | None = None,
+        models: list[dict[str, Any]] | None = None,
+        delete_file_status: int = 200,
+        delete_dataset_status: int = 200,
+        delete_model_status: int = 200,
+    ) -> None:
+        self.files = list(files or [])
+        self.datasets = list(datasets or [])
+        self.models = list(models or [])
+        self.delete_file_status = delete_file_status
+        self.delete_dataset_status = delete_dataset_status
+        self.delete_model_status = delete_model_status
+        self.deleted: list[tuple[str, str]] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        """Маршруты подменённого стенда: реестры и удаление сущностей."""
+        path = request.url.path
+        if path == "/api/data/files":
+            return httpx.Response(200, json={"files": self.files, "count": len(self.files)})
+        if path == "/api/datasets/":
+            return httpx.Response(
+                200, json={"datasets": self.datasets, "count": len(self.datasets)}
+            )
+        if path == "/api/ml_models/models":
+            return httpx.Response(200, json={"models": self.models, "count": len(self.models)})
+        if request.method != "DELETE":
+            return httpx.Response(404, json={"detail": "Not Found"})
+        if path.startswith("/api/ml_models/models/"):
+            return self._remove(
+                self.models, path.rsplit("/", 1)[-1], "модель", self.delete_model_status
+            )
+        if path.startswith("/api/datasets/"):
+            return self._remove(
+                self.datasets, path.rsplit("/", 1)[-1], "датасет", self.delete_dataset_status
+            )
+        return self._remove(self.files, path.rsplit("/", 1)[-1], "файл", self.delete_file_status)
+
+    def _remove(
+        self, rows: list[dict[str, Any]], entity_id: str, kind: str, status: int
+    ) -> httpx.Response:
+        """Удаляет запись реестра либо отвечает ошибкой (негативный вариант)."""
+        if status != 200:
+            return httpx.Response(status, json={"detail": "Не удалось удалить"})
+        rows[:] = [row for row in rows if str(row["id"]) != entity_id]
+        self.deleted.append((kind, entity_id))
+        return httpx.Response(200, json={"message": f"{kind} удалён"})
+
+
+def file_row(file_id: str, name: str, *, size: int = 1024) -> dict[str, Any]:
+    """Запись реестра файлов (`FileMetadataResponse`)."""
+    return {
+        "id": file_id,
+        "file_name": name,
+        "size": size,
+        "s3_path": f"s3://bucket/{name}",
+        "import_date": "2026-09-30T12:00:00",
+        "file_type": "RAW",
+    }
+
+
+def dataset_row(dataset_id: str, name: str) -> dict[str, Any]:
+    """Запись реестра датасетов (`DatasetResponse`)."""
+    return {
+        "id": dataset_id,
+        "creation_date": "2026-09-30T12:00:00",
+        "name": name,
+        "description": None,
+        "type": "direct_fill",
+    }
+
+
+def model_row(model_id: str, name: str) -> dict[str, Any]:
+    """Запись реестра моделей (`ModelMetadata`)."""
+    return {
+        "id": model_id,
+        "file_id": FILE_ID,
+        "architecture": "stft_mlp",
+        "version": "stft_mlp.9bbb964f",
+        "name": name,
+        "description": None,
+        "phase_type": "single",
+        "output_size": 2,
+        "config": {"architecture": "stft_mlp"},
+        "metrics": None,
+        "pruning_mask": None,
+        "created_at": "2026-09-30T12:00:00",
+        "updated_at": "2026-09-30T12:00:00",
+        "signals": [],
+        "signal_aliases": {},
+    }
+
+
 def _not_found(request: httpx.Request) -> httpx.Response:  # pragma: no cover - не вызывается
-    """Сценарии сессии на стенд не ходят: любой запрос — ошибка теста."""
+    """Проверки, у которых источник факта — сессия: на стенд они не ходят."""
     return httpx.Response(500, json={"detail": "сценарий не должен обращаться к стенду"})
 
 
-def stand(check_id: str, session: Any = None, **params: Any) -> Any:
+def stand(
+    check_id: str,
+    session: Any = None,
+    *,
+    handler: Handler | None = None,
+    **params: Any,
+) -> Any:
     """Контекст сценария с заранее собранной сессией (без реальной сети)."""
     journal = Journal(max_records=200)
-    transport = httpx.MockTransport(_not_found)
+    transport = httpx.MockTransport(handler or _not_found)
     client = ApiHttpClient(
         base_url=BASE_URL, timeout=5.0, transport=LoggingTransport(journal, inner=transport)
     )
@@ -276,3 +382,113 @@ def test_snapshots_note_for_snapshot_errors_and_version_change():
     assert outcome is not None and outcome.status == CheckStatus.PASSED
     assert "ошибки чтения реестров" in outcome.note
     assert "сборка сервера" in outcome.note
+
+
+# ---------------------------------------------------------------------------
+# TC-CLEAN-01 — самоочистка `__TEST__`-сущностей
+# ---------------------------------------------------------------------------
+def _pending_session(*entities: tuple[str, str, str]) -> Any:
+    """Сессия с созданными (не удалёнными) `__TEST__`-сущностями."""
+    session = new_session(base_url=BASE_URL)
+    for entity_id, entity_type, check_id in entities:
+        entity(
+            session,
+            entity_id=entity_id,
+            entity_type=entity_type,
+            action=session_api.ENTITY_CREATED,
+            check_id=check_id,
+        )
+    return session
+
+
+def test_self_cleaning_removes_pending_entities():
+    """Файл, датасет и модель удаляются по типам, следов в реестрах не остаётся."""
+    session = _pending_session(
+        (FILE_ID, "файл RAW", "TC-FILE-13"),
+        (DATASET_ID, "dataset", "TC-DS-01"),
+        (MODEL_ID, "модель", "TC-MOD-02"),
+    )
+    fake = FakeRegistry(
+        files=[file_row(FILE_ID, "__TEST__TC_FILE_13_session.csv")],
+        datasets=[dataset_row(DATASET_ID, "__TEST__TC_DS_01_session")],
+        models=[model_row(MODEL_ID, "__TEST__TC_MOD_02_session")],
+    )
+    context = stand("TC-CLEAN-01", session, handler=fake.handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["pending_before"] == 3
+    assert [row["result"] for row in outcome.evidence["removed"]] == ["удалено"] * 3
+    assert outcome.evidence["leftovers"] == []
+    assert session_api.pending_test_entities(session) == []
+    assert {kind for kind, _ in fake.deleted} == {"файл", "датасет", "модель"}
+    assert fake.files == [] and fake.datasets == [] and fake.models == []
+
+
+def test_self_cleaning_fails_when_delete_is_rejected():
+    """Сервер не удаляет сущность — отказ: `__TEST__`-след остался в сессии."""
+    session = _pending_session((FILE_ID, "файл RAW", "TC-FILE-13"))
+    fake = FakeRegistry(
+        files=[file_row(FILE_ID, "__TEST__TC_FILE_13_session.csv")], delete_file_status=500
+    )
+    context = stand("TC-CLEAN-01", session, handler=fake.handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "не удалено" in outcome.verdict
+
+
+def test_self_cleaning_detects_session_leftovers():
+    """Удаление «прошло», но имя этой сессии осталось в реестре — отказ."""
+    session = _pending_session((FILE_ID, "файл RAW", "TC-FILE-13"))
+    marker = f"__TEST__TC_FILE_13_{session.session_id}.csv"
+    fake = FakeRegistry(files=[file_row(FILE_ID, marker)])
+    # файл удаляется из реестра, но сценарий видит второй след с тем же маркером
+    fake.files.append(file_row("22222222-2222-4222-8222-222222222222", marker))
+    context = stand("TC-CLEAN-01", session, handler=fake.handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "остались `__TEST__`-сущности этой сессии" in outcome.verdict
+
+
+def test_self_cleaning_notes_foreign_leftovers():
+    """`__TEST__`-имена других прогонов — примечание, а не отказ."""
+    session = new_session(base_url=BASE_URL)
+    fake = FakeRegistry(files=[file_row(FILE_ID, "__TEST__TC_FILE_13_2026-01-01-old.csv")])
+    context = stand("TC-CLEAN-01", session, handler=fake.handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert "других прогонов" in outcome.note
+    assert outcome.evidence["pending_before"] == 0
+    assert "подтверждена" in outcome.verdict
+
+
+def test_self_cleaning_fails_on_unsupported_type():
+    """Тип сущности, который уборка не знает, — отказ с подсказкой оператору."""
+    session = _pending_session((FILE_ID, "запись", "TC-REC-01"))
+    context = stand("TC-CLEAN-01", session, handler=FakeRegistry().handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "уборкой не поддержан" in outcome.verdict
+
+
+def test_self_cleaning_notes_snapshot_delta():
+    """Изменение счётчиков между снимками — примечание со ссылкой на TC-CLEAN-03."""
+    session = new_session(base_url=BASE_URL)
+    session.snapshots["start"] = snapshot(files=10, models=1, datasets=7, tasks=5)
+    session.snapshots["end"] = snapshot(files=11, models=1, datasets=7, tasks=6)
+    context = stand("TC-CLEAN-01", session, handler=FakeRegistry().handler)
+
+    outcome = check_cleanup.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert {"counter": "files", "delta": 1} in outcome.evidence["snapshot_delta"]
+    assert "TC-CLEAN-03" in outcome.note

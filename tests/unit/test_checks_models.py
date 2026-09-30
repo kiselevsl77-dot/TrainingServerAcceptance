@@ -37,6 +37,7 @@ Handler = Callable[[httpx.Request], httpx.Response]
 
 MODEL_ID = "3d2d1139-0000-4000-8000-000000000001"
 MODEL_2 = "36940f3b-0000-4000-8000-000000000002"
+MODEL_FILE_ID = "5932482e-0000-4000-8000-000000000002"
 DEVICE = "Antminer S19"
 
 
@@ -70,12 +71,12 @@ def model_payload(
     updated_at: str = "2026-09-14T19:08:10",
     metrics: dict[str, Any] | None = None,
     signals: list[dict[str, Any]] | None = None,
-    file_id: str | None = "5932482e-0000-4000-8000-000000000002",
+    file_id: str | None = MODEL_FILE_ID,
 ) -> dict[str, Any]:
     """Элемент реестра моделей (`ModelMetadata`)."""
     return {
         "id": model_id,
-        "file_id": file_id or uuid4().hex,
+        "file_id": file_id or str(uuid4()),
         "architecture": architecture,
         "version": version,
         "name": name,
@@ -109,6 +110,20 @@ def default_models() -> list[dict[str, Any]]:
     ]
 
 
+def default_files() -> list[dict[str, Any]]:
+    """Реестр файлов: `.h5` модели-источника (её `file_id` указан в модели)."""
+    return [
+        {
+            "id": MODEL_FILE_ID,
+            "file_name": "stft_mlp.h5",
+            "size": 178_760,
+            "s3_path": "s3://bucket/stft_mlp.h5",
+            "import_date": "2026-09-14T19:00:00",
+            "file_type": "H5",
+        }
+    ]
+
+
 def _validation_error(field: str, message: str) -> dict[str, Any]:
     """Ответ 422 в формате `HTTPValidationError.detail[]` (NFR-2)."""
     return {"detail": [{"loc": ["body", field], "msg": message, "type": "value_error"}]}
@@ -118,6 +133,30 @@ DEFAULT_ARCHITECTURES: list[dict[str, Any]] = [
     architecture_payload("stft_mlp"),
     architecture_payload("cnn_1d", suitable_for_phases=["three"]),
 ]
+
+
+#: Содержимое `.h5`, которое отдаёт подменённый стенд (по факту — HDF5-магия).
+H5_BYTES = b"\x89HDF\r\n\x1a\n" + b"__TEST__h5" * 8
+
+
+def _metadata_from_body(body: bytes) -> dict[str, Any]:
+    """Достаёт JSON-строку `metadata` из multipart-тела загрузки модели."""
+    text = body.decode("utf-8", errors="replace")
+    start = text.index('name="metadata"')
+    start = text.index("\r\n\r\n", start) + 4
+    end = text.index("\r\n", start)
+    parsed = json.loads(text[start:end])
+    assert isinstance(parsed, dict)
+    return parsed
+
+
+def _file_name_from_body(body: bytes) -> str:
+    """Имя файла из multipart-тела загрузки модели (часть `file`)."""
+    text = body.decode("utf-8", errors="replace")
+    marker = 'name="file"'
+    start = text.index(marker)
+    start = text.index('filename="', start) + len('filename="')
+    return text[start : text.index('"', start)]
 
 
 class FakeModels:
@@ -133,6 +172,7 @@ class FakeModels:
         *,
         architectures: list[dict[str, Any]] | None = None,
         models: list[dict[str, Any]] | None = None,
+        files: list[dict[str, Any]] | None = None,
         limit_honoured: bool = False,
         break_name_filter: bool = False,
         break_count: bool = False,
@@ -143,12 +183,19 @@ class FakeModels:
         signals_in_list: bool = True,
         break_device_filter: bool = False,
         fail_device_filter_status: int = 0,
+        delete_file_cascade: bool = True,
+        upload_status: int = 201,
+        upload_without_file_id: bool = False,
+        file_delete_status: int = 200,
+        drop_created_model: bool = False,
+        repeat_delete_success: bool = False,
     ) -> None:
         self.architectures = [
             dict(item)
             for item in (DEFAULT_ARCHITECTURES if architectures is None else architectures)
         ]
         self.models = [dict(item) for item in (default_models() if models is None else models)]
+        self.files = [dict(item) for item in (default_files() if files is None else files)]
         self.limit_honoured = limit_honoured
         self.break_name_filter = break_name_filter
         self.break_count = break_count
@@ -162,15 +209,28 @@ class FakeModels:
         self.break_device_filter = break_device_filter
         #: Сервер отвечает ошибкой на фильтр `device_id` (факт живого стенда: 500).
         self.fail_device_filter_status = fail_device_filter_status
+        #: Удаление модели убирает её файл (каскад) — иначе файл чистится отдельно.
+        self.delete_file_cascade = delete_file_cascade
+        self.upload_status = upload_status
+        self.upload_without_file_id = upload_without_file_id
+        self.file_delete_status = file_delete_status
+        #: Дефект: модель «исчезает» из реестра сразу после создания (проверка «осталась»).
+        self.drop_created_model = drop_created_model
+        #: Повторное удаление отсутствующей модели отвечает успехом (идемпотентность).
+        self.repeat_delete_success = repeat_delete_success
         self.created: list[str] = []
         self.deleted: list[str] = []
+        self.deleted_files: list[str] = []
+        self.uploads: list[str] = []
 
     # -- маршруты ------------------------------------------------------------
     def handler(self, request: httpx.Request) -> httpx.Response:
-        """Маршруты подменённого сервера (каталог, модели, карточка)."""
+        """Маршруты подменённого сервера (каталог, модели, файлы модели)."""
         path = request.url.path
         if path == "/api/ml_models/architectures":
             return httpx.Response(200, json=self.architectures)
+        if path == "/api/ml_models/models/upload" and request.method == "POST":
+            return self._upload(request)
         if path == "/api/ml_models/models":
             if request.method == "POST":
                 return self._create(request)
@@ -181,7 +241,73 @@ class FakeModels:
                 return self._card(model_id)
             if request.method == "DELETE":
                 return self._delete(model_id)
+        if path == "/api/data/files":
+            return self._files(request)
+        if path.startswith("/api/data/file/") and path.endswith("/download"):
+            return self._file_download(path.split("/")[4])
+        if request.method == "DELETE" and path.startswith("/api/") and path.count("/") == 2:
+            return self._delete_file(path.rsplit("/", 1)[-1])
         return httpx.Response(404, json={"detail": "Not Found"})
+
+    # -- файлы модели --------------------------------------------------------
+    def _files(self, request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        rows = list(self.files)
+        if params.get("id"):
+            rows = [item for item in rows if str(item["id"]) == params["id"]]
+        return httpx.Response(200, json={"files": rows, "count": len(rows)})
+
+    def _file_download(self, file_id: str) -> httpx.Response:
+        found = next((item for item in self.files if str(item["id"]) == file_id), None)
+        if found is None:
+            return httpx.Response(404, json={"detail": "File not found"})
+        return httpx.Response(
+            200,
+            content=H5_BYTES,
+            headers={
+                "content-type": "application/octet-stream",
+                "content-disposition": f'attachment; filename="{found["file_name"]}"',
+            },
+        )
+
+    def _delete_file(self, file_id: str) -> httpx.Response:
+        if self.file_delete_status != 200:
+            return httpx.Response(self.file_delete_status, json={"detail": "Не удалось удалить"})
+        self.files = [item for item in self.files if str(item["id"]) != file_id]
+        self.deleted_files.append(file_id)
+        return httpx.Response(200, json={"message": "File deleted successfully"})
+
+    def _upload(self, request: httpx.Request) -> httpx.Response:
+        body = request.content
+        if self.upload_status != 201:
+            return httpx.Response(self.upload_status, json={"detail": "Upload rejected"})
+        metadata = _metadata_from_body(body)
+        file_name = _file_name_from_body(body)
+        self.uploads.append(file_name)
+        new_file_id = str(uuid4())
+        self.files.append(
+            {
+                "id": new_file_id,
+                "file_name": file_name,
+                "size": len(body),
+                "s3_path": f"s3://bucket/{file_name}",
+                "import_date": "2026-09-30T12:00:00",
+                "file_type": "H5",
+            }
+        )
+        row = model_payload(
+            str(uuid4()),
+            str(metadata.get("name") or ""),
+            architecture=str(metadata.get("architecture") or "stft_mlp"),
+            phase_type=str(metadata.get("phase_type") or "single"),
+            output_size=int(metadata.get("output_size") or 2),
+            metrics=None,
+            signals=[],
+            file_id=new_file_id,
+        )
+        self.models.append(row)
+        self.created.append(str(row["id"]))
+        return httpx.Response(201, json=row)
 
     # -- реализация ----------------------------------------------------------
     def find(self, model_id: str) -> dict[str, Any] | None:
@@ -255,9 +381,23 @@ class FakeModels:
             output_size=int(body["output_size"]),
             metrics=None,
             signals=[],
+            file_id=str(uuid4()),
         )
-        self.models.append(row)
         self.created.append(str(row["id"]))
+        # сервер создаёт и файл модели: у модели есть `file_id` в реестре файлов
+        self.files.append(
+            {
+                "id": str(row["file_id"]),
+                "file_name": f"{row['name']}.h5",
+                "size": 4096,
+                "s3_path": f"s3://bucket/{row['name']}.h5",
+                "import_date": "2026-09-30T12:00:00",
+                "file_type": "H5",
+            }
+        )
+        if self.drop_created_model:
+            return httpx.Response(201, json=row)
+        self.models.append(row)
         return httpx.Response(201, json=row)
 
     def _delete(self, model_id: str) -> httpx.Response:
@@ -265,9 +405,15 @@ class FakeModels:
             return httpx.Response(self.delete_status, json={"detail": "Не удалось удалить"})
         found = self.find(model_id)
         if found is None:
+            if self.repeat_delete_success:
+                return httpx.Response(200, json={"message": "Model deleted successfully"})
             return httpx.Response(404, json={"detail": "Model not found"})
         self.deleted.append(model_id)
         self.models = [item for item in self.models if str(item["id"]) != model_id]
+        file_id = str(found.get("file_id") or "")
+        if file_id and self.delete_file_cascade:
+            self.files = [item for item in self.files if str(item["id"]) != file_id]
+            self.deleted_files.append(file_id)
         return httpx.Response(200, json={"message": "Model deleted successfully"})
 
 
@@ -573,3 +719,197 @@ def test_card_skipped_without_models():
     outcome = check_models.evaluate(context)
 
     assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+
+
+# ---------------------------------------------------------------------------
+# TC-MOD-02 — создание модели с самоочисткой
+# ---------------------------------------------------------------------------
+def test_create_passes_and_cleans_up():
+    """Модель создана по архитектуре каталога, проверена реестром и удалена (NFR-T4)."""
+    fake = FakeModels()
+    context = stand(fake.handler, "TC-MOD-02")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["name"].startswith("__TEST__TC_MOD_02")
+    assert outcome.evidence["architecture"] == "stft_mlp"
+    assert outcome.evidence["created_architecture"] == "stft_mlp"
+    assert outcome.evidence["created_phase_type"] == "single"
+    assert outcome.evidence["cleanup"] == "модель удалена"
+    assert outcome.evidence["left_in_registry"] is False
+    assert fake.created == fake.deleted == [outcome.evidence["model_id"]]
+    actions = [item["action"] for item in context.session.counters["test_entities"]]
+    assert actions == ["создан", "удалён"]
+
+
+def test_create_skipped_without_architecture_catalog():
+    """Пустой каталог архитектур — «пропущена»: архитектуру выбрать нечем."""
+    context = stand(FakeModels(architectures=[]).handler, "TC-MOD-02")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+    assert "каталог архитектур пуст" in outcome.verdict
+
+
+def test_create_fails_when_cleanup_is_not_done():
+    """Модель не удаляется — отказ: `__TEST__`-сущность осталась на стенде."""
+    fake = FakeModels(delete_status=500)
+    context = stand(fake.handler, "TC-MOD-02")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "самоочистка не выполнена" in outcome.verdict
+    assert outcome.evidence["left_in_registry"] is True
+
+
+def test_create_fails_when_model_is_not_in_registry():
+    """Созданной модели нет в реестре — отказ с доказательством по ответу."""
+    fake = FakeModels(drop_created_model=True)
+    context = stand(fake.handler, "TC-MOD-02")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "не видна в реестре" in outcome.verdict
+
+
+# ---------------------------------------------------------------------------
+# TC-MOD-04 — загрузка готовой модели (`.h5` + metadata)
+# ---------------------------------------------------------------------------
+def test_upload_passes_and_cleans_up_model_and_file():
+    """`.h5` загружен, модель создана и удалена; связанный файл убран (NFR-T4)."""
+    fake = FakeModels()
+    context = stand(fake.handler, "TC-MOD-04")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["uploaded_bytes"] == len(H5_BYTES)
+    assert outcome.evidence["file_name"] == "stft_mlp.h5"
+    assert outcome.evidence["in_registry"] is True
+    assert outcome.evidence["cleanup"] == "модель удалена"
+    # каскад: отдельная уборка файла не потребовалась, в реестре его нет
+    assert "file_cleanup" not in outcome.evidence
+    assert all(str(item["id"]) != outcome.evidence["model_file_id"] for item in fake.files)
+    assert fake.uploads == ["stft_mlp.h5"]
+
+
+def test_upload_cleans_file_when_there_is_no_cascade():
+    """Каскада нет: файл загруженной модели удаляется сценарием отдельно."""
+    fake = FakeModels(delete_file_cascade=False)
+    context = stand(fake.handler, "TC-MOD-04")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["file_cleanup"] == "файл удалён"
+    assert outcome.evidence["file_left_in_registry"] is False
+    assert outcome.evidence["model_file_id"] in fake.deleted_files
+
+
+def test_upload_fails_when_file_cleanup_is_not_done():
+    """Файл не удаляется — отказ: след `.h5` на стенде недопустим."""
+    fake = FakeModels(delete_file_cascade=False, file_delete_status=500)
+    context = stand(fake.handler, "TC-MOD-04")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "файл `.h5`" in outcome.verdict
+
+
+def test_upload_fails_when_server_rejects_upload():
+    """Сервер отклонил загрузку — отказ с текстом сервера, убирать нечего."""
+    fake = FakeModels(upload_status=400)
+    context = stand(fake.handler, "TC-MOD-04")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "загрузка модели не выполнена" in outcome.verdict
+    assert outcome.evidence["cleanup"] == "нечего удалять: модель не создана"
+    assert fake.uploads == [] and fake.created == []
+
+
+def test_upload_skipped_when_source_file_is_missing():
+    """Файла модели нет в реестре — «пропущена»: скачать образец нечего."""
+    models = [model_payload(MODEL_ID, "no-file", file_id=None)]
+    context = stand(FakeModels(models=models, files=[]).handler, "TC-MOD-04")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.SKIPPED
+    assert "не скачан" in outcome.verdict
+
+
+# ---------------------------------------------------------------------------
+# TC-MOD-07 — удаление модели и судьба её файла
+# ---------------------------------------------------------------------------
+def test_delete_reports_cascade_and_second_delete():
+    """Удаление модели убрало её файл (каскад); карточка отвечает 404, повтор — 404."""
+    fake = FakeModels()
+    context = stand(fake.handler, "TC-MOD-07")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["delete_status"] == 200
+    assert outcome.evidence["gone_from_registry"] is True
+    assert outcome.evidence["card_after_delete"] == 404
+    assert outcome.evidence["file_cascade"] is True
+    assert outcome.evidence["second_delete_status"] == 404
+    assert outcome.note == ""
+    assert "файл `.h5` удалён вместе с моделью" in outcome.verdict
+    assert fake.deleted == [outcome.evidence["model_id"]]
+
+
+def test_delete_cleans_file_when_there_is_no_cascade():
+    """Файл не удаляется вместе с моделью — сценарий убирает его и фиксирует это."""
+    fake = FakeModels(delete_file_cascade=False)
+    context = stand(fake.handler, "TC-MOD-07")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED, outcome.verdict
+    assert outcome.evidence["file_cascade"] is False
+    assert outcome.evidence["file_cleanup"] == "файл удалён"
+    assert outcome.evidence["model_file_id"] in fake.deleted_files
+    assert "удаляется отдельно" in outcome.verdict
+
+
+def test_delete_fails_when_file_cleanup_is_not_done():
+    """Файл модели не удаляется ни каскадом, ни вручную — отказ."""
+    fake = FakeModels(delete_file_cascade=False, file_delete_status=500)
+    context = stand(fake.handler, "TC-MOD-07")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "остался в реестре файлов" in outcome.verdict
+
+
+def test_delete_fails_when_model_survives():
+    """Модель не удаляется и остаётся в реестре — отказ."""
+    fake = FakeModels(delete_status=500)
+    context = stand(fake.handler, "TC-MOD-07")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.FAILED
+    assert "удаление модели отклонено сервером" in outcome.verdict
+    assert outcome.evidence["gone_from_registry"] is False
+
+
+def test_delete_notes_idempotent_second_delete():
+    """Повторное удаление с успехом — примечание: идемпотентность не доказана."""
+    fake = FakeModels(repeat_delete_success=True)
+    context = stand(fake.handler, "TC-MOD-07")
+
+    outcome = check_models.evaluate(context)
+
+    assert outcome is not None and outcome.status == CheckStatus.PASSED
+    assert outcome.evidence["second_delete_status"] == 200
+    assert "идемпотентность" in outcome.note

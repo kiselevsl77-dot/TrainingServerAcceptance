@@ -36,6 +36,7 @@ from acceptance.checks.runner import (
 from acceptance.endpoints import TEST_PREFIX
 from acceptance.exchange import ExchangeResult
 from acceptance.ml_samples import model_label, pick_model
+from acceptance.session import add_test_entity, mark_test_entity_deleted
 from client.errors import ApiError, ClientError, ServerUnavailableError
 from client.schemas import ModelArchitectureInfo, ModelMetadata
 
@@ -149,10 +150,90 @@ def _architectures(context: AutomationContext) -> CheckOutcome:
     )
 
 
-def _probe_name(context: AutomationContext) -> str:
-    """Имя `__TEST__`-модели для проб валидации (по нему видно, чья проба)."""
+#: Созданная сценарием сущность: тип для учёта сессии (`TC-CLEAN-01/02`).
+ENTITY_MODEL = "модель"
+
+#: `output_size` для создаваемых `__TEST__`-моделей (у моделей стенда он равен 2).
+DEFAULT_OUTPUT_SIZE = 2
+
+#: Фаза `__TEST__`-модели: у моделей стенда она `single` (две фазы, а не три).
+DEFAULT_PHASE = "single"
+
+
+def _test_model_name(context: AutomationContext) -> str:
+    """Имя `__TEST__`-модели: `__TEST__<проверка>_<сессия>` (§9 ТЗ, NFR-T4)."""
+    override = context.param("model_name")
+    if override:
+        return override
     session_id = str(context.session.session_id or "session")
     return f"{TEST_PREFIX}{context.spec.check_id.replace('-', '_')}_{session_id}"
+
+
+def _pick_architecture(catalog_rows: list[ModelArchitectureInfo], phase: str) -> str:
+    """Архитектура для создания модели: первая, поддерживающая нужную фазу."""
+    for item in catalog_rows:
+        phases = [str(value) for value in (item.suitable_for_phases or [])]
+        if not phases or phase in phases:
+            return item.architecture
+    return catalog_rows[0].architecture if catalog_rows else "stft_mlp"
+
+
+def _register_model(context: AutomationContext, model_id: str, *, note: str = "") -> None:
+    """Регистрирует созданную `__TEST__`-модель в учёте сессии (NFR-T4)."""
+    session_id = str(context.session.session_id)
+    add_test_entity(
+        context.session,
+        entity_id=model_id,
+        entity_type=ENTITY_MODEL,
+        check_id=context.spec.check_id,
+        note=note or f"создан проверкой {context.spec.check_id} в сессии {session_id}",
+    )
+
+
+def _delete_model(context: AutomationContext, model_id: str, *, reason: str = "") -> str:
+    """Удаляет `__TEST__`-модель и отмечает это в учёте сессии (самоочистка).
+
+    Returns:
+        Текст для доказательств: «модель удалена» или причина неудачи.
+    """
+    try:
+        context.models_api().delete_model(model_id)
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return f"модель не удалена: {exc}"
+    mark_test_entity_deleted(
+        context.session, model_id, check_id=context.spec.check_id, note=reason or "самоочистка"
+    )
+    return "модель удалена"
+
+
+def _delete_file(context: AutomationContext, file_id: str) -> str:
+    """Удаляет файл, созданный пробой (`DELETE /api/{file_id}`), и отмечает в сессии."""
+    try:
+        context.files_api().delete(file_id)
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return f"файл не удалён: {exc}"
+    mark_test_entity_deleted(
+        context.session, file_id, check_id=context.spec.check_id, note="самоочистка файла модели"
+    )
+    return "файл удалён"
+
+
+def _file_exists(context: AutomationContext, file_id: str) -> bool:
+    """Есть ли файл в реестре (`GET /api/data/files` с фильтром по `id`)."""
+    try:
+        rows = context.files_api().list_files(file_id=file_id).files
+    except (ApiError, ClientError, ServerUnavailableError):
+        return False
+    return bool(rows)
+
+
+def _model_exists(context: AutomationContext, model_id: str) -> bool:
+    """Есть ли модель в реестре (`GET /api/ml_models/models` с фильтром по `model_id`)."""
+    try:
+        rows = context.models_api().list_models(model_id=model_id)
+    except (ApiError, ClientError, ServerUnavailableError):
+        return False
+    return bool(rows)
 
 
 def _create_validation(context: AutomationContext) -> CheckOutcome:
@@ -167,7 +248,7 @@ def _create_validation(context: AutomationContext) -> CheckOutcome:
     except (ApiError, ClientError, ServerUnavailableError):
         catalog_rows = []
     architecture = catalog_rows[0].architecture if catalog_rows else "stft_mlp"
-    name = _probe_name(context)
+    name = _test_model_name(context)
 
     cases: tuple[tuple[str, dict[str, Any]], ...] = (
         (
@@ -506,10 +587,281 @@ def _card(context: AutomationContext) -> CheckOutcome:
     return CheckOutcome(CheckStatus.PASSED, verdict, evidence, note="; ".join(notes))
 
 
+def _create(context: AutomationContext) -> CheckOutcome:
+    """TC-MOD-02: создание `__TEST__`-модели с самоочисткой (UC-16, BR-F4, NFR-T4).
+
+    Архитектура берётся из каталога и должна поддерживать фазу стенда; ответ
+    проверяется по полям (`id`, `version`, `architecture`, `phase_type`,
+    `output_size`), затем модель подтверждается реестром. Созданная модель удаляется
+    в `finally`: испытания не оставляют следов, а неудачная уборка — отказ проверки.
+    """
+    try:
+        catalog_rows = list(context.models_api().list_architectures())
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        raise PreconditionError(f"каталог архитектур не получен: {exc}") from exc
+    if not catalog_rows:
+        raise PreconditionError("каталог архитектур пуст: архитектуру выбрать нечем")
+
+    phase = str(context.param("phase_type") or DEFAULT_PHASE)
+    architecture = str(context.param("architecture") or _pick_architecture(catalog_rows, phase))
+    name = _test_model_name(context)
+    evidence: dict[str, Any] = {
+        "name": name,
+        "architecture": architecture,
+        "phase_type": phase,
+        "output_size": int(context.param("output_size") or DEFAULT_OUTPUT_SIZE),
+        "catalog_architectures": [item.architecture for item in catalog_rows],
+    }
+    problems: list[str] = []
+    model_id = ""
+
+    try:
+        created = context.models_api().create_model(
+            architecture=architecture,
+            name=name,
+            output_size=int(evidence["output_size"]),
+            phase_type=phase,
+            description=f"проверка {context.spec.check_id}",
+        )
+        model_id = str(created.id)
+        _register_model(context, model_id)
+        evidence.update(
+            {
+                "model_id": model_id,
+                "version": str(created.version or ""),
+                "created_architecture": str(created.architecture or ""),
+                "created_phase_type": str(created.phase_type or ""),
+                "created_output_size": int(created.output_size or 0),
+            }
+        )
+        missing = [
+            field
+            for field in ("id", "version", "architecture", "phase_type", "output_size")
+            if not getattr(created, field, None)
+        ]
+        if missing:
+            problems.append(f"в ответе нет полей: {', '.join(missing)}")
+        if str(created.architecture) != architecture:
+            problems.append(
+                f"архитектура модели «{created.architecture}» не совпала с выбранной "
+                f"«{architecture}»"
+            )
+        if architecture not in {item.architecture for item in catalog_rows}:
+            problems.append(f"архитектура {architecture} отсутствует в каталоге")
+        if not _model_exists(context, model_id):
+            problems.append("созданная модель не видна в реестре `GET /api/ml_models/models`")
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        problems.append(f"создание модели не выполнено: {exc}")
+    finally:
+        evidence["cleanup"] = (
+            _delete_model(context, model_id) if model_id else "нечего удалять: модель не создана"
+        )
+        if model_id:
+            left = _model_exists(context, model_id)
+            evidence["left_in_registry"] = left
+            if not evidence["cleanup"].startswith("модель удалена") or left:
+                problems.append(
+                    "самоочистка не выполнена: `__TEST__`-модель осталась на стенде (NFR-T4)"
+                )
+
+    if problems:
+        return CheckOutcome(CheckStatus.FAILED, "; ".join(problems), evidence)
+    verdict = (
+        f"`__TEST__`-модель создана и удалена: {name} · {evidence['version']} "
+        f"(архитектура {architecture}, фаза {phase})"
+    )
+    return CheckOutcome(CheckStatus.PASSED, verdict, evidence)
+
+
+def _upload(context: AutomationContext) -> CheckOutcome:
+    """TC-MOD-04: загрузка готовой `.h5` с метаданными и самоочисткой (UC-17, NFR-T4).
+
+    Файл `.h5` берётся со стенда (у модели-источника есть `file_id` в реестре
+    файлов): так проверяется реальный контракт загрузки, а не синтетический файл.
+    Модель-результат создаётся с именем `__TEST__…` и удаляется вместе со своим
+    файлом: если удаление модели не убирает `.h5`, сценарий чистит файл отдельно.
+    """
+    source = _picked(context)
+    file_id = str(source.file_id or "")
+    if not file_id:
+        raise PreconditionError(
+            f"у модели «{source.name}» нет файла `.h5` в реестре: загружать нечего"
+        )
+    evidence: dict[str, Any] = {
+        "source_model": model_label(source),
+        "source_model_id": str(source.id),
+        "source_file_id": file_id,
+    }
+    try:
+        payload = context.files_api().download(file_id)
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        raise PreconditionError(f"файл модели не скачан: {exc}") from exc
+
+    name = _test_model_name(context)
+    file_name = payload.file_name or f"{TEST_PREFIX}model.h5"
+    evidence.update(
+        {
+            "name": name,
+            "file_name": file_name,
+            "uploaded_bytes": payload.size,
+        }
+    )
+    problems: list[str] = []
+    model_id = ""
+    new_file_id = ""
+
+    try:
+        created = context.models_api().upload_model(
+            file_name=file_name,
+            content=payload.content,
+            name=name,
+            output_size=int(
+                context.param("output_size") or source.output_size or DEFAULT_OUTPUT_SIZE
+            ),
+            architecture=str(context.param("architecture") or source.architecture),
+            phase_type=str(source.phase_type or DEFAULT_PHASE),
+            description=f"проверка {context.spec.check_id} (копия {source.name})",
+        )
+        model_id = str(created.id)
+        new_file_id = str(created.file_id or "")
+        _register_model(context, model_id, note="создан проверкой TC-MOD-04 загрузкой `.h5`")
+        evidence.update(
+            {
+                "model_id": model_id,
+                "model_file_id": new_file_id,
+                "version": str(created.version or ""),
+                "created_architecture": str(created.architecture or ""),
+                "in_registry": _model_exists(context, model_id),
+            }
+        )
+        if not new_file_id:
+            problems.append("в ответе загрузки нет `file_id`: модель без файла модели")
+        if not evidence["in_registry"]:
+            problems.append("загруженная модель не видна в реестре `GET /api/ml_models/models`")
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        problems.append(f"загрузка модели не выполнена: {exc}")
+    finally:
+        evidence["cleanup"] = (
+            _delete_model(context, model_id) if model_id else "нечего удалять: модель не создана"
+        )
+        if model_id and _model_exists(context, model_id):
+            problems.append("самоочистка не выполнена: загруженная модель осталась на стенде")
+        if new_file_id and _file_exists(context, new_file_id):
+            # удаление модели файл не убрало — чистим файл отдельно (каскада нет)
+            evidence["file_cleanup"] = _delete_file(context, new_file_id)
+            evidence["file_left_in_registry"] = _file_exists(context, new_file_id)
+            if evidence["file_left_in_registry"]:
+                problems.append(
+                    "самоочистка не выполнена: файл `.h5` загруженной модели остался в реестре"
+                )
+
+    if problems:
+        return CheckOutcome(CheckStatus.FAILED, "; ".join(problems), evidence)
+    verdict = (
+        f"`.h5` ({evidence['uploaded_bytes']} Б) загружен и удалён: {name} · "
+        f"{evidence['version']}; файл модели {evidence.get('file_cleanup', 'убран вместе с моделью')}"
+    )
+    return CheckOutcome(CheckStatus.PASSED, verdict, evidence)
+
+
+def _delete_model_scenario(context: AutomationContext) -> CheckOutcome:
+    """TC-MOD-07: удаление модели и судьба её файла `.h5` (UC-20, NFR-T4).
+
+    Проверка создаёт свою `__TEST__`-модель и удаляет именно её: удалять чужую
+    модель нельзя. Фиксируется поведение после удаления — исчезновение из реестра,
+    ответ `GET /api/ml_models/models/{id}` и судьба связанного файла в реестре
+    файлов (каскад или отдельное удаление), а также ответ на повторное удаление.
+    """
+    name = _test_model_name(context)
+    evidence: dict[str, Any] = {"name": name, "models_before": len(_models(context))}
+    problems: list[str] = []
+    model_id = ""
+    file_id = ""
+
+    try:
+        try:
+            catalog_rows = list(context.models_api().list_architectures())
+        except (ApiError, ClientError, ServerUnavailableError):
+            catalog_rows = []
+        phase = str(context.param("phase_type") or DEFAULT_PHASE)
+        created = context.models_api().create_model(
+            architecture=str(
+                context.param("architecture") or _pick_architecture(catalog_rows, phase)
+            ),
+            name=name,
+            output_size=int(context.param("output_size") or DEFAULT_OUTPUT_SIZE),
+            phase_type=phase,
+            description=f"проверка {context.spec.check_id}",
+        )
+        model_id = str(created.id)
+        file_id = str(created.file_id or "")
+        _register_model(context, model_id, note="создан проверкой TC-MOD-07 для удаления")
+        evidence.update({"model_id": model_id, "model_file_id": file_id})
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return CheckOutcome(
+            CheckStatus.FAILED,
+            f"подготовить `__TEST__`-модель для удаления не удалось: {exc}",
+            evidence,
+        )
+
+    delete_result = context.probe_request("DELETE", f"/api/ml_models/models/{model_id}")
+    evidence["delete_status"] = delete_result.status
+    evidence["delete_detail"] = _detail_text(delete_result)
+    if delete_result.status is None or not 200 <= int(delete_result.status) < 300:
+        problems.append(f"удаление модели отклонено сервером ({delete_result.status})")
+
+    evidence["gone_from_registry"] = not _model_exists(context, model_id)
+    if not evidence["gone_from_registry"]:
+        problems.append("модель осталась в реестре `GET /api/ml_models/models` после удаления")
+    else:
+        mark_test_entity_deleted(
+            context.session, model_id, check_id=context.spec.check_id, note="удалён проверкой"
+        )
+
+    card_result = context.probe_request("GET", f"/api/ml_models/models/{model_id}")
+    evidence["card_after_delete"] = card_result.status
+    if card_result.status is not None and 200 <= int(card_result.status) < 300:
+        problems.append("карточка удалённой модели всё ещё отдаётся сервером (ожидался 404)")
+
+    # судьба связанного файла: каскад (файла нет) или отдельное удаление (файл остался)
+    evidence["file_id"] = file_id
+    evidence["file_cascade"] = bool(file_id) and not _file_exists(context, file_id)
+    if file_id and not evidence["file_cascade"]:
+        evidence["file_cleanup"] = _delete_file(context, file_id)
+        evidence["file_left_in_registry"] = _file_exists(context, file_id)
+        if evidence["file_left_in_registry"]:
+            problems.append("связанный файл `.h5` остался в реестре файлов: нужна отдельная уборка")
+
+    second = context.probe_request("DELETE", f"/api/ml_models/models/{model_id}")
+    evidence["second_delete_status"] = second.status
+    if second.status is not None and 200 <= int(second.status) < 300:
+        evidence["second_delete_note"] = (
+            "повторное удаление отвечает успехом: идемпотентность не подтверждена явно"
+        )
+
+    if problems:
+        return CheckOutcome(CheckStatus.FAILED, "; ".join(problems), evidence)
+    cascade = (
+        "файл `.h5` удалён вместе с моделью"
+        if evidence["file_cascade"]
+        else (f"файл `.h5` удаляется отдельно ({evidence.get('file_cleanup', 'убран сценарием')})")
+    )
+    verdict = (
+        f"`__TEST__`-модель удалена (ответ {evidence['delete_status']}, карточка "
+        f"{evidence['card_after_delete']}); {cascade}"
+    )
+    return CheckOutcome(
+        CheckStatus.PASSED, verdict, evidence, note=str(evidence.get("second_delete_note") or "")
+    )
+
+
 #: Реестр сценариев модуля (ключ — `CheckSpec.automation`).
 AUTOMATIONS: dict[str, Any] = {
     "models.architectures": _architectures,
+    "models.create": _create,
     "models.create_validation": _create_validation,
+    "models.upload": _upload,
     "models.list_filters": _list_filters,
     "models.card": _card,
+    "models.delete": _delete_model_scenario,
 }

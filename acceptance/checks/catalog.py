@@ -1065,6 +1065,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "get /api/ml_models/architectures",
             "get /api/ml_models/models",
         ),
+        automation="models.create",
     ),
     CheckSpec(
         check_id="TC-MOD-03",
@@ -1102,6 +1103,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "post /api/ml_models/models/upload",
             "get /api/ml_models/models",
         ),
+        automation="models.upload",
     ),
     CheckSpec(
         check_id="TC-MOD-05",
@@ -1167,6 +1169,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "get /api/ml_models/models/{model_id}",
             "get /api/data/files",
         ),
+        automation="models.delete",
     ),
 )
 
@@ -1312,6 +1315,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "get /api/ml_models/models/{model_id}/download_onnx",
             "get /api/ml_models/models",
         ),
+        automation="training.onnx_export",
     ),
 )
 
@@ -1435,6 +1439,7 @@ TC_CLEAN_SPECS: tuple[CheckSpec, ...] = (
             "get /api/datasets/",
             "get /api/ml_models/models",
         ),
+        automation="cleanup.self_cleaning",
     ),
     CheckSpec(
         check_id="TC-CLEAN-02",

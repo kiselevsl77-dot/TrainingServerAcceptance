@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from acceptance.checks.registry import CheckStatus
@@ -98,6 +99,88 @@ def _model(context: AutomationContext) -> ModelMetadata:
     return chosen
 
 
+def _trained_model(context: AutomationContext) -> ModelMetadata:
+    """Обученная модель, если она есть; иначе — первая в реестре (для экспорта ONNX)."""
+    try:
+        rows = list(context.models_api().list_models())
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        raise PreconditionError(f"реестр моделей не получен: {exc}") from exc
+    chosen = pick_model(rows, model_id=context.param("model_id"), with_metrics=True) or pick_model(
+        rows, model_id=context.param("model_id")
+    )
+    if chosen is None:
+        raise PreconditionError("нет модели для экспорта ONNX: выберите `model_id`")
+    return chosen
+
+
+def _onnx_export(context: AutomationContext) -> CheckOutcome:
+    """TC-TR-06: экспорт ONNX — имя, размер, содержимое и заголовки ответа (UC-23).
+
+    Файл скачивается дважды: клиентом API (нужно содержимое и его контрольная сумма)
+    и «сырой» пробой — нужны заголовки ответа (`Content-Length`, `Accept-Ranges`),
+    которые клиент не сохраняет. Отсутствие `Range`/`Accept-Ranges` — примечание
+    (замечание к потоковой отдаче файлов, как в `TC-FILE-09`), а пустой файл или
+    ответ с кодом ошибки — отказ.
+    """
+    model = _trained_model(context)
+    evidence: dict[str, Any] = {"model_id": str(model.id), "model_label": model_label(model)}
+    problems: list[str] = []
+
+    try:
+        payload = context.models_api().download_onnx(model.id)
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return CheckOutcome(CheckStatus.FAILED, f"экспорт ONNX не выполнен: {exc}", evidence)
+
+    evidence.update(
+        {
+            "file_name": payload.file_name or "",
+            "media_type": payload.media_type or "",
+            "size": payload.size,
+            "sha256": hashlib.sha256(payload.content).hexdigest(),
+            "onnx_marker": b"onnx" in payload.content[:4096],
+        }
+    )
+    if payload.size == 0:
+        problems.append("сервер вернул пустой файл ONNX")
+    if payload.file_name and not payload.file_name.lower().endswith(".onnx"):
+        problems.append(f"имя файла не ONNX: {payload.file_name}")
+    if not payload.file_name:
+        problems.append("сервер не передал имя файла в `Content-Disposition`")
+
+    headers_result = context.probe_request(
+        "GET", f"/api/ml_models/models/{model.id}/download_onnx", binary=True
+    )
+    headers = {str(key).lower(): value for key, value in (headers_result.headers or {}).items()}
+    evidence["status"] = headers_result.status
+    evidence["content_length"] = headers.get("content-length")
+    evidence["accept_ranges"] = headers.get("accept-ranges")
+    notes: list[str] = []
+    if headers_result.status is None:
+        problems.append("проба заголовков не отправлена")
+    elif not 200 <= int(headers_result.status) < 300:
+        problems.append(f"повторное скачивание ONNX ответило {headers_result.status}")
+    else:
+        if "content-length" not in headers:
+            notes.append("в ответе нет `Content-Length`: размер узнаётся только по факту")
+        if "accept-ranges" not in headers:
+            notes.append(
+                "сервер не поддерживает `Range`/`Accept-Ranges`: файл отдаётся целиком "
+                "(замечание, как в TC-FILE-09)"
+            )
+    if not evidence["onnx_marker"]:
+        notes.append("в начале файла нет строки `onnx`: формат стоит проверить вручную")
+
+    if problems:
+        return CheckOutcome(
+            CheckStatus.FAILED, "; ".join(problems), evidence, note="; ".join(notes)
+        )
+    verdict = (
+        f"ONNX получен: {evidence['file_name'] or evidence['media_type'] or 'файл'} · "
+        f"{payload.size} Б (sha256 {evidence['sha256'][:12]}…)"
+    )
+    return CheckOutcome(CheckStatus.PASSED, verdict, evidence, note="; ".join(notes))
+
+
 def _contract(context: AutomationContext) -> CheckOutcome:
     """TC-TR-01: несуществующий датасет и выход за диапазоны — ошибка, обучения нет.
 
@@ -170,4 +253,5 @@ def _contract(context: AutomationContext) -> CheckOutcome:
 #: Реестр сценариев модуля (ключ — `CheckSpec.automation`).
 AUTOMATIONS: dict[str, Any] = {
     "training.contract": _contract,
+    "training.onnx_export": _onnx_export,
 }

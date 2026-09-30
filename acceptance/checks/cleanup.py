@@ -31,6 +31,8 @@ from acceptance.checks.runner import (
     evaluate,
     scenario,
 )
+from acceptance.endpoints import TEST_PREFIX
+from client.errors import ApiError, ClientError, ServerUnavailableError
 
 __all__ = [
     "AUTOMATIONS",
@@ -62,6 +64,63 @@ COUNTER_BY_TYPE: tuple[tuple[str, str], ...] = (
 
 #: Счётчики, изменение которых объясняется задачами испытаний (обучение, наполнение).
 TASK_COUNTERS: tuple[str, ...] = ("tasks",)
+
+
+def _delete_entity(context: AutomationContext, item: dict[str, Any]) -> str:
+    """Удаляет `__TEST__`-сущность сессии по её типу и отмечает удаление (NFR-T4).
+
+    Returns:
+        «удалено» либо причина, по которой уборка не выполнена.
+    """
+    entity_id = str(item.get("id") or "")
+    entity_type = str(item.get("type") or "")
+    if not entity_id:
+        return "нет идентификатора: удалять нечего"
+    counter = _counter_for(entity_type)
+    try:
+        if counter == "files":
+            context.files_api().delete(entity_id)
+        elif counter == "datasets":
+            context.datasets_api().delete_dataset(entity_id)
+        elif counter == "models":
+            context.models_api().delete_model(entity_id)
+        else:
+            return f"тип «{entity_type}» уборкой не поддержан: удалите вручную"
+    except (ApiError, ClientError, ServerUnavailableError) as exc:
+        return f"не удалено: {exc}"
+    session_api.mark_test_entity_deleted(
+        context.session, entity_id, check_id=context.spec.check_id, note="самоочистка TC-CLEAN-01"
+    )
+    return "удалено"
+
+
+def _registry_leftovers(context: AutomationContext) -> list[dict[str, Any]]:
+    """`__TEST__`-сущности, оставшиеся в реестрах стенда после уборки (по именам)."""
+    found: list[dict[str, Any]] = []
+    try:
+        files = list(context.files_api().list_files().files)
+    except (ApiError, ClientError, ServerUnavailableError):
+        found.append({"kind": "файл", "name": "", "error": "реестр файлов не прочитан"})
+        files = []
+    try:
+        datasets = list(context.datasets_api().list_datasets().datasets)
+    except (ApiError, ClientError, ServerUnavailableError):
+        found.append({"kind": "датасет", "name": "", "error": "реестр датасетов не прочитан"})
+        datasets = []
+    try:
+        models = list(context.models_api().list_models())
+    except (ApiError, ClientError, ServerUnavailableError):
+        found.append({"kind": "модель", "name": "", "error": "реестр моделей не прочитан"})
+        models = []
+
+    rows: list[tuple[str, Any]] = [("файл", row) for row in files]
+    rows += [("датасет", row) for row in datasets]
+    rows += [("модель", row) for row in models]
+    for kind, row in rows:
+        name = str(getattr(row, "file_name", "") or getattr(row, "name", "") or "")
+        if name.startswith(TEST_PREFIX):
+            found.append({"kind": kind, "id": str(row.id), "name": name})
+    return found
 
 
 def _counter_for(entity_type: str) -> str:
@@ -278,8 +337,85 @@ def _snapshot_check(context: AutomationContext) -> CheckOutcome:
     )
 
 
+def _self_cleaning(context: AutomationContext) -> CheckOutcome:
+    """TC-CLEAN-01: самоочистка `__TEST__`-сущностей и отсутствие следов (NFR-T4).
+
+    Убираются все незакрытые сущности сессии: файлы, датасеты и модели. Затем
+    проверяются сами реестры — в них не должно остаться имён с префиксом `__TEST__`
+    (в том числе от прошлых прогонов: они попадают в примечание как чужие следы).
+    Если снимки «Начало»/«Окончание» есть, изменение счётчиков сопоставляется с
+    уборкой; расхождения идут примечанием к отчёту (подробная сверка — `TC-CLEAN-03`).
+    """
+    pending = list(session_api.pending_test_entities(context.session))
+    evidence: dict[str, Any] = {
+        "pending_before": len(pending),
+        "removed": [],
+        "leftovers": [],
+        "snapshot_delta": [],
+    }
+    problems: list[str] = []
+    notes: list[str] = []
+
+    for item in pending:
+        result = _delete_entity(context, item)
+        evidence["removed"].append(
+            {"id": str(item.get("id")), "type": str(item.get("type")), "result": result}
+        )
+        if result != "удалено":
+            problems.append(f"{item.get('type')} {item.get('id')}: {result}")
+
+    leftovers = _registry_leftovers(context)
+    session_id = str(context.session.session_id or "")
+    evidence["leftovers"] = leftovers
+    ours = [row for row in leftovers if session_id and session_id in str(row.get("name") or "")]
+    foreign = [row for row in leftovers if row not in ours]
+    if ours:
+        problems.append(
+            "в реестрах остались `__TEST__`-сущности этой сессии: "
+            + ", ".join(f"{row['kind']} {row['name']}" for row in ours[:5])
+        )
+    if foreign:
+        notes.append(
+            "в реестрах есть `__TEST__`-имена других прогонов: "
+            + ", ".join(f"{row['kind']} {row['name']}" for row in foreign[:5])
+        )
+
+    start = _snapshot(context, session_api.SNAP_START)
+    end = _snapshot(context, session_api.SNAP_END)
+    if start and end:
+        start_counts = {
+            key: int(value or 0) for key, value in dict(start.get("counts") or {}).items()
+        }
+        end_counts = {key: int(value or 0) for key, value in dict(end.get("counts") or {}).items()}
+        for counter in ("files", "datasets", "models"):
+            delta = end_counts.get(counter, 0) - start_counts.get(counter, 0)
+            evidence["snapshot_delta"].append({"counter": counter, "delta": delta})
+            if delta != 0:
+                notes.append(
+                    f"счётчик {counter} изменился на {delta:+d} — сверка снимков в TC-CLEAN-03"
+                )
+    else:
+        notes.append(
+            "снимков «Начало»/«Окончание» нет: сверка счётчиков не выполнена (TC-CLEAN-03)"
+        )
+
+    if problems:
+        return CheckOutcome(
+            CheckStatus.FAILED, "; ".join(problems), evidence, note="; ".join(notes)
+        )
+    verdict = (
+        f"самоочистка выполнена: удалено {len(evidence['removed'])} из {len(pending)} "
+        f"сущностей; в реестрах нет `__TEST__`-имён этой сессии"
+        if pending
+        else "самоочистка подтверждена: незакрытых `__TEST__`-сущностей в сессии нет, "
+        "в реестрах нет имён этой сессии"
+    )
+    return CheckOutcome(CheckStatus.PASSED, verdict, evidence, note="; ".join(notes))
+
+
 #: Реестр сценариев модуля (ключ — `CheckSpec.automation`).
 AUTOMATIONS: dict[str, Any] = {
     "cleanup.entities": _entities_check,
+    "cleanup.self_cleaning": _self_cleaning,
     "cleanup.snapshots": _snapshot_check,
 }
