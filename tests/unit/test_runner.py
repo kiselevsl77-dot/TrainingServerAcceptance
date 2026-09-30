@@ -731,3 +731,97 @@ def test_outcome_journal_range_and_summary(wired: Any, library: sets_api.SetsLib
     assert summary["check_id"] == "TC-SYS-05"
     assert summary["level"] == runner_api.LEVEL_CALL
     assert summary["steps"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Параметры ML-проверок: датасет и модель (`llm_tasks/49`, задача 1б)
+# ---------------------------------------------------------------------------
+def test_ml_params_required_follows_specification() -> None:
+    """Что нужно проверке, решает спецификация, а не список проверок.
+
+    `dataset_id` — ключ тела (`train`, `check`, `inference`), `{model_id}` — параметр пути.
+    Поэтому наполнение датасета (датасет в пути, файлы в теле) выбора из реестра не требует,
+    а AutoML (`train_dataset_id`) в правило не попадает.
+    """
+    spec = catalog.find("TC-TR-02")
+    assert spec is not None
+    assert runner_api.ml_params_required(spec) == {"dataset": True, "model": True}
+
+    filling = catalog.find("TC-DS-05")
+    assert filling is not None
+    assert runner_api.ml_params_required(filling) == {"dataset": False, "model": False}
+
+    plain = catalog.find("TC-FILE-01")
+    assert plain is not None
+    assert runner_api.ml_params_required(plain) == {"dataset": False, "model": False}
+
+    automl = CheckSpec(
+        check_id="TC-AUTOML-99",
+        title="Подбор параметров (AutoML)",
+        module="ML models: AutoML",
+        requirement="FR-T9",
+        endpoints=("post /api/ml_models/find_params/population/{population_id}/selection",),
+    )
+    assert runner_api.ml_params_required(automl) == {"dataset": False, "model": False}, (
+        "AutoML (`train_dataset_id` в теле, `population_id` в пути) правилом не ловится: "
+        "его разбор — отдельный этап (`llm_tasks/49`, задача 1б)"
+    )
+
+
+def test_substitute_placeholders_replaces_top_level_only() -> None:
+    """Подстановка трогает только заглушки верхнего уровня (`llm_tasks/48` §1б).
+
+    Списки и вложенные объекты не изменяются: в `fill` это `raw_file_ids`, в AutoML —
+    `range`. Иначе пульт подменил бы данные, которых оператор не выбирал.
+    """
+    body = {
+        "dataset_id": "<uuid>",
+        "model_id": "<uuid>",
+        "epochs": 50,
+        "raw_file_ids": ["<uuid>"],
+        "range": {"from": "<uuid>"},
+    }
+    result = runner_api.substitute_placeholders(
+        dict(body),
+        {
+            "dataset_id": "11111111-1111-1111-1111-111111111111",
+            "model_id": "22222222-2222-2222-2222-222222222222",
+            "epochs": 999,
+        },
+    )
+
+    assert result["dataset_id"] == "11111111-1111-1111-1111-111111111111"
+    assert result["model_id"] == "22222222-2222-2222-2222-222222222222"
+    assert result["epochs"] == 50, "не-заглушки не подменяются"
+    assert result["raw_file_ids"] == ["<uuid>"], "списки не трогаем"
+    assert result["range"] == {"from": "<uuid>"}, "вложенные объекты не трогаем"
+
+    empty = runner_api.substitute_placeholders({"dataset_id": "<uuid>"}, {"dataset_id": "  "})
+    assert empty["dataset_id"] == "<uuid>", "пустой выбор не превращается в пустую строку"
+    assert runner_api.substitute_placeholders({"dataset_id": "<uuid>"}, {}) == {
+        "dataset_id": "<uuid>"
+    }
+
+
+def test_json_body_uses_selected_dataset_and_keeps_operator_body() -> None:
+    """Тело вызова: подстановка параметров, а собственное тело оператора — главнее."""
+    spec = catalog.find("TC-TR-02")
+    assert spec is not None
+    step = runner_api.call_steps(spec)[0]
+
+    body, error = runner_api._json_body(
+        step, {"dataset_id": "11111111-1111-1111-1111-111111111111"}
+    )
+
+    assert error == ""
+    assert body is not None
+    assert body["dataset_id"] == "11111111-1111-1111-1111-111111111111"
+
+    own, own_error = runner_api._json_body(step, {"body": '{"dataset_id": "свой-датасет"}'})
+
+    assert own_error == ""
+    assert own == {"dataset_id": "свой-датасет"}, "своё тело не перезаписывается шаблоном"
+
+    broken, broken_error = runner_api._json_body(step, {"body": "{не json"})
+
+    assert broken is None and "JSON" in broken_error

@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from acceptance.programme import ProgrammeItem
@@ -27,10 +27,17 @@ from acceptance.session import now_iso
 #: Обязательные поля карточки запуска (без них запуск не подтверждается).
 REQUIRED: tuple[str, ...] = ("goal", "data", "responsible")
 
+#: Поля выбора данных и модели для ML-проверок (`train`, `check`, `inference`):
+#: обязательны не всегда, а только когда проверке они действительно нужны
+#: (`validate(required_extra=…)`, решение заказчика — `llm_tasks/49`, задача 1б).
+ML_FIELDS: tuple[str, ...] = ("dataset_id", "model_id")
+
 #: Подписи полей карточки (для формы и для доказательств результата).
 FIELD_LABELS: dict[str, str] = {
     "goal": "Цель проверки",
     "data": "Данные, на которых выполняется",
+    "dataset_id": "Датасет для проверки",
+    "model_id": "Модель",
     "responsible": "Ответственный",
     "artifacts": "Что делать с артефактами",
     "confirm": "Подтверждаю расход ресурсов",
@@ -44,39 +51,67 @@ ARTIFACT_ACTIONS: tuple[str, ...] = (
 )
 
 
-def defaults(item: ProgrammeItem, *, session_id: str = "", author: str = "") -> dict[str, Any]:
-    """Заготовка карточки: цель и данные подставляются из пункта программы.
+def defaults(
+    item: ProgrammeItem,
+    *,
+    session_id: str = "",
+    author: str = "",
+    data_hint: str = "",
+) -> dict[str, Any]:
+    """Заготовка карточки: цель из пункта, данные — из подсказки или `__TEST__`.
 
     Подстановка нужна, чтобы оператор правил, а не набирал: пустая форма на
-    изменяющей проверке — лишний повод ошибиться в данных.
+    изменяющей проверке — лишний повод ошибиться в данных. `data_hint` заполняет
+    «Данные, на которых выполняется» названием выбранного датасета
+    («датасет «skfu-train» (104 файла)»): для ML-проверок это и есть настоящие данные,
+    и подпись уходит в доказательства результата (`llm_tasks/49`, вопрос 5 = а).
     """
+    data = str(data_hint or "").strip() or "__TEST__ (пульт)"
+    if session_id:
+        data = f"{data}, сессия {session_id}"
     return {
         "goal": f"{item.check_id}: {item.title}".strip(": "),
-        "data": f"__TEST__ (пульт), сессия {session_id}" if session_id else "__TEST__ (пульт)",
+        "data": data,
+        "dataset_id": "",
+        "model_id": "",
         "responsible": str(author),
         "artifacts": ARTIFACT_ACTIONS[0],
         "confirm": False,
     }
 
 
-def validate(values: Mapping[str, Any]) -> list[str]:
-    """Список незаполненных обязательных полей карточки (пустой — можно запускать)."""
+def validate(values: Mapping[str, Any], *, required_extra: Sequence[str] = ()) -> list[str]:
+    """Список незаполненных обязательных полей карточки (пустой — можно запускать).
+
+    `required_extra` — поля, обязательные **для этой проверки** (`dataset_id`, `model_id`).
+    Требовать датасет у проверки, которая его не использует, значило бы мешать оператору
+    (`llm_tasks/49`, задача 1б).
+    """
     missing: list[str] = []
-    for field in REQUIRED:
+    for field in (*REQUIRED, *required_extra):
         if not str(values.get(field) or "").strip():
-            missing.append(FIELD_LABELS[field])
+            missing.append(FIELD_LABELS.get(field, field))
     if not bool(values.get("confirm")):
         missing.append(FIELD_LABELS["confirm"])
     return missing
 
 
 def evidence(values: Mapping[str, Any], *, author: str = "", at: str = "") -> dict[str, Any]:
-    """Карточка запуска как доказательство результата (идёт в `evidence["run_card"]`)."""
+    """Карточка запуска как доказательство результата (идёт в `evidence["run_card"]`).
+
+    Выбранные датасет и модель записываются и идентификаторами, и подписями: по протоколу
+    должно быть видно не только «на каком датасете считали», но и как он назывался
+    и сколько в нём файлов (`llm_tasks/49`, вопрос 5 = а).
+    """
     payload: dict[str, Any] = {
         "at": at or now_iso(),
         "author": str(author),
         "goal": str(values.get("goal") or "").strip(),
         "data": str(values.get("data") or "").strip(),
+        "dataset_id": str(values.get("dataset_id") or "").strip(),
+        "dataset_label": str(values.get("dataset_label") or "").strip(),
+        "model_id": str(values.get("model_id") or "").strip(),
+        "model_label": str(values.get("model_label") or "").strip(),
         "responsible": str(values.get("responsible") or "").strip(),
         "artifacts": str(values.get("artifacts") or "").strip(),
         "confirm": bool(values.get("confirm")),

@@ -656,7 +656,10 @@ def test_run_card_view_shows_missing_until_confirmed() -> None:
     assert fields["responsible"]["value"] == "Петров П.П."
     assert fields["confirm"]["kind"] == "checkbox" and fields["confirm"]["checked"] is False
     assert card["filled"] is False and card["missing"]
-    assert [field["name"] for field in card["fields"]][:3] == list(run_card_api.REQUIRED)
+    assert [field["name"] for field in card["fields"]] == list(run_card_api.FIELD_LABELS), (
+        "порядок полей формы задаётся подписями ядра (в него входят датасет и модель)"
+    )
+    assert set(run_card_api.REQUIRED) <= {field["name"] for field in card["fields"]}
 
     saved = view.run_card_view(
         item,
@@ -1019,3 +1022,113 @@ def test_dataset_filter_options_and_labels() -> None:
         view.dataset_filter_view(mode=view.FILTER_OUTSIDE, applied=True, counted=7)["label"]
         == "файлы вне датасетов · учтено датасетов: 7"
     )
+
+
+def test_ml_view_describes_what_check_needs() -> None:
+    """Панель параметров знает, что нужно проверке и куда сохранить выбор (`llm_tasks/49`, 1б).
+
+    Проверка без карточки (`tech`) сохраняет выбор через `ml-params`, проверка с карточкой
+    (`heavy`/`live`) — через `run-card`: решение заказчика 2 = а.
+    """
+    datasets = [
+        {"id": "d1", "name": "skfu-train", "type": "direct_fill"},
+        {"id": "d2", "name": "skfu-test", "type": "direct_fill"},
+    ]
+    models = [{"id": "m1", "name": "skfu-net", "architecture": "cnn", "version": 3}]
+    item = _item(check_id="TC-TR-01", check_class=str(CheckClass.TECH))
+    heavy = _item(check_id="TC-TR-02", check_class=str(CheckClass.HEAVY))
+
+    params = view.ml_view(item, datasets=datasets, models=models)
+
+    assert params["needs"] == {"dataset": True, "model": True}
+    assert params["panel"] == "params" and params["save_as"] == "ml-params"
+    assert [field["name"] for field in params["fields"]] == ["dataset_id", "model_id"]
+    dataset_field = params["fields"][0]
+    assert dataset_field["kind"] == "select" and dataset_field["required"] is True
+    assert [option["value"] for option in dataset_field["options"]] == ["d1", "d2"]
+    assert dataset_field["options"][0]["label"] == "skfu-train · direct_fill"
+    assert params["fields"][1]["options"][0]["label"] == "skfu-net · cnn · v3"
+    assert params["note"] == "" and params["hint"] and params["values"]["dataset_id"] == ""
+    assert params["data_hint"] == view.DATASET_NOT_CHOSEN, (
+        "датасет не выбран — пульт говорит об этом прямо, а не показывает `__TEST__`"
+    )
+
+    card = view.ml_view(heavy, datasets=datasets, models=models, values={"dataset_id": "d1"})
+
+    assert card["panel"] == "card" and card["save_as"] == "run-card"
+    assert card["values"]["dataset_label"] == "skfu-train"
+    assert card["data_hint"] == "датасет «skfu-train»", "без состава чисел не выдумываем"
+
+    composed = view.ml_view(
+        heavy,
+        datasets=datasets,
+        models=models,
+        values={"dataset_id": "d1"},
+        compositions={
+            "d1": SimpleNamespace(
+                files_count=104,
+                raw_ids=("raw",) * 90,
+                markup_ids=("markup",) * 14,
+                is_trusted=True,
+                source="server_task",
+                source_label="сервер (по задаче наполнения `dataset-fill`)",
+            )
+        },
+    )
+
+    assert composed["data_hint"] == "датасет «skfu-train» (104 файла)"
+    assert composed["fields"][0]["options"][0]["label"] == (
+        "skfu-train · файлов 104 · RAW 90 / markup 14 · достоверно"
+    ), "состав известен — вариант подписан числами"
+
+
+def test_ml_view_is_quiet_for_checks_without_ml_params() -> None:
+    """Проверке без датасета и модели панель не показывается: пульт не шумит полями."""
+    item = _item(check_id="TC-FILE-11", check_class=str(CheckClass.LIVE))
+
+    empty = view.ml_view(item, datasets=[{"id": "d1", "name": "s"}])
+
+    assert empty["panel"] == "" and empty["fields"] == [] and empty["save_as"] == ""
+    assert view.ml_view(None) == {}
+    assert view.ml_view(_item(check_id="TC-NO-SUCH", check_class=str(CheckClass.TECH))) == {}
+
+
+def test_ml_view_warns_when_stand_has_no_models() -> None:
+    """Нет моделей и датасетов — оператор видит, чем это лечится, а не пустой список."""
+    item = _item(check_id="TC-TR-02", check_class=str(CheckClass.HEAVY))
+
+    ml = view.ml_view(item, datasets=[], models=[])
+
+    assert "TC-MOD-02" in ml["note"]
+    assert "TC-DS-01" in ml["note"]
+    assert ml["fields"][1]["kind"] == "text", "без реестра моделей остаётся ручной ввод id"
+
+
+def test_card_fields_take_options_and_extra_requirements() -> None:
+    """Поля «Датасет для проверки» и «Модель» приходят с вариантами и звёздочкой (`FR-P-19`)."""
+    item = _item(check_id="TC-TR-02", check_class=str(CheckClass.HEAVY))
+    card = view.run_card_view(
+        item,
+        session_id="20260925-120000-0001",
+        author="Петров П.П.",
+        options={
+            "dataset_id": [{"value": "d1", "label": "skfu-train · файлов 104"}],
+            "model_id": [{"value": "m1", "label": "skfu-net · cnn · v3"}],
+        },
+        extra_required=("dataset_id", "model_id"),
+        data_hint="датасет «skfu-train» (104 файла)",
+    )
+    fields = {field["name"]: field for field in card["fields"]}
+
+    assert fields["dataset_id"]["options"][0]["value"] == "d1"
+    assert fields["model_id"]["options"][0]["label"] == "skfu-net · cnn · v3"
+    assert fields["dataset_id"]["required"] is True and fields["model_id"]["required"] is True
+    assert fields["goal"]["required"] is True
+    assert fields["data"]["value"] == (
+        "датасет «skfu-train» (104 файла), сессия 20260925-120000-0001"
+    )
+    assert card["missing"] == [
+        view.run_card_api.FIELD_LABELS["dataset_id"],
+        view.run_card_api.FIELD_LABELS["model_id"],
+        view.run_card_api.FIELD_LABELS["confirm"],
+    ], "ответственный уже подставлен заготовкой"

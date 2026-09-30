@@ -438,10 +438,19 @@ RUN_MODE_HINTS: dict[str, str] = {
 CARD_FIELD_KINDS: dict[str, str] = {
     "goal": "text",
     "data": "text",
+    "dataset_id": "select",
+    "model_id": "select",
     "responsible": "text",
     "artifacts": "select",
     "confirm": "checkbox",
 }
+
+#: Что пульт пишет в «Данные, на которых выполняется», когда датасет ещё не выбран:
+#: молчаливое «`__TEST__`» на ML-проверке было бы неправдой (`llm_tasks/49`, задача 1б).
+DATASET_NOT_CHOSEN = "датасет не выбран: выберите его в поле «Датасет для проверки»"
+
+#: Склонения для подписи числа файлов датасета.
+FILES_FORMS: tuple[str, str, str] = ("файл", "файла", "файлов")
 
 #: Статусы, которые оператор ставит вручную (`FR-P-32`): отметка, а не прогон.
 MARK_STATUSES: tuple[str, ...] = (
@@ -520,31 +529,48 @@ def run_card_view(
     values: Mapping[str, Any] | None = None,
     session_id: str = "",
     author: str = "",
+    options: Mapping[str, Sequence[Mapping[str, str]]] | None = None,
+    extra_required: Sequence[str] = (),
+    data_hint: str = "",
 ) -> dict[str, Any]:
     """Карточка запуска как форма: поля, заготовки и что ещё не заполнено (`FR-P-19`).
 
     Заготовки приходят из `acceptance.run_card.defaults`, правила обязательных полей —
     из `acceptance.run_card.validate`, поэтому форма интерфейса и проверка ядра не
     расходятся. `filled` честно False, пока оператор не подтвердил расход ресурсов.
+
+    `options` — варианты выбора для полей-селектов (датасет и модель приходят из стенда),
+    `extra_required` — поля, обязательные именно для этой проверки, `data_hint` — подпись
+    данных («датасет «skfu-train» (104 файла)»): она уходит в доказательства результата
+    (`llm_tasks/49`, задача 1б).
     """
     required, note = runner_api.needs_confirmation(item)
     saved = {key: value for key, value in dict(values or {}).items() if value not in ("", None)}
-    merged: dict[str, Any] = dict(run_card_api.defaults(item, session_id=session_id, author=author))
+    merged: dict[str, Any] = dict(
+        run_card_api.defaults(item, session_id=session_id, author=author, data_hint=data_hint)
+    )
     merged.update(saved)
+    known = {
+        str(name): [dict(option) for option in list(field_options or [])]
+        for name, field_options in dict(options or {}).items()
+    }
     fields: list[dict[str, Any]] = []
     for name, label in run_card_api.FIELD_LABELS.items():
         value = merged.get(name, "")
-        fields.append(
-            {
-                "name": name,
-                "label": label,
-                "kind": CARD_FIELD_KINDS.get(name, "text"),
-                "value": "" if isinstance(value, bool) else str(value),
-                "checked": bool(value) if name == "confirm" else False,
-                "required": name in run_card_api.REQUIRED or name == "confirm",
-            }
-        )
-    missing = run_card_api.validate(merged)
+        field: dict[str, Any] = {
+            "name": name,
+            "label": label,
+            "kind": CARD_FIELD_KINDS.get(name, "text"),
+            "value": "" if isinstance(value, bool) else str(value),
+            "checked": bool(value) if name == "confirm" else False,
+            "required": (
+                name in run_card_api.REQUIRED or name == "confirm" or name in extra_required
+            ),
+        }
+        if name in known:
+            field["options"] = known[name]
+        fields.append(field)
+    missing = run_card_api.validate(merged, required_extra=extra_required)
     return {
         "required": bool(required),
         "note": str(note),
@@ -555,6 +581,161 @@ def run_card_view(
         "saved": bool(saved),
         "author": str(saved.get("author") or ""),
         "at": short_time(saved.get("at")) if saved.get("at") else "",
+    }
+
+
+def dataset_options(
+    datasets: Sequence[Any],
+    compositions: Mapping[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Варианты поля «Датасет для проверки» (`TC-TR-02`, `TC-INF-01`).
+
+    Подпись — «имя · файлов N · RAW R / markup M · достоверность», когда состав известен
+    (он читается на странице «Результаты» и для выбранного датасета), иначе «имя · тип»:
+    читать составы всех датасетов на отрисовку экрана прогона нельзя — за каждым стоит
+    обращение к `$Задачам` стенда (`llm_tasks/49`, задача 1б).
+    """
+    known = dict(compositions or {})
+    rows: list[dict[str, str]] = []
+    for item in datasets:
+        dataset_id = str(_attr(item, "id") or "")
+        name = str(_attr(item, "name") or dataset_id)
+        composition = known.get(dataset_id)
+        label = (
+            composition_option_label(name, composition)
+            if composition is not None
+            else join_parts(name, str(_attr(item, "type") or ""))
+        )
+        rows.append({"value": dataset_id, "label": label})
+    return rows
+
+
+def model_options(models: Iterable[Any]) -> list[dict[str, str]]:
+    """Варианты поля «Модель»: «имя · архитектура · версия» (`TC-TR-02`, `TC-INF-*`)."""
+    rows: list[dict[str, str]] = []
+    for item in models:
+        payload = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        model_id = str(payload.get("id") or "")
+        version = str(payload.get("version") or "")
+        rows.append(
+            {
+                "value": model_id,
+                "label": join_parts(
+                    str(payload.get("name") or model_id),
+                    str(payload.get("architecture") or ""),
+                    f"v{version}" if version else "",
+                ),
+            }
+        )
+    return rows
+
+
+def dataset_hint(label: str, composition: Any = None) -> str:
+    """Подсказка для поля «Данные, на которых выполняется»: «датасет «X» (N файлов)».
+
+    Числа берутся из состава, когда он прочитан; без состава пульт не выдумывает
+    «файлов 0», а просто называет датасет (`llm_tasks/48` §1б, вопрос 5 = а).
+    """
+    name = str(label or "").strip()
+    if not name:
+        return DATASET_NOT_CHOSEN
+    if composition is None:
+        return f"датасет «{name}»"
+    return f"датасет «{name}» ({plural(int(composition.files_count), FILES_FORMS)})"
+
+
+def ml_view(
+    item: programme_api.ProgrammeItem | None,
+    *,
+    datasets: Sequence[Any] = (),
+    compositions: Mapping[str, Any] | None = None,
+    models: Sequence[Any] = (),
+    values: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Выбор данных и модели для ML-проверки (`llm_tasks/49`, задача 1б).
+
+    Всё решает сервер: нужны ли проверке датасет и модель (правило — из спецификации,
+    `runner.ml_params_required`), какие варианты предложить, куда сохранить выбор
+    (`run-card` для `live`/`heavy` и `ml-params` для проверок без карточки — решение
+    заказчика 2 = а) и что делать, если моделей на стенде нет. Интерфейс печатает форму
+    и не решает, обязателен ли датасет.
+
+    Место сохранения выбирается тем же правилом, что и карточка запуска
+    (`runner.needs_confirmation`), — иначе форма и запуск разошлись бы.
+    """
+    if item is None:
+        return {}
+    spec = catalog.find(item.check_id)
+    if spec is None:
+        return {}
+    needs = runner_api.ml_params_required(spec)
+    if not (needs["dataset"] or needs["model"]):
+        return {"needs": needs, "panel": "", "fields": [], "save_as": ""}
+    saved = {
+        str(key): value for key, value in dict(values or {}).items() if str(value or "").strip()
+    }
+    known = dict(compositions or {})
+    dataset_id = str(saved.get(runner_api.ML_DATASET_FIELD) or "")
+    found = next((row for row in datasets if str(_attr(row, "id")) == dataset_id), None)
+    dataset_name = str(_attr(found, "name")) if found is not None else ""
+    dataset_composition = known.get(dataset_id)
+    model_id = str(saved.get(runner_api.ML_MODEL_PARAM) or "")
+    model_label = (
+        next((row["label"] for row in model_options(models) if row["value"] == model_id), model_id)
+        if model_id
+        else ""
+    )
+    fields: list[dict[str, Any]] = []
+    if needs["dataset"]:
+        fields.append(
+            {
+                "name": runner_api.ML_DATASET_FIELD,
+                "label": run_card_api.FIELD_LABELS[runner_api.ML_DATASET_FIELD],
+                "kind": "select",
+                "value": dataset_id,
+                "options": dataset_options(datasets, known),
+                "required": True,
+            }
+        )
+    if needs["model"]:
+        fields.append(
+            {
+                "name": runner_api.ML_MODEL_PARAM,
+                "label": run_card_api.FIELD_LABELS[runner_api.ML_MODEL_PARAM],
+                "kind": "select" if models else "text",
+                "value": model_id,
+                "options": model_options(models),
+                "required": True,
+            }
+        )
+    notes: list[str] = []
+    if needs["model"] and not models:
+        notes.append(
+            "моделей на стенде нет: сначала создайте модель проверкой «TC-MOD-02», "
+            "потом выберите её здесь (или впишите `model_id` вручную)"
+        )
+    if needs["dataset"] and not datasets:
+        notes.append("датасетов на стенде нет: наполните датасет (`TC-DS-01`, `TC-DS-05`)")
+    by_card = bool(runner_api.needs_confirmation(item)[0])
+    return {
+        "needs": needs,
+        "required": True,
+        "panel": "card" if by_card else "params",
+        "save_as": "run-card" if by_card else "ml-params",
+        "fields": fields,
+        "note": join_parts(*notes),
+        "hint": (
+            "выбор — часть карточки запуска: он уходит в доказательства и протокол"
+            if by_card
+            else "выбор уходит в `params` запуска и в доказательства результата"
+        ),
+        "values": {
+            runner_api.ML_DATASET_FIELD: dataset_id,
+            "dataset_label": dataset_name,
+            runner_api.ML_MODEL_PARAM: model_id,
+            "model_label": model_label,
+        },
+        "data_hint": dataset_hint(dataset_name, dataset_composition) if needs["dataset"] else "",
     }
 
 
@@ -627,13 +808,18 @@ def run_next_view(
     values: Mapping[str, Any] | None = None,
     session: Any = None,
     author: str = "",
+    ml: Mapping[str, Any] | None = None,
+    card_options: Mapping[str, Sequence[Mapping[str, str]]] | None = None,
+    extra_required: Sequence[str] = (),
+    data_hint: str = "",
 ) -> dict[str, Any]:
     """Следующий пункт прогона: что запустится и что для этого нужно (`IR-P-20`).
 
     Всё, что интерфейсу нужно показать до нажатия «▶ Следующая» — название и класс
-    пункта, требования (карточка запуска, ручная отметка), шаги, предпросмотр payload
-    и форма отметки. Это позволяет оператору видеть последствия до вызова стенда
-    (`FR-P-19`, `FR-P-20`) и не дублировать правила в JS.
+    пункта, требования (карточка запуска, ручная отметка), шаги, предпросмотр payload,
+    форма отметки и выбор данных/модели (`ml`) — приходит готовым. Это позволяет
+    оператору видеть последствия до вызова стенда (`FR-P-19`, `FR-P-20`) и не
+    дублировать правила в JS.
     """
     if item is None:
         return {}
@@ -656,9 +842,18 @@ def run_next_view(
         "scenario": scenario_label(item.check_id),
         "scenario_note": scenario_note(item.check_id),
         "steps": step_rows(item.check_id),
-        "card": run_card_view(item, values=values, session_id=session_id, author=author),
-        "payload": payload_view(item.check_id, session=session),
+        "card": run_card_view(
+            item,
+            values=values,
+            session_id=session_id,
+            author=author,
+            options=card_options,
+            extra_required=extra_required,
+            data_hint=data_hint,
+        ),
+        "payload": payload_view(item.check_id, session=session, params=values),
         "mark": mark_view(item),
+        "ml": dict(ml or {}),
     }
 
 

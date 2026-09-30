@@ -681,7 +681,7 @@ def _call_stop(
 
 
 def _json_body(step: CallStep, values: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
-    """JSON-тело вызова: из параметров пункта либо заготовка спецификации.
+    """JSON-тело вызова: из параметров пункта либо заготовка спецификации с подстановкой.
 
     Returns:
         Кортеж (тело, текст ошибки). Ошибка заполнения тела — «пропущено», а не
@@ -698,7 +698,60 @@ def _json_body(step: CallStep, values: dict[str, Any]) -> tuple[dict[str, Any] |
         return None, f"тело пункта не является корректным JSON: {exc}"
     if not isinstance(parsed, dict):
         return None, "тело пункта должно быть JSON-объектом"
-    return parsed, ""
+    return substitute_placeholders(parsed, values), ""
+
+
+#: Ключ тела, значения которого заменяются выбранными параметрами стенда.
+ML_DATASET_FIELD = "dataset_id"
+
+#: Параметр пути, значения которого заменяются выбранной моделью.
+ML_MODEL_PARAM = "model_id"
+
+#: Имена параметров, которые пульт подставляет в вызов автоматически.
+ML_PARAMS: tuple[str, ...] = (ML_DATASET_FIELD, ML_MODEL_PARAM)
+
+
+def ml_params_required(spec: CheckSpec) -> dict[str, bool]:
+    """Какие параметры стенда нужны проверке: датасет в теле и модель в пути.
+
+    Правило выведено из спецификации, а не из списка проверок: `dataset_id` — ключ
+    **тела** (`train`, `check`, `inference`), `{model_id}` — параметр **пути**. Поэтому
+    `post /api/datasets/fill/{dataset_id}` (датасет в пути, файлы в теле) выбора датасета
+    из реестра не требует, а AutoML (`train_dataset_id`/`test_dataset_id`) в правило
+    не попадает и разбирается отдельным этапом (`llm_tasks/49`, задача 1б).
+    """
+    required = {"dataset": False, "model": False}
+    for step in call_steps(spec):
+        if f"{{{ML_MODEL_PARAM}}}" in step.path:
+            required["model"] = True
+        endpoint = plan_endpoint(step)
+        if endpoint is None or endpoint.body_kind != ep.BODY_JSON:
+            continue
+        fields = {str(field).split(":")[0].strip() for field in endpoint.body_fields}
+        if ML_DATASET_FIELD in fields or f'"{ML_DATASET_FIELD}"' in (endpoint.body_sample or ""):
+            required["dataset"] = True
+    return required
+
+
+def substitute_placeholders(body: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """Подставляет известные параметры в плейсхолдеры заготовки тела.
+
+    Заготовка спецификации содержит значения-заглушки (`"dataset_id": "<uuid>"`).
+    Раньше они уходили на стенд как есть, поэтому выбранный в пульте датасет до
+    `train` не доходил (`llm_tasks/48` §1б). Правило узкое и предсказуемое:
+    заменяются **только** значения верхнего уровня вида `"<…>"`, для которых есть
+    параметр с тем же именем; списки и вложенные объекты не трогаем (в `fill` это
+    `raw_file_ids`, в AutoML — `range`), а собственное тело пункта (`values["body"]`)
+    по-прежнему главнее любой заготовки.
+    """
+    for key, value in list(body.items()):
+        if not isinstance(value, str) or not value.startswith("<") or not value.endswith(">"):
+            continue
+        replacement = values.get(key)
+        if replacement is None or str(replacement).strip() == "":
+            continue
+        body[key] = str(replacement)
+    return body
 
 
 def _is_binary(step: CallStep) -> bool:

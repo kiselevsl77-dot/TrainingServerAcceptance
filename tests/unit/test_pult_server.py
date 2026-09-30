@@ -1107,6 +1107,9 @@ TAB_BUTTON = re.compile(
     r'<button class="tab[^"]*" data-panel="([^"]+)" type="button">([^<]+)</button>'
 )
 
+#: Панель страницы: `id` обязан совпадать с ключом вкладки (`panel-<ключ>`).
+PANEL_SECTION = re.compile(r'<section class="panel[^"]*" id="panel-([^"]+)"')
+
 
 def test_tab_order_matches_agreed_sequence(pult: PultApp) -> None:
     """Порядок вкладок и стартовая панель совпадают с согласованными (`IR-P-4`).
@@ -1125,6 +1128,15 @@ def test_tab_order_matches_agreed_sequence(pult: PultApp) -> None:
         "пульт открывается на «Планировании»"
     )
     assert 'class="panel is-active" id="panel-planning"' in html, "активная панель — «Планирование»"
+    sections = [match.group(1) for match in PANEL_SECTION.finditer(html)]
+    assert len(sections) == len(set(sections)), (
+        "у каждой панели свой `id`: два одинаковых `id` показали бы не ту страницу "
+        "(регресс, найденный проверкой отрисовки браузером)"
+    )
+    assert set(sections) == {key for key, _ in PANEL_ORDER}, (
+        "каждой вкладке соответствует своя панель `panel-<ключ>`"
+    )
+    assert html.count('class="panel is-active"') == 1, "активная панель ровно одна"
 
     declared = re.search(r"const PANELS = \[([^\]]+)\];", script)
     assert declared is not None, "в app.js нет списка панелей"
@@ -1362,3 +1374,135 @@ def test_dataset_filter_rejects_unknown_dataset(data_stand: PultApp) -> None:
         get(data_stand, "/api/data", dataset="99999999-0000-0000-0000-000000000000")
     assert unknown.value.status == 404
     assert "не найден" in unknown.value.message
+
+
+# ---------------------------------------------------------------------------
+# Параметры ML-проверки: датасет и модель в вызове (`llm_tasks/49`, задача 1б)
+# ---------------------------------------------------------------------------
+ML_MODEL = "dddd0000-0000-0000-0000-000000000001"
+ML_TASK = "eeee0000-0000-0000-0000-000000000001"
+
+
+MODEL_FILE = "ffff0000-0000-0000-0000-000000000001"
+
+
+def _ml_handler(sent: list[httpx.Request]) -> Any:
+    """Стенд с датасетом и моделью: запросы обучения складываются в `sent`."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/version"):
+            return httpx.Response(200, json={"branch": "dev", "revision": "83319ae1234"})
+        if path.startswith("/api/data/files"):
+            return httpx.Response(200, json={"files": STAND_FILES, "count": len(STAND_FILES)})
+        if "/train" in path:
+            sent.append(request)
+            return httpx.Response(202, json={"task_id": ML_TASK, "status": "queued"})
+        if path.startswith("/api/ml_models/models"):
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "id": ML_MODEL,
+                            "file_id": MODEL_FILE,
+                            "architecture": "cnn",
+                            "version": "3",
+                            "name": "skfu-net",
+                            "phase_type": "train",
+                            "output_size": 4,
+                            "config": {},
+                            "created_at": DATA_AT,
+                            "updated_at": DATA_AT,
+                        }
+                    ],
+                    "count": 1,
+                },
+            )
+        if path.startswith("/api/datasets"):
+            return httpx.Response(
+                200, json={"datasets": STAND_DATASETS, "count": len(STAND_DATASETS)}
+            )
+        if path.startswith("/api/tasks"):
+            return httpx.Response(200, json={"tasks": [], "count": 0})
+        return httpx.Response(200, json={"status": "ok", "message": "test stand ready"})
+
+    return handler
+
+
+@pytest.fixture
+def ml_stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[PultApp, list[Any]]:
+    """Пульт с сессией на `TC-TR-01` и списком ушедших на стенд запросов обучения."""
+    sent: list[httpx.Request] = []
+    pult = _app(tmp_path, monkeypatch, _ml_handler(sent))
+    _with_checks(pult, check_class="tech", check_id="TC-TR-01")
+    return pult, sent
+
+
+def test_ml_check_shows_params_panel_with_registry_options(
+    ml_stand: tuple[PultApp, list[Any]],
+) -> None:
+    """Проверка обучения `tech`: пульт предлагает датасеты и модели стенда, а не пустую форму.
+
+    Датасет обязателен (он ключ тела `train`), модель — параметр пути; выбор сохраняется
+    через `ml-params`, потому что карточки запуска у `tech`-проверки нет (решение 2 = а).
+    """
+    pult, _sent = ml_stand
+    run = get(pult, "/api/run")
+
+    assert run["next"]["check_id"] == "TC-TR-01"
+    ml = run["next"]["ml"]
+    assert ml["needs"] == {"dataset": True, "model": True}
+    assert ml["panel"] == "params" and ml["save_as"] == "ml-params"
+    assert [field["name"] for field in ml["fields"]] == ["dataset_id", "model_id"]
+    assert [option["value"] for option in ml["fields"][0]["options"]] == [
+        FILLED_DATASET,
+        UNKNOWN_DATASET,
+    ]
+    assert ml["fields"][1]["options"] == [{"value": ML_MODEL, "label": "skfu-net · cnn · v3"}]
+    assert ml["data_hint"] == "датасет не выбран: выберите его в поле «Датасет для проверки»"
+    assert "датасет не выбран" in "\n".join(run["next"]["item"]["payload"]["lines"]).lower(), (
+        "предпросмотр не молчит: без датасета вызов не отправляется"
+    )
+
+
+def test_ml_call_refuses_without_dataset_and_model(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """Без выбранных данных вызов не уходит: отказ называет поля и где их выбрать."""
+    pult, sent = ml_stand
+
+    with pytest.raises(ApiError) as refused:
+        post(pult, "/api/run", action="call")
+
+    assert refused.value.status == 422
+    assert "Датасет для проверки" in refused.value.message
+    assert "Модель" in refused.value.message
+    assert sent == [], "на стенд ничего не ушло"
+
+
+def test_ml_params_reach_the_train_call(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """Выбранные датасет и модель действительно уходят в `train` (`llm_tasks/48` §1б).
+
+    Проверяется главное: `dataset_id` попадает в **тело** запроса вместо заглушки
+    `"<uuid>"`, а `model_id` — в **путь**. Раньше пульт отправлял заготовку как есть.
+    """
+    pult, sent = ml_stand
+    saved = post(
+        pult,
+        "/api/checks/TC-TR-01",
+        action="ml-params",
+        values={"dataset_id": FILLED_DATASET, "model_id": ML_MODEL},
+    )
+
+    assert saved["run"]["next"]["ml"]["values"]["dataset_id"] == FILLED_DATASET
+    assert saved["run"]["next"]["ml"]["values"]["model_id"] == ML_MODEL
+    assert saved["run"]["card"]["fields"][2]["value"] == FILLED_DATASET, "выбор виден в форме"
+
+    answer = post(pult, "/api/run", action="call")
+
+    assert answer["outcomes"], "вызов выполнен"
+    assert len(sent) == 1, "на стенд ушёл ровно один запрос обучения"
+    request = sent[0]
+    assert request.url.path == f"/api/ml_models/models/{ML_MODEL}/train", "модель — в пути"
+    raw = request.content.decode("utf-8")
+    assert json.loads(raw)["dataset_id"] == FILLED_DATASET
+    assert "<uuid>" not in raw, "заглушка не ушла на стенд"

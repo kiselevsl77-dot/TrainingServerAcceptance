@@ -45,7 +45,7 @@
     </nav>
 
     <main class="page">
-      <section class="panel is-active" id="panel-planning">
+      <section class="panel" id="panel-run">
         <div class="panel__head">
           <h2>Прогон программы</h2>
           <span class="muted" id="run-meta"></span>
@@ -80,6 +80,16 @@
               <button class="btn" id="run-card-save" type="button">Сохранить карточку</button>
               <button class="btn btn--primary" id="run-card-run" type="button">▶ Подтвердить и запустить</button>
               <span class="muted" id="run-card-missing"></span>
+            </div>
+          </div>
+
+          <div class="zone__sub" id="run-ml" hidden>
+            <h4>Параметры проверки: данные и модель</h4>
+            <p class="hint" id="run-ml-note"></p>
+            <div class="form" id="run-ml-fields"></div>
+            <div class="row">
+              <button class="btn" id="run-ml-save" type="button">Сохранить выбор</button>
+              <span class="muted" id="run-ml-hint"></span>
             </div>
           </div>
 
@@ -124,7 +134,7 @@
         </table>
       </section>
 
-      <section class="panel" id="panel-planning">
+      <section class="panel is-active" id="panel-planning">
         <div class="panel__head">
           <h2>Планирование</h2>
           <span class="muted" id="planning-meta"></span>

@@ -256,6 +256,7 @@ function renderRunConsole(data) {
   batchButton.textContent = text(batch.label) || "▶▶ Пачка tech";
 
   renderRunCard(item.card || {}, Boolean(next.runnable));
+  renderRunMl(next.ml || {});
   renderRunMark(item.mark || {}, Boolean(next.runnable));
   renderRunPayload(reason ? {} : item.payload || {});
   renderRunSteps(item.steps || []);
@@ -292,13 +293,26 @@ function renderRunCard(card, runnable) {
     } else if (field.kind === "select") {
       const select = document.createElement("select");
       select.id = `run-card-${field.name}`;
-      (card.artifacts || []).forEach((value) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        select.appendChild(option);
+      // Варианты приходят с сервера: у датасета и модели — из реестров стенда
+      // (`llm_tasks/49`, задача 1б), у «что делать с артефактами» — список действий ядра.
+      const options = (field.options || []).length
+        ? field.options
+        : (card.artifacts || []).map((value) => ({ value: value, label: value }));
+      if (!text(saved)) {
+        // Пустого варианта нет в реестре: без него браузер молча выбрал бы первый
+        // датасет, и в карточку попали бы данные, которых оператор не выбирал.
+        const empty = document.createElement("option");
+        empty.value = "";
+        empty.textContent = "не выбрано";
+        select.appendChild(empty);
+      }
+      options.forEach((option) => {
+        const element = document.createElement("option");
+        element.value = text(option.value);
+        element.textContent = text(option.label);
+        select.appendChild(element);
       });
-      select.value = text(saved) || text((card.artifacts || [])[0]);
+      select.value = text(saved) || text((options[0] || {}).value);
       select.addEventListener("change", () => saveCardDraft(field.name, select.value));
       label.appendChild(select);
     } else {
@@ -347,6 +361,80 @@ function saveCardDraft(name, value) {
 /** Ввод карточки отработан: правки больше не нужны. */
 function clearCardDraft() {
   delete runView.drafts[runCardCheckId()];
+}
+
+/** Параметры ML-проверки без карточки: датасет и модель (`llm_tasks/49`, задача 1б). */
+function renderRunMl(ml) {
+  const box = document.getElementById("run-ml");
+  const fields = ml.fields || [];
+  box.hidden = ml.panel !== "params" || !fields.length;
+  if (box.hidden) {
+    return;
+  }
+  const item = ((runView.data || {}).next || {}).item || {};
+  document.querySelector("#run-ml h4").textContent =
+    `Параметры проверки: ${text(item.check_id)} — данные и модель`;
+  document.getElementById("run-ml-note").textContent = text(ml.note);
+  document.getElementById("run-ml-hint").textContent = text(ml.hint);
+  const form = document.getElementById("run-ml-fields");
+  form.textContent = "";
+  const draft = runView.drafts[`ml:${text(item.check_id)}`] || {};
+  fields.forEach((field) => {
+    const label = document.createElement("label");
+    label.textContent = field.required ? `${field.label} *` : field.label;
+    const saved = draft[field.name] !== undefined ? draft[field.name] : field.value;
+    if (field.kind === "select" && (field.options || []).length) {
+      const select = document.createElement("select");
+      select.id = `run-ml-${field.name}`;
+      // Молчаливый «первый из реестра» недопустим: выбор делает оператор (`FR-P-25`).
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "не выбрано";
+      select.appendChild(empty);
+      (field.options || []).forEach((option) => {
+        const element = document.createElement("option");
+        element.value = text(option.value);
+        element.textContent = text(option.label);
+        select.appendChild(element);
+      });
+      select.value = text(saved);
+      select.addEventListener("change", () => saveMlDraft(field.name, select.value));
+      label.appendChild(select);
+    } else {
+      const input = document.createElement("input");
+      input.id = `run-ml-${field.name}`;
+      input.value = text(saved);
+      input.size = 38;
+      input.placeholder = "идентификатор из реестра стенда";
+      input.addEventListener("input", () => saveMlDraft(field.name, input.value));
+      label.appendChild(input);
+    }
+    form.appendChild(label);
+  });
+}
+
+/** Значения параметров проверки из формы: то, что уходит в `action=ml-params`. */
+function mlValues() {
+  const item = ((runView.data || {}).next || {}).item || {};
+  const values = {};
+  (((item.ml || {}).fields) || []).forEach((field) => {
+    const element = document.getElementById(`run-ml-${field.name}`);
+    if (element) {
+      values[field.name] = element.value;
+    }
+  });
+  return values;
+}
+
+/** Незаконченный выбор параметров: помним по пункту и полю до сохранения. */
+function saveMlDraft(name, value) {
+  const key = `ml:${runCardCheckId()}`;
+  runView.drafts[key] = { ...runView.drafts[key], [name]: value };
+}
+
+/** Выбор параметров сохранён: черновик больше не нужен. */
+function clearMlDraft() {
+  delete runView.drafts[`ml:${runCardCheckId()}`];
 }
 
 /** Ручная отметка `manual`: статус и заключение (`FR-P-32`). */
@@ -1699,6 +1787,18 @@ function bind() {
       runView.openRow = "";
       renderRun(data);
       flash("ok", `Пункт ${text(checkId)}: карточка подтверждена, запуск выполнен`);
+      await refresh();
+    }
+  });
+  document.getElementById("run-ml-save").addEventListener("click", async () => {
+    const checkId = runCardCheckId();
+    const answer = await act(`/api/checks/${encodeURIComponent(checkId)}`, {
+      action: "ml-params",
+      values: mlValues(),
+    });
+    if (answer) {
+      clearMlDraft();
+      flash("ok", `Параметры проверки ${checkId} сохранены`);
       await refresh();
     }
   });

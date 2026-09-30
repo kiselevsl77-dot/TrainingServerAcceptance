@@ -37,6 +37,22 @@ UPLOAD_FILE_OPERATION = "post /api/data/file"
 CREATE_DATASET_OPERATION = "post /api/datasets/"
 FILL_DATASET_OPERATION = "post /api/datasets/fill/{dataset_id}"
 
+#: Ресурсоёмкие ML-операции: обучение, проверка и инференс по датасету (`T6–T9`).
+#: Они ничего не «создают» в смысле `__TEST__`, но отправляют на стенд данные и модель,
+#: поэтому оператор обязан видеть это до запуска (`llm_tasks/48` §1б).
+ML_OPERATIONS: tuple[str, ...] = (
+    "post /api/ml_models/models/{model_id}/train",
+    "post /api/ml_models/{model_id}/check",
+    "post /api/ml_models/models/{model_id}/inference",
+)
+
+#: Как называется ML-операция для оператора.
+ML_KIND_LABELS: dict[str, str] = {
+    "post /api/ml_models/models/{model_id}/train": "обучение модели",
+    "post /api/ml_models/{model_id}/check": "проверка модели на датасете",
+    "post /api/ml_models/models/{model_id}/inference": "инференс по датасету",
+}
+
 #: Кто убирает за собой `__TEST__`-данные (уборка проверяется отдельными проверками).
 CLEANUP_NOTE = "уборка — TC-CLEAN-01/TC-CLEAN-02 (учёт `__TEST__`-сущностей в сессии)"
 
@@ -93,6 +109,9 @@ def payload_previews(
         previews.append(_dataset_payload(spec))
     if FILL_DATASET_OPERATION in operations:
         previews.append(_fill_payload(spec))
+    ml_operation = next((target for target in spec.endpoints if target in ML_OPERATIONS), "")
+    if ml_operation:
+        previews.append(_ml_payload(ml_operation, values=values))
     return previews
 
 
@@ -171,4 +190,42 @@ def _fill_payload(spec: CheckSpec) -> PayloadPreview:
         f"`{TEST_PREFIX}…csv`)",
         removed_after=False,
         note=f"проверка {spec.check_id}; {CLEANUP_NOTE}",
+    )
+
+
+def _ml_payload(operation: str, *, values: dict[str, Any]) -> PayloadPreview:
+    """Обучение/проверка/инференс: какая модель, на каком датасете и с какими параметрами.
+
+    До этой правки ML-проверки выглядели как «ничего не создаёт», хотя отправляют
+    ресурсоёмкий запрос с датасетом и моделью: оператор не видел ни того, ни другого
+    до запуска (`llm_tasks/48` §1б).
+    """
+    dataset_id = str(values.get("dataset_id") or "").strip()
+    dataset_label = str(values.get("dataset_label") or "").strip()
+    model_id = str(values.get("model_id") or "").strip()
+    model_label = str(values.get("model_label") or "").strip()
+    dataset_text = (
+        f"датасет «{dataset_label or dataset_id}» (`{dataset_id}`)"
+        if dataset_id
+        else "датасет не выбран: пока он не указан в карточке запуска, вызов не отправляется"
+    )
+    model_text = (
+        f"модель «{model_label or model_id}» (`{model_id}`)"
+        if model_id
+        else f"модель — {GENERATED} (если моделей на стенде нет, сначала `TC-MOD-02`)"
+    )
+    method, _, path = operation.partition(" ")
+    return PayloadPreview(
+        kind=ML_KIND_LABELS.get(operation, "ML-операция"),
+        target=f"{method.upper()} {path}",
+        name=model_text,
+        content=(
+            f"{dataset_text}; параметры — из заготовки операции, выбранные значения "
+            "подставляются в тело (`runner.substitute_placeholders`)"
+        ),
+        removed_after=False,
+        note=(
+            "ресурсоёмкая операция: точные поля видны в журнале обмена после вызова, а "
+            f"результат ведёт монитор `$Задач`; {CLEANUP_NOTE}"
+        ),
     )

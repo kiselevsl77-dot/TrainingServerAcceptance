@@ -141,3 +141,54 @@ def test_preview_lines_are_human_readable(check_id: str):
     assert "имя/идентификатор" in text
     assert "содержимое" in text
     assert "удаляется после проверки" in text
+
+
+def test_ml_previews_name_dataset_and_model() -> None:
+    """Обучение и инференс показывают модель и датасет до запуска (`llm_tasks/48` §1б)."""
+    previews = _payloads("TC-TR-02")
+
+    assert len(previews) == 1
+    payload = previews[0]
+    assert payload.kind == "обучение модели"
+    assert payload.target == "POST /api/ml_models/models/{model_id}/train"
+    assert "не выбран" in payload.name.lower() or "модель" in payload.name.lower()
+    assert "датасет не выбран" in payload.content, "молчаливый запуск без датасета невозможен"
+    assert payload.removed_after is False
+    assert "TC-CLEAN" in payload.note
+
+
+def test_ml_preview_uses_selected_values() -> None:
+    """Выбранные в пульте датасет и модель видны в предпросмотре своими подписями."""
+    spec = catalog.find("TC-TR-02")
+    assert spec is not None
+    previews = test_payloads.payload_previews(
+        spec,
+        SESSION,
+        params={
+            "dataset_id": "11111111-1111-1111-1111-111111111111",
+            "dataset_label": "skfu-train · файлов 104",
+            "model_id": "22222222-2222-2222-2222-222222222222",
+            "model_label": "skfu-net · cnn · v3",
+        },
+    )
+
+    payload = previews[0]
+    assert "skfu-train · файлов 104" in payload.content
+    assert "11111111-1111-1111-1111-111111111111" in payload.content
+    assert "skfu-net · cnn · v3" in payload.name
+    assert "22222222-2222-2222-2222-222222222222" in payload.name
+
+
+def test_every_ml_check_gets_a_preview() -> None:
+    """У каждой ресурсоёмкой ML-проверки предпросмотр не пуст (нет «слепых» запусков)."""
+    ml_checks = [
+        spec
+        for spec in catalog.CHECKS
+        if any(m in spec.endpoints for m in test_payloads.ML_OPERATIONS)
+    ]
+
+    assert len(ml_checks) >= 3, "в каталоге есть обучение, проверка и инференс"
+    for spec in ml_checks:
+        previews = test_payloads.payload_previews(spec, SESSION)
+        assert previews, spec.check_id
+        assert previews[0].kind in test_payloads.ML_KIND_LABELS.values()

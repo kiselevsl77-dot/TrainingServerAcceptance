@@ -44,6 +44,7 @@ from acceptance import queue as queue_api
 from acceptance import records as records_api
 from acceptance import report as report_api
 from acceptance import results as results_api
+from acceptance import runner as runner_api
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.checks import catalog
@@ -168,6 +169,9 @@ class PultApp:
     web_dir: Path | None = None
     run_lock: threading.Lock = field(default_factory=threading.Lock)
     run_cards: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Выбор данных и модели для проверок без карточки (`ml-params`, решение 2 = а):
+    #: живёт в процессе, как и карточки запуска, и уходит в `params` при запуске.
+    run_params: dict[str, dict[str, Any]] = field(default_factory=dict)
     last_run: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -731,6 +735,85 @@ class PultApp:
             return self._empty_run()
         return self._run_view(session)
 
+    def _ml_values(self, check_id: str, card: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Выбранные данные и модель пункта: карточка запуска главнее панели параметров.
+
+        Проверки `live`/`heavy` хранят выбор в карточке (решение 4 = а), проверки без
+        карточки — в `run_params` (решение 2 = а). Оба источника нужны для подстановки
+        в вызов (`llm_tasks/49`, задача 1б).
+        """
+        saved = dict(self.run_params.get(check_id) or {})
+        evidence = dict(card if card is not None else self.run_cards.get(check_id) or {})
+        for key in (*runner_api.ML_PARAMS, "dataset_label", "model_label"):
+            value = str(evidence.get(key) or "").strip()
+            if value:
+                saved[key] = value
+        return {str(key): value for key, value in saved.items() if str(value or "").strip()}
+
+    def _ml_required_fields(self, check_id: str) -> list[str]:
+        """Поля датасета и модели, обязательные для этой проверки (`llm_tasks/49`, 1б).
+
+        Нужны и карточке запуска (`validate(required_extra=…)`), и отказу при вызове:
+        список обязательных полей живёт в одном месте и не расходится между формой
+        и API.
+        """
+        spec = catalog.find(check_id)
+        if spec is None:
+            return []
+        needs = runner_api.ml_params_required(spec)
+        return [
+            field
+            for field, required in (
+                (runner_api.ML_DATASET_FIELD, needs["dataset"]),
+                (runner_api.ML_MODEL_PARAM, needs["model"]),
+            )
+            if required
+        ]
+
+    def _missing_ml(self, check_id: str, values: Mapping[str, Any]) -> list[str]:
+        """Какие обязательные для проверки параметры не выбраны (`llm_tasks/49`, 1б).
+
+        Правило берётся из спецификации (`runner.ml_params_required`), поэтому пульт не
+        требует датасет у проверки, которая его не использует, и не молчит там, где
+        без датасета вызов ушёл бы с заглушкой `"<uuid>"`.
+        """
+        spec = catalog.find(check_id)
+        if spec is None:
+            return []
+        needs = runner_api.ml_params_required(spec)
+        missing: list[str] = []
+        if needs["dataset"] and not str(values.get(runner_api.ML_DATASET_FIELD) or "").strip():
+            missing.append(run_card.FIELD_LABELS[runner_api.ML_DATASET_FIELD])
+        if needs["model"] and not str(values.get(runner_api.ML_MODEL_PARAM) or "").strip():
+            missing.append(run_card.FIELD_LABELS[runner_api.ML_MODEL_PARAM])
+        return missing
+
+    def _composition_of(
+        self, session: TestSession | None, dataset: Any, files: Sequence[Any] | None = None
+    ) -> Any:
+        """Состав датасета из кэша: нужен для подписи «датасет «X» (104 файла)» и панели.
+
+        Читается только для того датасета, который оператор выбрал для проверки: на
+        отрисовку экрана прогона нельзя читать составы всех датасетов — за каждым стоит
+        обращение к `$Задачам` стенда (`llm_tasks/49`, задача 1б).
+        """
+        runtime = self.state.runtime()
+        dataset_id = str(getattr(dataset, "id", "") or "")
+        if session is None or runtime is None or not dataset_id:
+            return None
+
+        def load() -> Any:
+            return composition_api.read_composition(
+                session,
+                runtime.apis,
+                dataset_id,
+                name=str(getattr(dataset, "name", "") or ""),
+                dataset_type=str(getattr(dataset, "type", "") or ""),
+                files=files,
+            )
+
+        return self.state.composition_cache(load, key=f"composition|{dataset_id}")
+
     def _empty_run(self) -> dict[str, Any]:
         """Вид прогона, когда сессия не выбрана: экран показывает «нет сессии» (`IR-P-8`)."""
         return {
@@ -772,6 +855,41 @@ class PultApp:
         next_id = "" if following is None else following.check_id
         item = programme.find(next_id) if next_id else None
         card = self.run_cards.get(next_id) if next_id else None
+        # Выбор данных и модели: карточка (`live`/`heavy`) или панель параметров (решение 2 = а).
+        ml_values = self._ml_values(next_id, card) if next_id else {}
+        datasets, _datasets_error = self.state.datasets() if item is not None else ([], None)
+        models, _models_error = self.state.models() if item is not None else ([], None)
+        chosen_dataset = next(
+            (
+                row
+                for row in datasets
+                if str(getattr(row, "id", "") or "") == ml_values.get("dataset_id")
+            ),
+            None,
+        )
+        composition = (
+            self._composition_of(session, chosen_dataset) if chosen_dataset is not None else None
+        )
+        known_compositions = (
+            {str(getattr(chosen_dataset, "id", "")): composition}
+            if chosen_dataset is not None and composition is not None
+            else {}
+        )
+        ml = view.ml_view(
+            item,
+            datasets=datasets,
+            compositions=known_compositions,
+            models=models,
+            values=ml_values,
+        )
+        card_options = {
+            str(field["name"]): list(field.get("options") or [])
+            for field in ml.get("fields", [])
+            if field.get("options")
+        }
+        extra_required = [
+            str(field["name"]) for field in ml.get("fields", []) if field.get("required")
+        ]
         modes = view.modes_view(session)
         return {
             "session": {"id": session.session_id, "status": session.status},
@@ -796,19 +914,32 @@ class PultApp:
                 # проверка без сценария (группы T6–T9): предупреждение видно до нажатия
                 "notice": view.scenario_note(next_id) if next_id else "",
                 "item": view.run_next_view(
-                    item, values=card, session=session, author=self._author()
+                    item,
+                    values={**(card or {}), **ml.get("values", {})},
+                    session=session,
+                    author=self._author(),
+                    ml=ml,
+                    card_options=card_options,
+                    extra_required=extra_required,
+                    data_hint=str(ml.get("data_hint") or ""),
                 ),
+                "ml": ml,
             },
             "batch": view.batch_view(queue, programme),
             "card_ready": bool(card),
             "card": view.run_card_view(
                 item,
-                values=card,
+                values={**(card or {}), **ml.get("values", {})},
                 session_id=session.session_id,
                 author=self._author(),
+                options=card_options,
+                extra_required=extra_required,
+                data_hint=str(ml.get("data_hint") or ""),
             )
             if item is not None
             else {},
+            "ml": ml,
+            "ml_values": ml_values,
             "rows": view.run_rows(session, programme, queue),
             "written": written_ids,
             "last_run": dict(self.last_run),
@@ -852,7 +983,22 @@ class PultApp:
         following = queue.next_item()
         target = check_id or ("" if following is None else following.check_id)
         card = self.run_cards.get(target) if target else None
-        params = {str(key): value for key, value in dict(payload.get("params") or {}).items()}
+        # Параметры запуска: выбранные данные и модель (карточка или панель) + правки оператора.
+        # Правило «JS ничего не решает» сохранено: значения собирает сервер (`llm_tasks/49`, 1б).
+        params = {
+            **self._ml_values(target, card),
+            **{str(key): value for key, value in dict(payload.get("params") or {}).items()},
+        }
+        if action == "call" and target:
+            missing = self._missing_ml(target, params)
+            if missing:
+                raise ApiError(
+                    f"{target}: не выбрано — "
+                    + ", ".join(missing)
+                    + ". Выберите данные и модель на странице «Прогон» "
+                    "(для `live`/`heavy` — в карточке запуска, иначе — в параметрах проверки)",
+                    status=422,
+                )
         author = self._author()
         client = self.state.console_client()
         if not self.run_lock.acquire(blocking=False):
@@ -955,7 +1101,8 @@ class PultApp:
             if item is None:
                 raise ApiError(f"проверка {check_id} не входит в программу сессии", status=404)
             values = {str(key): value for key, value in dict(payload.get("values") or {}).items()}
-            missing = run_card.validate(values)
+            extra = self._ml_required_fields(check_id)
+            missing = run_card.validate(values, required_extra=extra)
             if missing:
                 raise ApiError(
                     "Карточка запуска заполнена не полностью: " + ", ".join(missing), status=422
@@ -964,6 +1111,23 @@ class PultApp:
             session.add_history(
                 "run_card_filled",
                 f"Карточка запуска для {check_id} заполнена",
+                check_id=check_id,
+            )
+        elif action == "ml-params":
+            # Проверки без карточки (`TC-INF-02/03/04`, `TC-TR-01`): выбор данных и модели
+            # хранится отдельно и уходит в `params` при запуске (решение заказчика 2 = а).
+            if item is None:
+                raise ApiError(f"проверка {check_id} не входит в программу сессии", status=404)
+            values = {
+                str(key): str(value)
+                for key, value in dict(payload.get("values") or {}).items()
+                if str(value or "").strip()
+            }
+            self.run_params[check_id] = values
+            session.add_history(
+                "ml_params_set",
+                f"Выбраны данные для {check_id}: "
+                + (", ".join(f"{key}={value}" for key, value in values.items()) or "нет"),
                 check_id=check_id,
             )
         else:
