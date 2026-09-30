@@ -1401,12 +1401,16 @@ async function refresh() {
   }
 }
 
+/** Порядок вкладок, согласованный с заказчиком (стража — тест в `test_pult_server.py`).
+ *  Стартовая вкладка — «Планирование»: пульт открывается на подготовке испытаний.
+ */
+const PANELS = ["planning", "sessions", "run", "results", "journal"];
+
 /** Панель из адреса страницы: `#planning`, `#journal/12` — открыть вкладку и запись (`IR-P-4`). */
 function panelFromHash() {
   const raw = (window.location.hash || "").replace("#", "");
   const [name, argument] = raw.split("/");
-  const known = ["run", "planning", "results", "sessions", "journal"];
-  return { panel: known.includes(name) ? name : "run", argument: argument || "" };
+  return { panel: PANELS.includes(name) ? name : PANELS[0], argument: argument || "" };
 }
 
 /** Показывает панель и подгружает её данные. */

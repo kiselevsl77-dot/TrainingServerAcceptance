@@ -1008,7 +1008,51 @@ def test_protocol_csv_is_served_as_attachment(pult: PultApp) -> None:
     finally:
         server.shutdown()
         server.server_close()
-        thread.join(timeout=5)
+    thread.join(timeout=5)
+
+
+#: Порядок вкладок пульта, согласованный с заказчиком (`llm_tasks/49`): работа идёт
+#: от подготовки (планирование, сессии) к прогону, результатам и разбору обмена.
+#: Список один на HTML и JS: иначе кнопки на экране и `panelFromHash` разъедутся.
+PANEL_ORDER: tuple[tuple[str, str], ...] = (
+    ("planning", "Планирование"),
+    ("sessions", "Сессии"),
+    ("run", "Прогон"),
+    ("results", "Результаты"),
+    ("journal", "Лента обмена"),
+)
+
+#: Кнопка вкладки в разметке: класс (`is-active` только у стартовой), ключ панели и подпись.
+TAB_BUTTON = re.compile(
+    r'<button class="tab[^"]*" data-panel="([^"]+)" type="button">([^<]+)</button>'
+)
+
+
+def test_tab_order_matches_agreed_sequence(pult: PultApp) -> None:
+    """Порядок вкладок и стартовая панель совпадают с согласованными (`IR-P-4`).
+
+    Регресс-страж: порядок «Прогон, Планирование, Результаты, Сессии, Лента обмена»
+    остался от первой сборки страницы и разошёлся с порядком работы оператора
+    (`llm_tasks/49` §«Порядок работ»). Проверяются разом три места, которые обязаны
+    совпадать: разметка вкладок, активная панель и список панелей в JS.
+    """
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    script = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    tabs = [match.groups() for match in TAB_BUTTON.finditer(html)]
+    assert tabs == list(PANEL_ORDER), "порядок и подписи вкладок в index.html"
+    assert '<button class="tab is-active" data-panel="planning"' in html, (
+        "пульт открывается на «Планировании»"
+    )
+    assert 'class="panel is-active" id="panel-planning"' in html, "активная панель — «Планирование»"
+
+    declared = re.search(r"const PANELS = \[([^\]]+)\];", script)
+    assert declared is not None, "в app.js нет списка панелей"
+    keys = [part.strip().strip('"') for part in declared.group(1).split(",")]
+    assert keys == [key for key, _ in PANEL_ORDER], "список панелей в app.js"
+    assert "PANELS.includes(name) ? name : PANELS[0]" in script, (
+        "неизвестный адрес открывает стартовую вкладку, а не «Прогон»"
+    )
 
 
 def test_static_reads_binary_files_as_bytes(tmp_path: Path) -> None:
