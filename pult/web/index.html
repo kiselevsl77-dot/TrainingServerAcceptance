@@ -33,13 +33,15 @@
       <div id="warnings" class="warnings" hidden></div>
     </header>
 
-    <!-- Порядок вкладок согласован: Планирование → Сессии → Прогон → Результаты → Лента
-         обмена (стартовая — «Планирование»). Стража порядка — тест
+    <!-- Порядок вкладок согласован: Планирование → Сессии → Прогон → Задачи → Результаты →
+         Лента обмена (стартовая — «Планирование»). «Задачи» — панель фоновых прогонов
+         проверок и наблюдения за задачами стенда (`FR-T11`). Стража порядка — тест
          `test_tab_order_matches_agreed_sequence`. -->
     <nav class="tabs">
       <button class="tab is-active" data-panel="planning" type="button">Планирование</button>
       <button class="tab" data-panel="sessions" type="button">Сессии</button>
       <button class="tab" data-panel="run" type="button">Прогон</button>
+      <button class="tab" data-panel="tasks" type="button">Задачи</button>
       <button class="tab" data-panel="results" type="button">Результаты</button>
       <button class="tab" data-panel="journal" type="button">Лента обмена</button>
     </nav>
@@ -70,6 +72,8 @@
           <div class="row">
             <button class="btn btn--primary" id="run-next" type="button">▶ Следующая</button>
             <button class="btn" id="run-batch" type="button">▶▶ Пачка tech</button>
+            <button class="btn" id="run-next-bg" type="button" title="Тяжёлые проверки идут минутами: ответ приходит сразу, прогресс — на вкладке «Задачи»">▶ Следующая (фоном)</button>
+            <span class="muted" id="run-job"></span>
           </div>
 
           <div class="zone__sub" id="run-card" hidden>
@@ -334,6 +338,88 @@
           <label>Организация <input id="new-lab" /></label>
           <button class="btn btn--primary" type="submit">Создать сессию</button>
         </form>
+      </section>
+
+      <section class="panel" id="panel-tasks">
+        <div class="panel__head">
+          <h2>Задачи и фоновые прогоны</h2>
+          <span class="muted" id="tasks-meta"></span>
+          <span class="grow"></span>
+          <button class="btn btn--ghost" id="tasks-refresh" type="button">⟳ Обновить</button>
+        </div>
+        <div id="tasks-note" class="notice" hidden></div>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Фоновые прогоны проверок</h3>
+            <span class="muted" id="jobs-note"></span>
+          </div>
+          <table class="grid" id="jobs-table">
+            <thead>
+              <tr>
+                <th>Задание</th>
+                <th>Пункт</th>
+                <th>Статус</th>
+                <th>Начато</th>
+                <th>Длительность</th>
+                <th>Вердикт</th>
+                <th>Журнал</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Наблюдение за задачами</h3>
+            <span class="muted" id="observed-meta"></span>
+          </div>
+          <table class="grid" id="observed-table">
+            <thead>
+              <tr>
+                <th>Задача</th>
+                <th>Тип</th>
+                <th>Проверка</th>
+                <th>Статус</th>
+                <th>Поллинг</th>
+                <th>Опросов</th>
+                <th>Команды</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="row">
+            <label class="check">
+              внешняя задача <input id="external-task-id" placeholder="task_id" />
+            </label>
+            <label class="check">
+              проверка <input id="external-task-check" placeholder="TC-TASK-08" />
+            </label>
+            <button class="btn" id="external-observe" type="button">Поставить на наблюдение</button>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Список задач стенда</h3>
+            <span class="muted" id="task-list-meta"></span>
+          </div>
+          <table class="grid" id="task-list-table">
+            <thead>
+              <tr>
+                <th>Задача</th>
+                <th>Тип</th>
+                <th>Название</th>
+                <th>Создана</th>
+                <th>Статус</th>
+                <th>Источник</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
       </section>
 
       <section class="panel" id="panel-results">

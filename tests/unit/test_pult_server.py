@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import replace
@@ -31,6 +32,7 @@ import pytest
 
 from acceptance import session as session_api
 from acceptance import sets as sets_api
+from acceptance import tasks_monitor
 from acceptance.api import Apis
 from acceptance.checks import catalog
 from acceptance.config import PultConfig
@@ -39,11 +41,15 @@ from acceptance.logging_setup import setup_logging
 from client.http import ApiHttpClient
 from client.schemas import FileMetadataResponse
 from client.settings import TrainingServerSettings
+from pult import jobs as jobs_api
 from pult.server import ApiError, PultApp, Raw, compile_route, serve
 from pult.state import PultState, Runtime
 
 BASE_URL = "http://test.local"
 AUTHOR = "Петров П.П."
+
+#: Идентификатор внешней задачи для проверок панели «Задачи» (`TC-TASK-08`).
+EXTERNAL_TASK_ID = "11111111-2222-4333-8444-555555555555"
 WEB_DIR = Path(__file__).resolve().parents[2] / "pult" / "web"
 
 
@@ -1122,6 +1128,7 @@ PANEL_ORDER: tuple[tuple[str, str], ...] = (
     ("planning", "Планирование"),
     ("sessions", "Сессии"),
     ("run", "Прогон"),
+    ("tasks", "Задачи"),
     ("results", "Результаты"),
     ("journal", "Лента обмена"),
 )
@@ -1161,7 +1168,6 @@ def test_tab_order_matches_agreed_sequence(pult: PultApp) -> None:
         "каждой вкладке соответствует своя панель `panel-<ключ>`"
     )
     assert html.count('class="panel is-active"') == 1, "активная панель ровно одна"
-
     declared = re.search(r"const PANELS = \[([^\]]+)\];", script)
     assert declared is not None, "в app.js нет списка панелей"
     keys = [part.strip().strip('"') for part in declared.group(1).split(",")]
@@ -1169,6 +1175,140 @@ def test_tab_order_matches_agreed_sequence(pult: PultApp) -> None:
     assert "PANELS.includes(name) ? name : PANELS[0]" in script, (
         "неизвестный адрес открывает стартовую вкладку, а не «Прогон»"
     )
+
+
+# ---------------------------------------------------------------------------
+# Фоновые прогоны и панель «Задачи» (шаг 4 плана M2)
+# ---------------------------------------------------------------------------
+def _wait_job(pult: PultApp, job_id: str, timeout: float = 10.0) -> dict[str, Any]:
+    """Ждёт завершения задания: опрашивает `GET /api/jobs/{job_id}` как панель."""
+    deadline = time.monotonic() + timeout
+    job = get(pult, f"/api/jobs/{job_id}")["job"]
+    while job["active"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+        job = get(pult, f"/api/jobs/{job_id}")["job"]
+    return job
+
+
+def test_run_in_background_returns_job_and_history(pult: PultApp) -> None:
+    """`POST /api/run` с `background` отвечает сразу и показывает задание в «Задачах»."""
+    check_id = _with_checks(pult, check_class="tech", check_id="TC-SYS-01")
+
+    started = post(pult, "/api/run", action="next", background=True)
+
+    job = started["job"]
+    assert job["check_id"] == check_id
+    assert job["label"].startswith(f"{check_id}: ")
+    assert job["status"] in (jobs_api.JOB_QUEUED, jobs_api.JOB_RUNNING)
+    assert "outcomes" not in started, "фоновый запуск не ждёт результатов"
+
+    finished = _wait_job(pult, job["job_id"])
+    assert finished["status"] == jobs_api.JOB_DONE, finished["error"]
+    assert finished["duration_ms"] >= 0
+    assert finished["rows"], "задание обязано принести строки результатов"
+    assert finished["verdict"]
+
+    panel = get(pult, "/api/jobs")
+    assert panel["active"] is None
+    assert [row["job_id"] for row in panel["jobs_view"]["rows"]] == [job["job_id"]]
+    assert panel["jobs_view"]["rows"][0]["status"] == jobs_api.JOB_DONE
+    assert "Прогон идёт" not in panel["jobs_view"]["note"]
+
+
+def test_run_in_background_rejects_second_run(pult: PultApp) -> None:
+    """Второй фоновый прогон отклоняется: одно задание за раз (`NFR-P-5`)."""
+    _with_checks(pult, check_class="tech", check_id="TC-SYS-01")
+    release = threading.Event()
+
+    def work() -> dict[str, Any]:
+        release.wait(5.0)
+        return {"rows": [], "verdict": ""}
+
+    pult.jobs.start(check_id="TC-SYS-01", action="next", work=work)
+    try:
+        with pytest.raises(ApiError) as error:
+            post(pult, "/api/run", action="next", background=True)
+    finally:
+        release.set()
+
+    assert error.value.status == 409
+    assert "Прогон уже идёт" in error.value.message
+
+
+def test_job_endpoint_reports_unknown_id(pult: PultApp) -> None:
+    """Неизвестное задание — 404 с понятным текстом (панель не «висит»)."""
+    with pytest.raises(ApiError) as error:
+        get(pult, "/api/jobs/нет-такого")
+
+    assert error.value.status == 404
+    assert "не найдено" in error.value.message
+
+
+def test_tasks_panel_shows_list_without_status(pult: PultApp) -> None:
+    """`GET /api/tasks` — наблюдения, KPI и список задач с честным источником статуса."""
+    _with_checks(pult, check_class="tech", check_id="TC-SYS-01")
+
+    data = get(pult, "/api/tasks")
+
+    assert data["configured"] is True
+    assert data["observed"] == []
+    assert data["list"] == [], "подменённый стенд отдаёт пустой список задач"
+    assert data["commands"] == list(tasks_monitor.TASK_COMMANDS)
+    assert data["kpi"]["total"] == 0, "наблюдений нет — KPI пуст"
+
+
+def test_tasks_panel_without_session_notes_it(pult: PultApp) -> None:
+    """Без сессии панель работает, но честно сообщает, что наблюдений нет."""
+    data = get(pult, "/api/tasks")
+
+    assert data["configured"] is True
+    assert "Сессия испытаний не выбрана" in data["note"]
+
+
+def test_task_action_observes_external_task_and_refuses_command(pult: PultApp) -> None:
+    """Внешняя задача ставится на наблюдение; команда без статуса не отправляется."""
+    _with_checks(pult, check_class="tech", check_id="TC-SYS-01")
+
+    observed = post(
+        pult,
+        f"/api/tasks/{EXTERNAL_TASK_ID}",
+        action="observe",
+        task_type="celery-test",
+        check_id="TC-TASK-08",
+    )
+
+    assert observed["record"]["task_id"] == EXTERNAL_TASK_ID
+    rows = observed["tasks"]["observed"]
+    assert [row["task_id"] for row in rows] == [EXTERNAL_TASK_ID]
+    assert rows[0]["check_id"] == "TC-TASK-08"
+    assert rows[0]["status_label"] == tasks_monitor.status_label("")
+    assert rows[0]["actions"] == [], "пока статус неизвестен, команд не предлагаем"
+
+    command = post(pult, f"/api/tasks/{EXTERNAL_TASK_ID}", action="pause")
+
+    assert command["allowed"] is False
+    assert command["command"]["sent"] is False
+    assert "запрещена текущим статусом" in command["command"]["variant"]
+
+
+def test_task_action_requires_session(pult: PultApp) -> None:
+    """Действие по задаче без сессии — 409: наблюдения хранятся в сессии."""
+    with pytest.raises(ApiError) as error:
+        post(pult, f"/api/tasks/{EXTERNAL_TASK_ID}", action="observe")
+
+    assert error.value.status == 409
+    assert "Сессия испытаний не выбрана" in error.value.message
+
+
+def test_task_action_rejects_unknown_action(pult: PultApp) -> None:
+    """Неизвестное действие по задаче — 422, а не «тихий» успех."""
+    _with_checks(pult, check_class="tech", check_id="TC-SYS-01")
+
+    with pytest.raises(ApiError) as error:
+        post(pult, f"/api/tasks/{EXTERNAL_TASK_ID}", action="телепорт")
+
+    assert error.value.status == 422
+    assert "неизвестное действие" in error.value.message
 
 
 def test_static_reads_binary_files_as_bytes(tmp_path: Path) -> None:

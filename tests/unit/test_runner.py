@@ -800,11 +800,16 @@ def test_substitute_placeholders_replaces_top_level_only() -> None:
 
     Списки и вложенные объекты не изменяются: в `fill` это `raw_file_ids`, в AutoML —
     `range`. Иначе пульт подменил бы данные, которых оператор не выбирал.
+
+    Отдельное правило — правки оператора для ресурсоёмких проверок (`ML_OVERRIDES`):
+    `epochs` (и другие числовые параметры) в заготовке стоят числом, а не заглушкой,
+    поэтому значение карточки запуска заменяет поле и приводится к типу схемы.
     """
     body = {
         "dataset_id": "<uuid>",
         "model_id": "<uuid>",
         "epochs": 50,
+        "threshold": 0.5,
         "raw_file_ids": ["<uuid>"],
         "range": {"from": "<uuid>"},
     }
@@ -813,15 +818,27 @@ def test_substitute_placeholders_replaces_top_level_only() -> None:
         {
             "dataset_id": "11111111-1111-1111-1111-111111111111",
             "model_id": "22222222-2222-2222-2222-222222222222",
-            "epochs": 999,
+            "epochs": "7",
+            "threshold": "0,75",
         },
     )
 
     assert result["dataset_id"] == "11111111-1111-1111-1111-111111111111"
     assert result["model_id"] == "22222222-2222-2222-2222-222222222222"
-    assert result["epochs"] == 50, "не-заглушки не подменяются"
+    assert result["epochs"] == 7, "правка оператора заменяет число из заготовки"
+    assert isinstance(result["epochs"], int)
+    assert result["threshold"] == 0.75, "дробное значение принимает и запятую"
     assert result["raw_file_ids"] == ["<uuid>"], "списки не трогаем"
     assert result["range"] == {"from": "<uuid>"}, "вложенные объекты не трогаем"
+
+    kept = runner_api.substitute_placeholders({"epochs": 50}, {"epochs": "не число"})
+    assert kept["epochs"] == 50, "непонятное значение не портит тело вызова"
+
+    empty = runner_api.substitute_placeholders({"dataset_id": "<uuid>"}, {"dataset_id": "  "})
+    assert empty["dataset_id"] == "<uuid>", "пустой выбор не превращается в пустую строку"
+    assert runner_api.substitute_placeholders({"dataset_id": "<uuid>"}, {}) == {
+        "dataset_id": "<uuid>"
+    }
 
     empty = runner_api.substitute_placeholders({"dataset_id": "<uuid>"}, {"dataset_id": "  "})
     assert empty["dataset_id"] == "<uuid>", "пустой выбор не превращается в пустую строку"

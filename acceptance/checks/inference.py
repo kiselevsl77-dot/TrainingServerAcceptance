@@ -93,7 +93,9 @@ def _read_sample(context: AutomationContext) -> RawSample:
     except (ApiError, ClientError, ServerUnavailableError) as exc:
         raise PreconditionError(f"реестр файлов не получен: {exc}") from exc
 
-    chosen = pick_raw_file(files, file_id=context.param("file_id"))
+    chosen = pick_raw_file(
+        files, file_id=context.param("sample_file_id") or context.param("file_id")
+    )
     if chosen is None:
         raise PreconditionError(
             "в реестре нет RAW-файла с ASCII-именем: укажите `file_id` на карточке проверки"

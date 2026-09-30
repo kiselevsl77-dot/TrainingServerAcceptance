@@ -215,13 +215,26 @@ def _ml_payload(operation: str, *, values: dict[str, Any]) -> PayloadPreview:
         else f"модель — {GENERATED} (если моделей на стенде нет, сначала `TC-MOD-02`)"
     )
     method, _, path = operation.partition(" ")
+    numbers = [
+        f"{name}={values[name]}"
+        for name in ("epochs", "batch_size", "learning_rate", "threshold")
+        if str(values.get(name) or "").strip()
+    ]
+    sample = str(values.get("sample_file_id") or "").strip()
+    extra = f"; параметры оператора: {', '.join(numbers)}" if numbers else ""
+    if sample:
+        extra += (
+            f"; файл сэмпла: {TEST_PREFIX}… ({len(sample)} симв.)"
+            if len(sample) > 12
+            else f"; файл сэмпла: `{sample}`"
+        )
     return PayloadPreview(
         kind=ML_KIND_LABELS.get(operation, "ML-операция"),
         target=f"{method.upper()} {path}",
         name=model_text,
         content=(
             f"{dataset_text}; параметры — из заготовки операции, выбранные значения "
-            "подставляются в тело (`runner.substitute_placeholders`)"
+            "подставляются в тело (`runner.substitute_placeholders`)" + extra
         ),
         removed_after=False,
         note=(

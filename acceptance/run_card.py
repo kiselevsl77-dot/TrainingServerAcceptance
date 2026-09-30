@@ -38,9 +38,26 @@ FIELD_LABELS: dict[str, str] = {
     "data": "Данные, на которых выполняется",
     "dataset_id": "Датасет для проверки",
     "model_id": "Модель",
+    "epochs": "Эпох обучения",
+    "batch_size": "Размер батча",
+    "learning_rate": "Скорость обучения",
+    "threshold": "Порог классификации",
+    "sample_file_id": "Файл сэмпла (для `inference/single`)",
+    "keep_artifact": "Оставить результат обучения артефактом",
     "responsible": "Ответственный",
     "artifacts": "Что делать с артефактами",
     "confirm": "Подтверждаю расход ресурсов",
+}
+
+#: Параметры ресурсоёмких проверок: подставляются и в карточку, и в тело вызова
+#: (`runner.ML_PARAMS`). Значения по умолчанию совпадают со спецификацией.
+ML_DEFAULTS: dict[str, Any] = {
+    "epochs": 3,
+    "batch_size": 32,
+    "learning_rate": 1e-07,
+    "threshold": 0.5,
+    "sample_file_id": "",
+    "keep_artifact": False,
 }
 
 #: Варианты действий с артефактами после проверки (макет `docs/16`, `SCR-301`).
@@ -74,6 +91,7 @@ def defaults(
         "data": data,
         "dataset_id": "",
         "model_id": "",
+        **ML_DEFAULTS,
         "responsible": str(author),
         "artifacts": ARTIFACT_ACTIONS[0],
         "confirm": False,
@@ -101,7 +119,9 @@ def evidence(values: Mapping[str, Any], *, author: str = "", at: str = "") -> di
 
     Выбранные датасет и модель записываются и идентификаторами, и подписями: по протоколу
     должно быть видно не только «на каком датасете считали», но и как он назывался
-    и сколько в нём файлов (`llm_tasks/49`, вопрос 5 = а).
+    и сколько в нём файлов (`llm_tasks/49`, вопрос 5 = а). Параметры ресурсоёмкой
+    операции (`epochs`, `batch_size`, `learning_rate`, `threshold`, файл сэмпла и
+    решение об артефакте) тоже попадают в доказательства: по ним воспроизводится прогон.
     """
     payload: dict[str, Any] = {
         "at": at or now_iso(),
@@ -115,6 +135,11 @@ def evidence(values: Mapping[str, Any], *, author: str = "", at: str = "") -> di
         "responsible": str(values.get("responsible") or "").strip(),
         "artifacts": str(values.get("artifacts") or "").strip(),
         "confirm": bool(values.get("confirm")),
+    }
+    payload["ml"] = {
+        name: values.get(name)
+        for name in ML_DEFAULTS
+        if str(values.get(name) or "").strip() or values.get(name) is True
     }
     payload["missing"] = validate(values)
     payload["filled"] = not payload["missing"]

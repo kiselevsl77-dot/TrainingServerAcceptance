@@ -708,7 +708,31 @@ ML_DATASET_FIELD = "dataset_id"
 ML_MODEL_PARAM = "model_id"
 
 #: Имена параметров, которые пульт подставляет в вызов автоматически.
-ML_PARAMS: tuple[str, ...] = (ML_DATASET_FIELD, ML_MODEL_PARAM)
+ML_PARAMS: tuple[str, ...] = (
+    ML_DATASET_FIELD,
+    ML_MODEL_PARAM,
+    "epochs",
+    "batch_size",
+    "learning_rate",
+    "threshold",
+    "sample_file_id",
+    "keep_artifact",
+)
+
+#: Правки оператора, которые заменяют значения тела вызова даже числами из заготовки.
+#:
+#: В `ModelTrainingRequest` спецификация даёт числовые значения по умолчанию
+#: (`epochs: 50`, `batch_size: 32`, `learning_rate: 1e-07`) — подстановка «по
+#: плейсхолдеру» их не заменяет, поэтому для ресурсоёмких проверок правило расширено:
+#: оператор задаёт параметры в карточке запуска, и они уходят в тело (`llm_tasks/52`).
+ML_OVERRIDES: dict[str, tuple[type, ...]] = {
+    "epochs": (int,),
+    "batch_size": (int,),
+    "learning_rate": (float, int),
+    "threshold": (float, int),
+    "preprocessing_converter": (str,),
+    "trained_model_name": (str,),
+}
 
 
 def ml_params_required(spec: CheckSpec) -> dict[str, bool]:
@@ -743,6 +767,10 @@ def substitute_placeholders(body: dict[str, Any], values: dict[str, Any]) -> dic
     параметр с тем же именем; списки и вложенные объекты не трогаем (в `fill` это
     `raw_file_ids`, в AutoML — `range`), а собственное тело пункта (`values["body"]`)
     по-прежнему главнее любой заготовки.
+
+    Отдельно применяются правки оператора из `ML_OVERRIDES` (`epochs`, `batch_size`,
+    `learning_rate`, `threshold`): у них в заготовке стоят числа, а не плейсхолдеры,
+    поэтому значение оператора заменяет поле, если приводится к нужному типу.
     """
     for key, value in list(body.items()):
         if not isinstance(value, str) or not value.startswith("<") or not value.endswith(">"):
@@ -751,7 +779,31 @@ def substitute_placeholders(body: dict[str, Any], values: dict[str, Any]) -> dic
         if replacement is None or str(replacement).strip() == "":
             continue
         body[key] = str(replacement)
+    for key, types in ML_OVERRIDES.items():
+        if key not in body:
+            continue
+        raw = values.get(key)
+        if raw is None or str(raw).strip() == "":
+            continue
+        converted = _typed(raw, types)
+        if converted is not None:
+            body[key] = converted
     return body
+
+
+def _typed(value: Any, types: tuple[type, ...]) -> Any:
+    """Приводит правку оператора к нужному типу (None — если не приводится)."""
+    for kind in types:
+        if bool is not kind and isinstance(value, kind):
+            return value
+    for kind in types:
+        if kind is bool:
+            continue
+        try:
+            return kind(str(value).strip().replace(",", "."))
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _is_binary(step: CallStep) -> bool:

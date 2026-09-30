@@ -42,9 +42,40 @@ from acceptance.checks.registry import CLASS_LABELS, STATUS_ICONS, CheckClass, C
 from acceptance.exchange import curl_command
 from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICONS, QUEUE_STATES
 from acceptance.session import TestSession
+from acceptance.tasks_monitor import TaskMonitor, status_color, status_glyph, status_label
 
 #: Разделитель подписей в «одной строке» (макет печатает ` · `).
 SEPARATOR = " · "
+
+#: Порог «длинного» значения параметра проверки: base64-сигналы в панель не печатаются.
+LONG_VALUE_HINT = 64
+
+#: Подписи источников статуса задачи (`acceptance.tasks_monitor`).
+SOURCE_LABELS: dict[str, str] = {
+    "карточка": "карточка",
+    "снимок": "снимок",
+    "опрос": "опрос",
+    "нет данных": "нет данных",
+}
+
+
+def mask_params(values: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Маскирует длинные значения параметров проверки (base64-сигналы) для интерфейса.
+
+    В `inference/single` уходит шесть Base64-сигналов по несколько килобайт: печатать
+    их в панели «Задачи» и в предупреждениях нельзя — оператору нужен факт выбора,
+    а не содержимое (`llm_tasks/52`, шаг 4).
+    """
+    masked: dict[str, Any] = {}
+    for key, value in dict(values or {}).items():
+        text = str(value if value is not None else "")
+        if len(text) > LONG_VALUE_HINT:
+            kind = "base64" if "signal" in str(key).lower() else "длинное значение"
+            masked[str(key)] = f"<{kind}: {len(text)} симв.>"
+        else:
+            masked[str(key)] = value
+    return masked
+
 
 #: Маркеры очереди: как они называются оператору (макет `docs/16` §0).
 MARKER_LABELS: dict[str, str] = {
@@ -440,6 +471,12 @@ CARD_FIELD_KINDS: dict[str, str] = {
     "data": "text",
     "dataset_id": "select",
     "model_id": "select",
+    "epochs": "number",
+    "batch_size": "number",
+    "learning_rate": "number",
+    "threshold": "number",
+    "sample_file_id": "text",
+    "keep_artifact": "checkbox",
     "responsible": "text",
     "artifacts": "select",
     "confirm": "checkbox",
@@ -2171,3 +2208,131 @@ def session_form_view(session: TestSession) -> dict[str, Any]:
             for entry in list(session.history)[-50:]
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Панель «Задачи»: наблюдение за задачами стенда и фоновые прогоны (FR-T11)
+# ---------------------------------------------------------------------------
+def task_rows(monitor: TaskMonitor, session: TestSession) -> list[dict[str, Any]]:
+    """Строки таблицы наблюдения: задача, статус, поллинг, команды FSM-1 (`FR-T11`).
+
+    Статус берётся из записи сессии (последний опрос монитора): список задач сервера
+    статуса не отдаёт, поэтому наблюдение — единственный источник факта.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in monitor.observed(session):
+        rows.append(
+            {
+                "task_id": item.task_id,
+                "short_id": item.task_id[:8],
+                "task_type": item.task_type,
+                "name": item.name,
+                "origin": item.origin,
+                "check_id": item.check_id,
+                "status": item.status,
+                "status_label": item.status_label,
+                "icon": item.status_icon,
+                "glyph": status_glyph(item.status),
+                "color": status_color(item.status),
+                "terminal": item.is_terminal,
+                "actions": [str(name) for name in item.actions],
+                "interval": item.interval,
+                "active": item.active,
+                "polls": item.polls,
+                "last_poll": str(item.last_poll or ""),
+                "first_seen": item.first_seen,
+                "last_seen": item.last_seen,
+                "journal_from": item.journal_from,
+                "journal_seq": item.journal_seq,
+                "note": item.note,
+                "errors": list(item.errors),
+            }
+        )
+    return rows
+
+
+def task_list_rows(
+    monitor: TaskMonitor, session: TestSession | None, tasks: Iterable[Any]
+) -> list[dict[str, Any]]:
+    """Строки списка задач стенда: статус — из наблюдения, иначе «нет данных».
+
+    `GET /api/tasks/` **не отдаёт статус** (подтверждённый дефект API), поэтому
+    колонка статуса честно показывает источник: «опрос» — задача наблюдается и
+    опрошена, «нет данных» — статус неизвестен (`TC-TASK-02`).
+    """
+    index = monitor.observation_index(session)
+    rows: list[dict[str, Any]] = []
+    for task in tasks:
+        task_id = str(getattr(task, "id", "") or "")
+        observation = index.get(task_id)
+        status = "" if observation is None else observation.status
+        rows.append(
+            {
+                "task_id": task_id,
+                "short_id": task_id[:8],
+                "task_type": str(getattr(task, "type", "") or ""),
+                "name": str(getattr(task, "name", "") or ""),
+                "description": str(getattr(task, "description", "") or ""),
+                "created_at": str(getattr(task, "created_at", "") or ""),
+                "status": status,
+                "status_label": status_label(status) if status else "нет данных",
+                "glyph": status_glyph(status) if status else "?",
+                "source": "опрос" if status else "нет данных",
+                "observed": observation is not None,
+                "check_id": "" if observation is None else observation.check_id,
+                "actions": []
+                if observation is None
+                else [str(name) for name in observation.actions],
+            }
+        )
+    return rows
+
+
+def job_rows(jobs: Iterable[Any]) -> list[dict[str, Any]]:
+    """Строки панели фоновых прогонов: подпись, статус, длительность, вердикт.
+
+    Принимает словари `pult.jobs.Job.as_dict()` или сами задания.
+    """
+    rows: list[dict[str, Any]] = []
+    for job in jobs:
+        data = job.as_dict() if hasattr(job, "as_dict") else dict(job)
+        rows.append(
+            {
+                "job_id": str(data.get("job_id") or ""),
+                "check_id": str(data.get("check_id") or ""),
+                "action": str(data.get("action") or ""),
+                "label": str(data.get("label") or ""),
+                "status": str(data.get("status") or ""),
+                "icon": str(data.get("icon") or ""),
+                "active": bool(data.get("active")),
+                "created_at": str(data.get("created_at") or ""),
+                "duration": str(data.get("duration") or ""),
+                "duration_ms": data.get("duration_ms"),
+                "verdict": str(data.get("verdict") or ""),
+                "error": str(data.get("error") or ""),
+                "rows": list(data.get("rows") or []),
+                "journal_from": data.get("journal_from"),
+                "journal_to": data.get("journal_to"),
+                "params": dict(data.get("params") or {}),
+            }
+        )
+    return rows
+
+
+def jobs_view(jobs: Iterable[Any], *, active: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Панель фоновых прогонов: активное задание, история и подсказка оператору."""
+    rows = job_rows(jobs)
+    active_row = next((row for row in rows if row["active"]), None)
+    if active is not None and active_row is None:
+        active_row = job_rows([active])[0] if active else None
+    note = ""
+    if active_row is not None:
+        note = (
+            f"Прогон идёт: {active_row['label'] or active_row['check_id']} "
+            f"({active_row['status']}). Экран обновляется сам."
+        )
+    elif rows:
+        note = "Активного прогона нет: последнее задание завершено."
+    else:
+        note = "Фоновых прогонов ещё не было."
+    return {"rows": rows, "active": active_row, "note": note}

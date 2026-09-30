@@ -56,9 +56,11 @@ from acceptance.runner import (
     run_batch_tech,
 )
 from acceptance.session import TestSession
+from acceptance.tasks_monitor import TASK_COMMANDS, TaskMonitor
 from client.errors import ClientError
+from pult import jobs as jobs_api
 from pult import view
-from pult.state import STAND_NOT_CONFIGURED, PultState
+from pult.state import READ_ERRORS, STAND_NOT_CONFIGURED, TASK_LIMIT, PultState
 
 #: Порт по умолчанию: 8502 — тот же, что был у Streamlit-пульта (привычка оператора).
 DEFAULT_PORT = 8502
@@ -173,10 +175,36 @@ class PultApp:
     #: живёт в процессе, как и карточки запуска, и уходит в `params` при запуске.
     run_params: dict[str, dict[str, Any]] = field(default_factory=dict)
     last_run: dict[str, Any] = field(default_factory=dict)
+    #: Фоновые прогоны проверок (панель «Задачи», шаг 4 плана M2).
+    jobs: jobs_api.JobRunner = field(default_factory=jobs_api.JobRunner)
+    #: Монитор задач стенда: наблюдения, опрос, команды FSM-1 (`FR-T11`, `UC-26…UC-28`).
+    monitor: Any = None
 
     def __post_init__(self) -> None:
         if self.web_dir is None:
             self.web_dir = Path(__file__).resolve().parent / "web"
+        # фоновые задания фиксируют диапазон журнала: он идёт в доказательства прогона
+        self.jobs.set_journal_seq(self.journal_seq)
+
+    # -- задачи стенда -------------------------------------------------------
+    def task_monitor(self) -> Any:
+        """Монитор задач стенда; None — если адрес стенда не задан (`FR-P-25`)."""
+        runtime = self.state.runtime()
+        if runtime is None:
+            return None
+        interval = float(runtime.config.poll_interval or 0) or None
+        if self.monitor is None:
+            self.monitor = TaskMonitor(
+                runtime.apis.tasks, journal=runtime.journal, interval=interval
+            )
+        return self.monitor
+
+    def journal_seq(self) -> int | None:
+        """Номер последней записи журнала обмена (None — записей нет)."""
+        runtime = self.state.runtime()
+        if runtime is None or not runtime.journal.records:
+            return None
+        return int(runtime.journal.records[-1].seq)
 
     # -- маршрутизация -------------------------------------------------------
     def dispatch(
@@ -1001,61 +1029,239 @@ class PultApp:
                 )
         author = self._author()
         client = self.state.console_client()
-        if not self.run_lock.acquire(blocking=False):
-            raise ApiError("Прогон уже идёт: дождитесь окончания текущего пункта", status=409)
-        try:
-            if action == "next":
-                outcomes = [
-                    execute_next(
+
+        def work() -> dict[str, Any]:
+            """Один прогон: строки результатов и диапазон журнала (идёт в фоне или сразу)."""
+            if not self.run_lock.acquire(blocking=False):
+                raise ApiError("Прогон уже идёт: дождитесь окончания текущего пункта", status=409)
+            journal_from = self.journal_seq()
+            try:
+                if action == "next":
+                    outcomes = [
+                        execute_next(
+                            queue,
+                            programme,
+                            session,
+                            runtime,
+                            check_id=check_id,
+                            client=client,
+                            params=params,
+                            run_evidence=card,
+                            author=author,
+                        )
+                    ]
+                elif action == "batch-tech":
+                    limit = payload.get("limit")
+                    outcomes = run_batch_tech(
                         queue,
                         programme,
                         session,
                         runtime,
-                        check_id=check_id,
+                        limit=None if limit in (None, "") else int(limit),
                         client=client,
                         params=params,
                         run_evidence=card,
                         author=author,
                     )
-                ]
-            elif action == "batch-tech":
-                limit = payload.get("limit")
-                outcomes = run_batch_tech(
-                    queue,
-                    programme,
-                    session,
-                    runtime,
-                    limit=None if limit in (None, "") else int(limit),
-                    client=client,
-                    params=params,
-                    run_evidence=card,
-                    author=author,
+                else:
+                    outcomes = [
+                        execute_call(
+                            queue,
+                            programme,
+                            session,
+                            runtime,
+                            check_id=check_id,
+                            client=client,
+                            params=params,
+                            run_evidence=card,
+                        )
+                    ]
+            finally:
+                self.run_lock.release()
+            self.save(session)
+            rows = view.outcome_rows(outcomes)
+            self.last_run = {
+                "action": action,
+                "at": view.short_time(session_api.now_iso(), "%H:%M:%S"),
+                "rows": rows,
+            }
+            return {
+                "rows": rows,
+                "verdict": jobs_api.verdict_of(rows),
+                "journal_from": journal_from,
+                "journal_to": self.journal_seq(),
+            }
+
+        if _flag(payload.get("background"), False):
+            # фоновый прогон: ответ приходит сразу, прогресс — в панели «Задачи»
+            try:
+                job = self.jobs.start(
+                    check_id=target,
+                    action=action,
+                    work=work,
+                    label=self._check_label(target),
+                    params=view.mask_params(params),
                 )
-            elif action == "call":
-                outcomes = [
-                    execute_call(
-                        queue,
-                        programme,
-                        session,
-                        runtime,
-                        check_id=check_id,
-                        client=client,
-                        params=params,
-                        run_evidence=card,
-                    )
-                ]
-        finally:
-            self.run_lock.release()
-        self.save(session)
-        rows = view.outcome_rows(outcomes)
-        self.last_run = {
-            "action": action,
-            "at": view.short_time(session_api.now_iso(), "%H:%M:%S"),
-            "rows": rows,
-        }
+            except RuntimeError as exc:
+                raise ApiError(str(exc), status=409) from exc
+            data = self._run_view(session, written=[], mode=run_mode)
+            data["job"] = job.as_dict()
+            return data
+
+        result = work()
         data = self._run_view(session, written=[], mode=run_mode)
-        data["outcomes"] = rows
+        data["outcomes"] = result["rows"]
         return data
+
+    def _check_label(self, check_id: str) -> str:
+        """Подпись пункта для панели «Задачи»: «TC-TR-02: Запуск обучения»."""
+        spec = catalog.find(str(check_id or ""))
+        if spec is None:
+            return str(check_id or "")
+        return f"{spec.check_id}: {spec.title}"
+
+    # -- задания, задачи стенда ---------------------------------------------
+    def api_jobs(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
+        """`GET /api/jobs` — фоновые прогоны и наблюдаемые задачи стенда (`FR-T11`)."""
+        session = self.state.current_session()
+        jobs = self.jobs.jobs()
+        active = self.jobs.active()
+        return {
+            "jobs": [job.as_dict() for job in jobs],
+            "jobs_view": view.jobs_view(jobs, active=active.as_dict() if active else None),
+            "active": active.as_dict() if active else None,
+            "tasks": self._tasks_view(session),
+        }
+
+    def api_job(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any], job_id: str
+    ) -> dict[str, Any]:
+        """`GET /api/jobs/{job_id}` — одно задание: статус, вердикт, диапазон журнала."""
+        job = self.jobs.get(str(job_id))
+        if job is None:
+            raise ApiError(f"задание {job_id} не найдено", kind="http", status=404)
+        return {"job": job.as_dict()}
+
+    def _tasks_view(self, session: TestSession | None) -> dict[str, Any]:
+        """Данные панели «Задачи»: наблюдения сессии, KPI и список задач стенда.
+
+        Список задач сервер отдаёт **без статуса** (подтверждённый дефект API), поэтому
+        статус строки берётся из наблюдений монитора; неизвестный статус помечается
+        источником «нет данных» (`FR-T11`, `TC-TASK-02`).
+        """
+        runtime = self.state.runtime()
+        monitor = self.task_monitor()
+        data: dict[str, Any] = {
+            "configured": bool(runtime is not None and monitor is not None),
+            "observed": [],
+            "kpi": {},
+            "list": [],
+            "list_error": "",
+            "note": "",
+            "commands": [str(name) for name in TASK_COMMANDS],
+        }
+        if runtime is None or monitor is None:
+            data["note"] = STAND_NOT_CONFIGURED
+            return data
+        if session is None:
+            data["note"] = "Сессия испытаний не выбрана: наблюдения недоступны"
+        else:
+            try:
+                monitor.adopt_from_session(session)
+                data["observed"] = view.task_rows(monitor, session)
+                data["kpi"] = monitor.kpi(session)
+            except READ_ERRORS as exc:
+                data["note"] = f"наблюдения не прочитаны: {exc}"
+        try:
+            tasks = monitor.find_recent(limit=TASK_LIMIT)
+            data["list"] = view.task_list_rows(monitor, session, tasks)
+        except READ_ERRORS as exc:
+            data["list_error"] = f"список задач не получен: {exc}"
+        return data
+
+    def api_tasks(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
+        """`GET /api/tasks` — панель «Задачи»: наблюдения, KPI и список задач (`FR-T11`)."""
+        return self._tasks_view(self.state.current_session())
+
+    def api_task_action(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any], task_id: str
+    ) -> dict[str, Any]:
+        """`POST /api/tasks/{task_id}` — наблюдение и команды FSM-1 (`UC-26…UC-28`).
+
+        Действия: `observe` (поставить на наблюдение, в том числе внешнюю задачу),
+        `unobserve`, `poll` (внеочередной опрос), `attach` (привязать к проверке) и
+        команды FSM-1 (`pause`, `resume`, `interrupt`). Команда, запрещённая текущим
+        статусом, не отправляется — оператор видит причину (`BR-R3`, FSM-1).
+        """
+        action = str(payload.get("action") or "").strip().lower()
+        session = self.state.current_session()
+        if session is None:
+            raise ApiError("Сессия испытаний не выбрана: работа с задачами недоступна", status=409)
+        monitor = self.task_monitor()
+        if monitor is None:
+            raise ApiError(STAND_NOT_CONFIGURED, status=409)
+        key = str(task_id).strip()
+
+        if action == "observe":
+            record = monitor.register(
+                session,
+                task_id=key,
+                task_type=str(payload.get("task_type") or ""),
+                name=str(payload.get("name") or ""),
+                check_id=str(payload.get("check_id") or ""),
+                note="поставлена на наблюдение оператором",
+            )
+            self.save(session)
+            return {
+                "action": action,
+                "task_id": key,
+                "record": record,
+                "tasks": self._tasks_view(session),
+            }
+        if action == "unobserve":
+            removed = monitor.unregister(session, key)
+            self.save(session)
+            return {
+                "action": action,
+                "task_id": key,
+                "removed": removed,
+                "tasks": self._tasks_view(session),
+            }
+        if action == "poll":
+            poll = monitor.poll_once(session, key)
+            self.save(session)
+            return {
+                "action": action,
+                "task_id": key,
+                "poll": poll.as_dict(),
+                "tasks": self._tasks_view(session),
+            }
+        if action == "attach":
+            check_id = str(payload.get("check_id") or "").strip()
+            if not check_id:
+                raise ApiError("Не указана проверка для привязки задачи", status=422)
+            record = monitor.attach_to_check(session, key, check_id)
+            self.save(session)
+            return {
+                "action": action,
+                "task_id": key,
+                "check_id": check_id,
+                "record": record,
+                "tasks": self._tasks_view(session),
+            }
+        if action in TASK_COMMANDS:
+            command = monitor.run_command(
+                session, key, action, force=_flag(payload.get("force"), False)
+            )
+            self.save(session)
+            return {
+                "action": action,
+                "task_id": key,
+                "command": command.as_dict(),
+                "allowed": bool(command.allowed),
+                "tasks": self._tasks_view(session),
+            }
+        raise ApiError(f"неизвестное действие задачи: {action or '—'}", status=422)
 
     # -- действия по пункту, лента обмена ------------------------------------
     def api_check_action(
@@ -1711,6 +1917,10 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("POST", "/api/programme", "api_programme_action"),
     ("GET", "/api/run", "api_run"),
     ("POST", "/api/run", "api_run_action"),
+    ("GET", "/api/jobs", "api_jobs"),
+    ("GET", "/api/jobs/{job_id}", "api_job"),
+    ("GET", "/api/tasks", "api_tasks"),
+    ("POST", "/api/tasks/{task_id}", "api_task_action"),
     ("POST", "/api/checks/{check_id}", "api_check_action"),
     ("GET", "/api/journal", "api_journal"),
     ("POST", "/api/journal/repeat", "api_journal_repeat"),

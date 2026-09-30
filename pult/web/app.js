@@ -1557,6 +1557,125 @@ function journalQuery() {
   return params.toString();
 }
 
+const tasksView = { data: null };
+
+/** Панель «Задачи»: фоновые прогоны и наблюдение за задачами стенда (`FR-T11`). */
+function renderTasks(data) {
+  tasksView.data = data || {};
+  const view = tasksView.data;
+  const jobs = view.jobs || [];
+  const jobsView = view.jobs_view || {};
+  const tasks = view.tasks || {};
+  const observed = tasks.observed || [];
+  const list = tasks.list || [];
+
+  document.getElementById("tasks-meta").textContent = [
+    `заданий: ${jobs.length}`,
+    `наблюдается: ${observed.length}`,
+    `в списке стенда: ${list.length}`,
+  ].join(" · ");
+
+  const note = document.getElementById("tasks-note");
+  const noteText = text(tasks.note || tasks.list_error || "");
+  note.hidden = !noteText;
+  note.textContent = noteText;
+
+  document.getElementById("jobs-note").textContent = text(jobsView.note || "");
+  fillTable(document.getElementById("jobs-table").querySelector("tbody"), jobsView.rows || [], (row) => [
+    row.job_id,
+    row.label || row.check_id,
+    `${row.icon} ${row.status}`,
+    row.created_at,
+    row.duration,
+    row.error || row.verdict,
+    row.journal_to ? `#${row.journal_from || "?"}…#${row.journal_to}` : "—",
+  ]);
+
+  document.getElementById("observed-meta").textContent = text(
+    observed.length ? `команд доступно: ${observed.reduce((sum, row) => sum + (row.actions || []).length, 0)}` : "наблюдений нет"
+  );
+  fillTable(document.getElementById("observed-table").querySelector("tbody"), observed, (row) => [
+    row.short_id,
+    row.task_type,
+    row.check_id || row.origin,
+    `${row.icon} ${row.status_label}`,
+    row.active ? `активен (${row.interval} с)` : "пауза",
+    row.polls,
+    commandButtons(row),
+  ]);
+
+  document.getElementById("task-list-meta").textContent = text(
+    tasks.list_error || `статус берётся из наблюдения: «опрос» или «нет данных»`
+  );
+  fillTable(document.getElementById("task-list-table").querySelector("tbody"), list, (row) => [
+    row.short_id,
+    row.task_type,
+    row.name || row.description,
+    row.created_at,
+    `${row.glyph} ${row.status_label}`,
+    row.source,
+    observeButton(row),
+  ]);
+}
+
+/** Ячейка с кнопками FSM-1: пускаются только команды, допустимые статусом. */
+function commandButtons(row) {
+  const cell = document.createElement("span");
+  (row.actions || []).forEach((action) => {
+    cell.appendChild(
+      button(action, "btn btn--tiny", async () => {
+        const data = await act(`/api/tasks/${encodeURIComponent(row.task_id)}`, { action });
+        if (data) {
+          renderTasks({ ...tasksView.data, tasks: data.tasks });
+          flash(
+            data.allowed ? "ok" : "error",
+            data.allowed
+              ? `Команда ${action} отправлена: ${text((data.command || {}).status_after) || "статус обновлён"}`
+              : `Команда ${action} не отправлена: ${text((data.command || {}).variant || (data.command || {}).error)}`
+          );
+        }
+      })
+    );
+  });
+  cell.appendChild(
+    button("опрос", "btn btn--tiny btn--ghost", async () => {
+      const data = await act(`/api/tasks/${encodeURIComponent(row.task_id)}`, { action: "poll" });
+      if (data) {
+        renderTasks({ ...tasksView.data, tasks: data.tasks });
+        flash("ok", `Задача ${row.short_id}: ${text((data.poll || {}).status_label)}`);
+      }
+    })
+  );
+  cell.appendChild(
+    button("снять", "btn btn--tiny btn--ghost", async () => {
+      const data = await act(`/api/tasks/${encodeURIComponent(row.task_id)}`, { action: "unobserve" });
+      if (data) {
+        renderTasks({ ...tasksView.data, tasks: data.tasks });
+        flash("ok", `Задача ${row.short_id} снята с наблюдения`);
+      }
+    })
+  );
+  return cell;
+}
+
+/** Кнопка «наблюдать» для строки списка задач стенда. */
+function observeButton(row) {
+  const cell = document.createElement("span");
+  cell.appendChild(
+    button(row.observed ? "наблюдается" : "наблюдать", "btn btn--tiny", async () => {
+      const data = await act(`/api/tasks/${encodeURIComponent(row.task_id)}`, {
+        action: "observe",
+        task_type: row.task_type,
+        name: row.name,
+      });
+      if (data) {
+        renderTasks({ ...tasksView.data, tasks: data.tasks });
+      }
+    })
+  );
+  return cell;
+}
+
 /** Перерисовывает активную панель с сервера (сервер — единственный источник правды). */
 async function loadPanel(name) {
   if (name === "run") {
@@ -1565,6 +1684,8 @@ async function loadPanel(name) {
     await refreshPlanning();
   } else if (name === "sessions") {
     renderSessions(await call("GET", "/api/sessions"));
+  } else if (name === "tasks") {
+    renderTasks(await call("GET", "/api/jobs"));
   } else if (name === "results") {
     await refreshResults();
   } else if (name === "journal") {
@@ -1585,7 +1706,7 @@ async function refresh() {
 /** Порядок вкладок, согласованный с заказчиком (стража — тест в `test_pult_server.py`).
  *  Стартовая вкладка — «Планирование»: пульт открывается на подготовке испытаний.
  */
-const PANELS = ["planning", "sessions", "run", "results", "journal"];
+const PANELS = ["planning", "sessions", "run", "tasks", "results", "journal"];
 
 /** Панель из адреса страницы: `#planning`, `#journal/12` — открыть вкладку и запись (`IR-P-4`). */
 function panelFromHash() {
@@ -1652,6 +1773,24 @@ function bind() {
         ? "Автообновление включено (раз в 15 секунд)"
         : "Автообновление выключено: экран обновляется кнопкой «Обновить» и действиями"
     );
+  });
+  // «Задачи»: фоновые прогоны и наблюдение (`FR-T11`)
+  document.getElementById("tasks-refresh").addEventListener("click", () => loadPanel("tasks"));
+  document.getElementById("external-observe").addEventListener("click", async () => {
+    const taskId = document.getElementById("external-task-id").value.trim();
+    if (!taskId) {
+      flash("error", "Укажите task_id внешней задачи: наблюдение ставится по нему");
+      return;
+    }
+    const data = await act(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      action: "observe",
+      check_id: document.getElementById("external-task-check").value.trim(),
+    });
+    if (data) {
+      document.getElementById("external-task-id").value = "";
+      renderTasks({ ...tasksView.data, tasks: data.tasks });
+      flash("ok", `Внешняя задача ${taskId.slice(0, 8)} поставлена на наблюдение`);
+    }
   });
 
   // «Результаты»: данные стенда, протокол, отчёт и завершение сессии (`SCR-401`, `SCR-404`)
@@ -1748,6 +1887,17 @@ function bind() {
       renderRun(data);
       flash("ok", `Пачка tech: выполнено пунктов — ${text((data.outcomes || []).length)}`);
       await refresh();
+    }
+  });
+  document.getElementById("run-next-bg").addEventListener("click", async () => {
+    const data = await act("/api/run", { action: "next", background: true });
+    if (data) {
+      const job = data.job || {};
+      document.getElementById("run-job").textContent = job.job_id
+        ? `Задание ${job.job_id}: ${job.label || job.check_id} — прогресс на вкладке «Задачи»`
+        : "";
+      flash("ok", `Задание запущено в фоне: ${text(job.check_id)} (прогресс — вкладка «Задачи»)`);
+      showPanel("tasks");
     }
   });
   document.getElementById("run-mode").addEventListener("change", (event) => {
