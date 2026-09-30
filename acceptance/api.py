@@ -76,7 +76,7 @@ class Apis:
             system=SystemApi(client),
             files=FilesApi(client, download_timeout=download_timeout),
             loads=LoadsApi(client),
-            models=ModelsApi(client),
+            models=ModelsApi(client, download_timeout=download_timeout),
             datasets=DatasetsApi(client),
             tasks=TasksApi(client),
         )

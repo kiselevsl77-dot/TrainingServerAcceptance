@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from acceptance import ml_samples
 from acceptance.api import Apis, build_client, take_stand_snapshot
 from acceptance.exchange import ERROR_NOT_FOUND, build_console_client, execute_request
 from acceptance.http_log import Journal
@@ -202,3 +203,76 @@ def test_live_console_404_is_a_result_not_an_exception():
     assert result.status == 404
     assert result.error
     assert result.journal_seq is not None
+
+
+# ---------------------------------------------------------------------------
+# Этапы T6–T8: каталог моделей, ONNX и сэмпл RAW для инференса (только чтение)
+# ---------------------------------------------------------------------------
+def test_live_ml_architectures_and_model_card_are_readable():
+    """Каталог архитектур и карточка модели живого стенда заполнены (TC-MOD-01/06)."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_client(settings, journal)
+    try:
+        apis = Apis.build(client)
+        architectures = apis.models.list_architectures()
+        models = apis.models.list_models()
+        picked = ml_samples.pick_model(models, with_metrics=True)
+        card = apis.models.get_model(picked.id) if picked is not None else None
+    finally:
+        client.close()
+
+    assert architectures, "каталог архитектур пуст"
+    assert all(item.default_config for item in architectures)
+    assert models, "реестр моделей пуст — ML-проверки не с чем выполнять"
+    if card is None:
+        pytest.skip("на стенде нет обученной модели (metrics пусты)")
+    assert str(card.id) == str(picked.id)
+    assert card.file_id, "у модели нет файла `.h5` — проверки загрузки/удаления не выполнить"
+    assert card.version and card.updated_at
+    assert [record.path for record in journal.records if record.path.endswith("/models")]
+
+
+def test_live_onnx_export_returns_file():
+    """Экспорт ONNX отдаёт непустой файл с именем от сервера (TC-TR-06)."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_client(settings, journal)
+    try:
+        apis = Apis.build(client)
+        picked = ml_samples.pick_model(apis.models.list_models(), with_metrics=True)
+        if picked is None:
+            pytest.skip("на стенде нет обученной модели для экспорта ONNX")
+        payload = apis.models.download_onnx(picked.id)
+    finally:
+        client.close()
+
+    assert payload.size > 0, "сервер вернул пустой ONNX"
+    assert payload.file_name or payload.media_type
+    assert any(record.path.endswith("/download_onnx") for record in journal.records)
+
+
+def test_live_raw_sample_is_ready_for_inference_single():
+    """Строка RAW-файла разбирается в сэмпл `inference/single` (TC-INF-02, только чтение)."""
+    settings = _settings_or_skip()
+    journal = Journal(max_records=50)
+    client = build_client(settings, journal)
+    try:
+        apis = Apis.build(client)
+        files = apis.files.list_files().files
+        picked = ml_samples.pick_raw_file(files)
+        if picked is None:
+            pytest.skip("в реестре нет RAW-файла с ASCII-именем: скачать нечего")
+        payload = apis.files.download(picked.id)
+    finally:
+        client.close()
+
+    sample = ml_samples.parse_raw_sample(
+        payload.content.decode("utf-8", errors="replace"),
+        file_name=picked.file_name,
+    )
+
+    assert len(sample.signals) == 6
+    assert all(len(value) > 0 for value in sample.signals.values())
+    assert sample.params.get("signal_bytes") in (1, 2, 3, 4)
+    assert sample.identity["chunkID"], "в строке RAW нет `chunkID`"

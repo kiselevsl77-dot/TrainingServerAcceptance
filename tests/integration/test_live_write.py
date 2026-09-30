@@ -26,6 +26,7 @@ import os
 
 import pytest
 
+from acceptance import ml_samples
 from acceptance.api import Apis, build_client
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
@@ -174,3 +175,40 @@ def test_live_tech_checklist_produces_verdicts():
         assert result.verdict or result.evidence, f"{result.check_id}: нет вердикта и доказательств"
     skipped = [key for key, status in statuses.items() if status == str(CheckStatus.SKIPPED)]
     assert len(skipped) <= 3, f"слишком много пропущенных проверок на живом стенде: {skipped}"
+
+
+def test_live_inference_single_returns_classes():
+    """`inference/single` на живом сэмпле RAW: классы и границы значений (TC-INF-02).
+
+    Операция «боевая» (`live`), но ничего на стенде не создаёт: идёт под тем же
+    явным флагом `PULT_LIVE_WRITE`, что и изменяющие проверки, — по умолчанию выключена.
+    """
+    settings = _live_write_or_skip()
+    stand = LiveStand(settings)
+    try:
+        model = ml_samples.pick_model(stand.apis.models.list_models(), with_metrics=True)
+        if model is None:
+            pytest.skip("на стенде нет обученной модели для инференса")
+        raw = ml_samples.pick_raw_file(stand.apis.files.list_files().files)
+        if raw is None:
+            pytest.skip("в реестре нет RAW-файла с ASCII-именем: сэмпл взять негде")
+        payload = stand.apis.files.download(raw.id)
+        sample = ml_samples.parse_raw_sample(
+            payload.content.decode("utf-8", errors="replace"),
+            file_name=raw.file_name,
+        )
+        response = stand.apis.models.inference_single(
+            model.id, sample=sample.request_fields(), threshold=0.5
+        )
+        journal_paths = [record.path for record in stand.journal.records]
+    finally:
+        stand.close()
+
+    assert response.classes, "стенд вернул пустой список классов"
+    assert str(response.model_id) == str(model.id)
+    assert float(response.threshold) == 0.5
+    for item in response.classes:
+        assert 0.0 <= float(item.confidence) <= 1.0
+        assert isinstance(item.detected, bool)
+        assert item.signal_num >= 0
+    assert any(path.endswith("/inference/single") for path in journal_paths)
