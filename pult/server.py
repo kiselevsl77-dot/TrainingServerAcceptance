@@ -84,6 +84,27 @@ MAX_BODY = 1 << 20
 LOG = logging.getLogger("pult.server")
 
 
+@dataclass
+class DataFilterState:
+    """Состояние фильтра «Данных стенда»: отбор строк и факты для блока `filter`.
+
+    Собирается в `PultApp._filter_state` (состав выбранного датасета или объединение
+    составов для режима «вне датасетов»), а в вид попадает после расчёта страниц:
+    подпись фильтра говорит, сколько строк показано из скольких (`llm_tasks/49`, 1а).
+    """
+
+    selection: view.RowSelection = view.NO_SELECTION
+    options: list[dict[str, str]] = field(default_factory=list)
+    mode: str = view.FILTER_OFF
+    dataset_id: str = ""
+    name: str = ""
+    composition: Any = None
+    applied: bool = False
+    unavailable: list[str] = field(default_factory=list)
+    note: str = ""
+    counted: int = 0
+
+
 class ApiError(Exception):
     """Ошибка API: браузеру уходит код ответа и вид ошибки (`kind`)."""
 
@@ -1061,21 +1082,30 @@ class PultApp:
             except (ValueError, TypeError, AttributeError) as exc:
                 records_error = f"объединение в записи не выполнено: {exc}"
                 LOG.warning(records_error)
+        # `dataset=<id>|none` — фильтр «Данных стенда» по составу датасета (или «вне
+        # датасетов»); при недоступном составе фильтр не применяется (см. `_filter_state`).
         session = self.state.current_session()
         written = [] if session is None else self.confirm_requests(session)
-        file_rows, file_page = view.page_rows(view.file_rows(files), limit=limit)
-        record_rows, record_page = view.page_rows(
-            [] if overview is None else view.record_rows(overview), limit=limit
+        state = self._filter_state(session, datasets, files, query)
+        file_rows, file_page = view.page_rows(
+            view.file_rows(files, selection=state.selection), limit=limit
         )
+        record_rows, record_page = view.page_rows(
+            [] if overview is None else view.record_rows(overview, selection=state.selection),
+            limit=limit,
+        )
+        # Состав выбранного в фильтре датасета уже прочитан — отдаём его и в таблицу
+        # `$Датасеты`, чтобы панель состава открывалась без второго обращения к стенду.
+        compositions = self._compositions(session, datasets, files, query)
+        if state.dataset_id and state.composition is not None:
+            compositions.setdefault(state.dataset_id, state.composition)
         data: dict[str, Any] = {
             "files": file_rows,
             "records": record_rows,
             "records_stats": {} if overview is None else overview.stats.to_dict(),
             "records_attention": 0 if overview is None else len(overview.requires_attention),
             "loads": view.load_rows(loads),
-            "datasets": view.dataset_rows(
-                datasets, compositions=self._compositions(session, datasets, files, query)
-            ),
+            "datasets": view.dataset_rows(datasets, compositions=compositions),
             "models": view.model_rows(models),
             "limit": int(limit),
             "counts": {
@@ -1095,8 +1125,138 @@ class PultApp:
             },
             "written": written,
         }
+        data["filter"] = view.dataset_filter_view(
+            options=state.options,
+            mode=state.mode,
+            dataset_id=state.dataset_id,
+            name=state.name,
+            composition=state.composition,
+            applied=state.applied,
+            unavailable=state.unavailable,
+            note=state.note,
+            counted=state.counted,
+            registry_files=len(files),
+            shown_files=len(file_rows),
+            shown_records=len(record_rows),
+        )
+        data["filter_label"] = data["filter"]["label"]
         data["sections"] = view.data_sections(data)
         return data
+
+    def _filter_state(
+        self,
+        session: TestSession | None,
+        datasets: Sequence[Any],
+        files: Sequence[Any],
+        query: Mapping[str, str],
+    ) -> DataFilterState:
+        """Отбор строк по датасету и факты для блока `filter` (`llm_tasks/49`, задача 1а).
+
+        Решения по честности:
+
+        * `dataset=<id>` — состав читается **только** для выбранного датасета, источник
+          можно задать принудительно (`source=server|server_task|local|heuristic`);
+        * `dataset=none` — «файлы вне датасетов»: нужны составы всех датасетов, они
+          берутся из 60-секундного кэша (`PultState.composition_cache`);
+        * состав недоступен или пуст → фильтр **не применяется** и об этом сказано
+          прямо: показать пустой список вместо реестра было бы обманом (`FR-P-25`).
+        """
+        runtime = self.state.runtime()
+        options = view.dataset_filter_options(datasets, registry_files=len(files))
+        state = DataFilterState(options=options)
+        wanted = str(query.get("dataset") or "").strip()
+        if not wanted or session is None or runtime is None:
+            return state
+        mode = str(query.get("source") or "").strip() or composition_api.MODE_AUTO
+        if wanted == view.OUTSIDE_VALUE:
+            return self._outside_filter(state, session, datasets, files, mode)
+        found = next(
+            (item for item in datasets if str(getattr(item, "id", "") or "") == wanted), None
+        )
+        if found is None:
+            raise ApiError(f"датасет {wanted} не найден в реестре стенда", status=404)
+        composition = composition_api.read_composition(
+            session,
+            runtime.apis,
+            wanted,
+            mode=mode,
+            name=str(getattr(found, "name", "") or ""),
+            dataset_type=str(getattr(found, "type", "") or ""),
+            files=files,
+        )
+        applied = composition.files_count > 0
+        state.mode = view.FILTER_DATASET
+        state.dataset_id = wanted
+        state.name = str(getattr(found, "name", "") or "")
+        state.composition = composition
+        state.applied = applied
+        # Подпись варианта обновляется уже прочитанным составом: оператор видит, что
+        # фильтр по этому датасету сработал («файлов 3 · RAW 2 / markup 1 · достоверно»).
+        state.options = view.dataset_filter_options(
+            datasets, {wanted: composition}, registry_files=len(files)
+        )
+        state.selection = view.RowSelection(
+            keys=composition_api.FileKeys(
+                ids=frozenset((*composition.raw_ids, *composition.markup_ids)),
+                names=frozenset(
+                    str(item.file_name).strip().lower()
+                    for item in composition.files
+                    if item.file_name
+                ),
+            ),
+            applied=applied,
+        )
+        if not applied:
+            state.note = str(composition.note or "") or view.UNKNOWN_COMPOSITION_NOTE
+        return state
+
+    def _outside_filter(
+        self,
+        state: DataFilterState,
+        session: TestSession,
+        datasets: Sequence[Any],
+        files: Sequence[Any],
+        mode: str,
+    ) -> DataFilterState:
+        """«Файлы вне датасетов»: составы всех датасетов из кэша (решение 3 = а)."""
+
+        def load_all() -> dict[str, Any]:
+            found: dict[str, Any] = {}
+            runtime = self.state.runtime()
+            if runtime is None:
+                return found
+            for item in datasets:
+                dataset_id = str(getattr(item, "id", "") or "")
+                if not dataset_id:
+                    continue
+                found[dataset_id] = composition_api.read_composition(
+                    session,
+                    runtime.apis,
+                    dataset_id,
+                    mode=mode,
+                    name=str(getattr(item, "name", "") or ""),
+                    dataset_type=str(getattr(item, "type", "") or ""),
+                    files=files,
+                )
+            return found
+
+        compositions = dict(self.state.composition_cache(load_all))
+        keys = composition_api.file_keys(list(compositions.values()))
+        state.mode = view.FILTER_OUTSIDE
+        state.applied = not keys.is_empty
+        state.counted = len(compositions)
+        state.options = view.dataset_filter_options(
+            datasets, compositions, registry_files=len(files)
+        )
+        state.unavailable = [
+            str(composition.name or dataset_id)
+            for dataset_id, composition in compositions.items()
+            if int(composition.files_count) == 0
+        ]
+        state.selection = view.RowSelection(keys=keys, outside=True, applied=state.applied)
+        if state.unavailable:
+            state.note = "состав не прочитан у " + ", ".join(state.unavailable)
+        return state
 
     def _compositions(
         self,

@@ -605,10 +605,10 @@ function joinText(parts) {
   return parts.map((part) => text(part)).filter((part) => part).join(" · ");
 }
 
-/** Состояние страницы «Результаты»: фильтры протокола, выбранный состав и лимит строк. */
-const resultsView = { data: null, composition: "", all: false };
+/** Состояние страницы «Результаты»: фильтры протокола, датасет, состав и лимит строк. */
+const resultsView = { data: null, composition: "", dataset: "", source: "", all: false };
 
-/** Запрос страницы: фильтры протокола и режим чтения составов датасетов (`UC-19`). */
+/** Запрос страницы: фильтры протокола и фильтр данных стенда по датасету (`UC-19`). */
 function resultsQuery(force) {
   const params = new URLSearchParams();
   const status = text(document.getElementById("protocol-status").value);
@@ -622,6 +622,12 @@ function resultsQuery(force) {
   }
   if (needle) {
     params.set("q", needle);
+  }
+  if (resultsView.dataset) {
+    params.set("dataset", resultsView.dataset);
+  }
+  if (resultsView.source) {
+    params.set("source", resultsView.source);
   }
   if (document.getElementById("results-compositions").checked) {
     params.set("compositions", "1");
@@ -648,6 +654,41 @@ function renderResults(data) {
   renderResultsReport(data.report || {}, data.snapshots || {}, session);
 }
 
+/** Наполняет `select` готовыми вариантами сервера и ставит текущее значение. */
+function fillOptions(element, options, value) {
+  element.textContent = "";
+  options.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = text(item.value);
+    option.textContent = text(item.label);
+    element.appendChild(option);
+  });
+  element.value = text(value);
+}
+
+/** Фильтр «Данных стенда»: варианты, текущий выбор и подпись источника состава (`UC-19`).
+ *
+ *  Фильтр не считает ничего сам: варианты, режим, достоверность и подпись
+ *  («датасет «skfu-train» · сервер (по задаче наполнения `dataset-fill`) · файлов 104»)
+ *  приходят из `view.dataset_filter_view`, поэтому экран не может разойтись с ядром.
+ */
+function renderDataFilter(filter) {
+  fillOptions(
+    document.getElementById("results-dataset"),
+    filter.options || [],
+    text(resultsView.dataset)
+  );
+  const modes = filter.sources || [];
+  const current = text(resultsView.source) || text((modes[0] || {}).value);
+  fillOptions(document.getElementById("results-source"), modes, current);
+  resultsView.source = current;
+  document.getElementById("results-filter-label").textContent = text(filter.label);
+  if (filter.mode === "dataset" && filter.dataset_id) {
+    // Панель состава показывает тот датасет, по которому отобраны строки.
+    resultsView.composition = text(filter.dataset_id);
+  }
+}
+
 /** Зона 1: данные стенда — файлы, записи, `$Нагрузки`, `$Датасеты` и `$Модели` (`UC-03`). */
 function renderResultsData(data, summary) {
   fillKpi(
@@ -666,6 +707,7 @@ function renderResultsData(data, summary) {
 
   const sections = data.sections || [];
   renderDataSections(sections);
+  renderDataFilter(data.filter || {});
   document.getElementById("results-files-meta").textContent = sectionPage(sections, "files");
   document.getElementById("results-records-meta").textContent = joinText([
     sectionPage(sections, "records"),
@@ -1539,6 +1581,25 @@ function bind() {
       flash("ok", "Лимит строк снят: показаны все строки списков данных стенда");
       refreshResults();
     });
+  });
+  document.getElementById("results-dataset").addEventListener("change", (event) => {
+    resultsView.dataset = event.target.value;
+    refreshResults();
+  });
+  document.getElementById("results-source").addEventListener("change", (event) => {
+    resultsView.source = event.target.value;
+    refreshResults();
+  });
+  document.getElementById("results-filter-apply").addEventListener("click", () => {
+    resultsView.dataset = document.getElementById("results-dataset").value;
+    refreshResults();
+  });
+  document.getElementById("results-filter-reset").addEventListener("click", () => {
+    resultsView.dataset = "";
+    resultsView.source = "";
+    resultsView.all = false;
+    flash("ok", "Фильтр по датасету сброшен: показан весь реестр");
+    refreshResults();
   });
   ["protocol-status", "protocol-section"].forEach((id) => {
     document.getElementById(id).addEventListener("change", refreshResults);

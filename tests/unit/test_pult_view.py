@@ -8,8 +8,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
+from acceptance import dataset_composition as composition_api
 from acceptance import results as results_api
 from acceptance import run_card as run_card_api
 from acceptance import run_state
@@ -925,3 +927,95 @@ def test_model_rows_describe_registry() -> None:
     assert rows[0]["version"] == "v3" and rows[0]["output_size"] == 2
     assert rows[0]["updated_at"] == "25.09 10:12"
     assert view.model_rows([]) == []
+
+
+def test_row_selection_filters_by_id_name_and_outside() -> None:
+    """Отбор строк «Данных стенда»: `id` — основной ключ, имя — запасной (`llm_tasks/49`)."""
+    keys = composition_api.FileKeys(ids=frozenset({"a"}), names=frozenset({"raw_2.csv"}))
+    by_keys = view.RowSelection(keys=keys, applied=True)
+
+    assert by_keys.matches("a", "") is True
+    assert by_keys.matches("", "RAW_2.CSV") is True
+    assert by_keys.matches("b", "other.csv") is False
+
+    outside = view.RowSelection(keys=keys, outside=True, applied=True)
+    assert outside.matches("b", "other.csv") is True
+    assert outside.matches("a", "") is False
+
+    # Состав недоступен: фильтр не применяется, строки остаются (обман исключён).
+    assert view.RowSelection(applied=False).matches("b", "other.csv") is True
+    assert view.RowSelection(keys=keys).matches("b", "other.csv") is True
+    assert view.NO_SELECTION.matches("что угодно") is True
+
+
+def test_file_rows_keep_row_shape_when_filtered() -> None:
+    """Фильтр меняет состав строк, а не их вид: колонки те же (`SCR-204`)."""
+    files = [
+        SimpleNamespace(
+            id="a", file_name="a.raw.csv", file_type="RAW", size=10, s3_path="/a", import_date=None
+        ),
+        SimpleNamespace(
+            id="b", file_name="b.raw.csv", file_type="RAW", size=20, s3_path="/b", import_date=None
+        ),
+    ]
+    selection = view.RowSelection(keys=composition_api.FileKeys(ids=frozenset({"b"})), applied=True)
+
+    filtered = view.file_rows(files, selection=selection)
+    everything = view.file_rows(files)
+
+    assert [row["id"] for row in filtered] == ["b"]
+    assert set(filtered[0]) == set(everything[0])
+    assert [row["id"] for row in everything] == ["a", "b"]
+
+
+def test_dataset_filter_options_and_labels() -> None:
+    """Варианты селекта и подписи фильтра: весь реестр, «вне датасетов» и датасеты (`UC-19`)."""
+    options = view.dataset_filter_options([{"id": "d1", "name": "skfu-train"}], registry_files=388)
+
+    assert options[0] == {"value": "", "label": "весь реестр (388 файлов)"}
+    assert options[1] == {"value": "none", "label": "файлы вне датасетов"}
+    assert options[2] == {"value": "d1", "label": "skfu-train · состав не читался"}
+
+    composition = SimpleNamespace(
+        files_count=3,
+        raw_ids=("a", "b"),
+        markup_ids=("c",),
+        is_trusted=True,
+        source="server_task",
+        source_label="сервер (по задаче наполнения `dataset-fill`)",
+    )
+    assert view.composition_option_label("skfu-train", composition) == (
+        "skfu-train · файлов 3 · RAW 2 / markup 1 · достоверно"
+    )
+
+    applied = view.dataset_filter_view(
+        options=options,
+        mode=view.FILTER_DATASET,
+        dataset_id="d1",
+        name="skfu-train",
+        composition=composition,
+        applied=True,
+        registry_files=388,
+        shown_files=3,
+        shown_records=2,
+    )
+
+    assert applied["applied"] is True and applied["trusted"] is True
+    assert applied["files"] == 3 and applied["raw"] == 2 and applied["markup"] == 1
+    assert applied["label"] == (
+        "датасет «skfu-train» · сервер (по задаче наполнения `dataset-fill`) · "
+        "файлов 3 (RAW 2 / markup 1) · достоверно"
+    )
+    assert [item["value"] for item in applied["sources"]] == list(composition_api.COMPOSITION_MODES)
+    assert all(item["label"] for item in applied["sources"])
+
+    assert view.dataset_filter_view(registry_files=4)["label"] == (
+        "весь реестр: файлов 4 (фильтр по датасету не выбран)"
+    )
+    assert view.dataset_filter_view(
+        mode=view.FILTER_DATASET, dataset_id="d2", name="пустой", applied=False
+    )["label"] == ("фильтр не применён · " + view.UNKNOWN_COMPOSITION_NOTE)
+    assert (
+        view.dataset_filter_view(mode=view.FILTER_OUTSIDE, applied=True, counted=7)["label"]
+        == "файлы вне датасетов · учтено датасетов: 7"
+    )

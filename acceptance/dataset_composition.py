@@ -31,7 +31,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -64,12 +64,14 @@ __all__ = [
     "STORE_VERSION",
     "CompositionFile",
     "DatasetComposition",
+    "FileKeys",
     "compare",
     "composition_from_server",
     "composition_from_task",
     "composition_of",
     "composition_rows",
     "composition_store",
+    "file_keys",
     "heuristic_composition",
     "load_store",
     "overlap_report",
@@ -1234,3 +1236,50 @@ def composition_rows(records: Sequence[DatasetComposition]) -> list[dict[str, An
         }
         for item in records
     ]
+
+
+@dataclass(frozen=True)
+class FileKeys:
+    """Ключи файлов для отбора строк: идентификаторы и имена (запасной ключ).
+
+    Состав приходит из разных источников: серверный и по задаче наполнения — с `id`
+    файлов реестра, локальный — с тем, что пульт отправлял в `fill`, гипотеза — вообще
+    по именам и путям (`heuristic_composition`). Поэтому отбор строк реестра идёт по
+    двум ключам: `id` — основной, имя файла — запасной (`llm_tasks/49`, задача 1а).
+    """
+
+    ids: frozenset[str] = frozenset()
+    names: frozenset[str] = frozenset()
+
+    @property
+    def is_empty(self) -> bool:
+        """True, если ключей нет: отбирать не по чему (фильтр применить нельзя)."""
+        return not self.ids and not self.names
+
+    @property
+    def size(self) -> int:
+        """Сколько ключей всего (для подписи «сколько файлов учтено»)."""
+        return len(self.ids | self.names)
+
+    def matches(self, *values: Any) -> bool:
+        """True, если хотя бы одно значение — идентификатор или имя файла состава."""
+        for value in values:
+            text = _as_id(value)
+            if not text:
+                continue
+            if text in self.ids or text.lower() in self.names:
+                return True
+        return False
+
+
+def file_keys(compositions: Iterable[Any]) -> FileKeys:
+    """Объединение ключей файлов нескольких составов (режим «вне датасетов»)."""
+    ids: set[str] = set()
+    names: set[str] = set()
+    for composition in compositions or ():
+        for item in getattr(composition, "files", ()) or ():
+            if item.file_id:
+                ids.add(_as_id(item.file_id))
+            if item.file_name:
+                names.add(str(item.file_name).strip().lower())
+    return FileKeys(ids=frozenset(ids), names=frozenset(names))

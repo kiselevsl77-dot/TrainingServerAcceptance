@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -1089,12 +1090,12 @@ def protocol_csv(rows: Sequence[Mapping[str, Any]]) -> str:
         ("reason", "Причина снятия"),
         ("in_programme", "В программе"),
     )
-    header = ";".join(title for _field, title in columns)
+    header = ";".join(title for _column, title in columns)
     body: list[str] = []
     for row in rows:
         cells: list[str] = []
-        for field, _title in columns:
-            value = row.get(field)
+        for column, _title in columns:
+            value = row.get(column)
             if isinstance(value, bool):
                 cells.append("да" if value else "нет")
             else:
@@ -1347,10 +1348,69 @@ def programme_view(
 # ---------------------------------------------------------------------------
 # Данные стенда и состав датасетов (`SCR-204`, UC-03/UC-04)
 # ---------------------------------------------------------------------------
-def file_rows(files: Iterable[Any]) -> list[dict[str, Any]]:
-    """Строки реестра `$Файлов`: имя, тип, размер, путь и дата импорта."""
+#: Режимы фильтра «Данных стенда» по датасету (`llm_tasks/49`, задача 1а).
+FILTER_OFF = "off"
+FILTER_DATASET = "dataset"
+FILTER_OUTSIDE = "outside"
+FILTER_MODES: tuple[str, str, str] = (FILTER_OFF, FILTER_DATASET, FILTER_OUTSIDE)
+
+#: Значение селекта «файлы вне датасетов»: это не идентификатор датасета, а режим
+#: (решение заказчика `llm_tasks/49`, вопрос 1 = б).
+OUTSIDE_VALUE = "none"
+
+#: Что пульт говорит, когда состав датасета не дал применить фильтр (замечание P1).
+UNKNOWN_COMPOSITION_NOTE = "состав недоступен (P1): показаны все файлы реестра"
+
+#: Подписи источников состава для селекта «источник» (`read_composition(mode=…)`).
+SOURCE_MODE_LABELS: dict[str, str] = {
+    composition_api.MODE_AUTO: "авто: сервер → задача наполнения → факт пульта → гипотеза",
+    composition_api.MODE_SERVER: "только сервер (нужно устранение P1)",
+    composition_api.MODE_SERVER_TASK: "только задача наполнения `dataset-fill`",
+    composition_api.MODE_LOCAL: "только факт пульта (что сами наполняли)",
+    composition_api.MODE_HEURISTIC: "гипотеза по реестру файлов",
+}
+
+
+@dataclass(frozen=True)
+class RowSelection:
+    """Отбор строк «Данных стенда» по составу датасета (`llm_tasks/49`, задача 1а).
+
+    `keys` — файлы выбранного датасета (в режиме «вне датасетов» — объединение всех
+    датасетов), `outside=True` инвертирует правило: остаются строки, которых в составе
+    нет. `applied=False` означает «фильтр не применён» (состав недоступен или пуст):
+    показать пустой список вместо реестра было бы обманом, поэтому строки остаются,
+    а причина называется в блоке `filter`.
+    """
+
+    keys: composition_api.FileKeys = field(default_factory=composition_api.FileKeys)
+    outside: bool = False
+    applied: bool = False
+
+    def matches(self, *values: Any) -> bool:
+        """True, если строку с такими ключами нужно показать."""
+        if not self.applied or self.keys.is_empty:
+            return True
+        found = self.keys.matches(*values)
+        return not found if self.outside else found
+
+
+#: Отбор по умолчанию: фильтр не применяется, показывается весь реестр.
+NO_SELECTION = RowSelection()
+
+
+def file_rows(
+    files: Iterable[Any], *, selection: RowSelection | None = None
+) -> list[dict[str, Any]]:
+    """Строки реестра `$Файлов`: имя, тип, размер, путь и дата импорта.
+
+    `selection` — отбор по составу датасета: строки остаются те же, меняется их состав
+    (`id` файла — основной ключ, имя — запасной, см. `dataset_composition.FileKeys`).
+    """
+    chosen = selection or NO_SELECTION
     rows: list[dict[str, Any]] = []
     for item in files:
+        if not chosen.matches(getattr(item, "id", ""), getattr(item, "file_name", "")):
+            continue
         size = int(getattr(item, "size", 0) or 0)
         rows.append(
             {
@@ -1382,13 +1442,28 @@ def load_rows(loads: Iterable[Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def record_rows(overview: Any) -> list[dict[str, Any]]:
+def record_rows(overview: Any, *, selection: RowSelection | None = None) -> list[dict[str, Any]]:
     """Строки записей (RAW + markup) из объединённого обзора (`records.build_records`).
 
-    Обрезку и счётчик «показано N из M» делает `page_rows`: раньше здесь стоял лимит
-    300 **без счётчика**, и оператор считал неполный список полным.
+    `selection` — отбор по составу датасета: строка остаётся, если её `raw_id` или
+    `markup_id` (или имена — запасной ключ) входят в состав. Обрезку и счётчик
+    «показано N из M» делает `page_rows`: раньше здесь стоял лимит 300 **без счётчика**,
+    и оператор считал неполный список полным.
     """
-    return [dict(row) for row in overview.manifest_rows()]
+    chosen = selection or NO_SELECTION
+    rows = [dict(row) for row in overview.manifest_rows()]
+    if not chosen.applied:
+        return rows
+    return [
+        row
+        for row in rows
+        if chosen.matches(
+            row.get("raw_id"),
+            row.get("raw_name"),
+            row.get("markup_id"),
+            row.get("markup_name"),
+        )
+    ]
 
 
 def model_rows(models: Iterable[Any]) -> list[dict[str, Any]]:
@@ -1455,30 +1530,39 @@ def data_sections(data: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Подразделы «Данных стенда»: подпись со счётчиком реестра и состояние списка.
 
     Подписи считает Python: в свёрнутом `<details>` оператор видит число сущностей
-    (`$Файлы · 388`), а не только название; `page_label` говорит, что список обрезан
-    и это можно снять (`llm_tasks/49`, «Сворачивание подразделов»).
+    (`$Файлы · 388`), а не только название; при включённом фильтре по датасету подпись
+    становится `$Файлы · 104 из 388` — видно и выборку, и весь реестр. `page_label`
+    говорит, что список обрезан лимитом и это можно снять (`llm_tasks/49`).
     """
     counts = dict(data.get("counts") or {})
     pages = dict(data.get("pages") or {})
     sections: list[dict[str, Any]] = []
     for key, title in DATA_SECTIONS:
         page = dict(pages.get(key) or {})
-        page_label = str(page.get("label") or "")
-        total = page.get("total")
-        if "total" not in page:
-            total = counts.get(key)
-        total = int(total if total is not None else len(data.get(key) or []))
+        page_total = page.get("total")
+        registry = counts.get(key)
+        rows_shown = len(data.get(key) or [])
+        if page_total is not None:
+            shown_total = int(page_total)
+        else:
+            shown_total = int(registry) if registry is not None else rows_shown
+        total = int(registry) if registry is not None else shown_total
         sections.append(
             {
                 "key": key,
                 "table": f"results-{key}",
                 "title": title,
-                "count": total,
-                "shown": int(page.get("shown") or len(data.get(key) or [])),
+                "count": shown_total,
+                "registry": total,
+                "shown": int(page.get("shown") or rows_shown),
                 "limited": bool(page.get("limited")),
                 "can_show_all": bool(page.get("limited")),
-                "label": f"{title} · {total}" if counts or pages else title,
-                "page_label": page_label,
+                "label": (
+                    f"{title} · {shown_total} из {total}"
+                    if page_total is not None and total != shown_total
+                    else f"{title} · {total}"
+                ),
+                "page_label": str(page.get("label") or ""),
             }
         )
     return sections
@@ -1537,6 +1621,156 @@ def dataset_rows(
             }
         )
     return rows
+
+
+def _attr(item: Any, name: str, default: Any = "") -> Any:
+    """Поле сущности реестра: работает и с pydantic-моделью, и со словарём.
+
+    Сервер получает модели (`DatasetResponse`), а тесты и выгрузки передают словари:
+    подпись варианта не должна зависеть от того, чем представлена строка реестра.
+    """
+    if isinstance(item, Mapping):
+        return item.get(name, default)
+    return getattr(item, name, default)
+
+
+def dataset_filter_options(
+    datasets: Sequence[Any],
+    compositions: Mapping[str, Any] | None = None,
+    *,
+    registry_files: int = 0,
+) -> list[dict[str, str]]:
+    """Варианты селекта «датасет» для фильтра «Данных стенда» (`llm_tasks/49`, задача 1а).
+
+    Первый вариант — весь реестр, второй — «файлы вне датасетов» (решение заказчика,
+    вопрос 1 = б), дальше — датасеты с подписью «имя · файлов N · RAW R / markup M».
+    Состав в подписи появляется только у прочитанных датасетов: читать все составы
+    на каждое открытие страницы нельзя (за каждым — обращение к `$Задачам` стенда).
+    """
+    known = dict(compositions or {})
+    options = [
+        {"value": "", "label": f"весь реестр ({int(registry_files)} файлов)"},
+        {"value": OUTSIDE_VALUE, "label": "файлы вне датасетов"},
+    ]
+    for item in datasets:
+        dataset_id = str(_attr(item, "id") or "")
+        name = str(_attr(item, "name") or dataset_id)
+        options.append(
+            {"value": dataset_id, "label": composition_option_label(name, known.get(dataset_id))}
+        )
+    return options
+
+
+def composition_option_label(name: str, composition: Any) -> str:
+    """Подпись датасета для селекта: «имя · файлов N · RAW R / markup M» (`UC-19`)."""
+    if composition is None:
+        return join_parts(name, "состав не читался")
+    return join_parts(
+        name,
+        f"файлов {int(composition.files_count)}",
+        f"RAW {len(composition.raw_ids)} / markup {len(composition.markup_ids)}",
+        "достоверно" if composition.is_trusted else "требует проверки",
+    )
+
+
+def dataset_filter_view(
+    *,
+    options: Sequence[Mapping[str, str]] = (),
+    mode: str = FILTER_OFF,
+    dataset_id: str = "",
+    name: str = "",
+    composition: Any = None,
+    applied: bool = False,
+    unavailable: Sequence[str] = (),
+    note: str = "",
+    counted: int = 0,
+    registry_files: int = 0,
+    shown_files: int = 0,
+    shown_records: int = 0,
+) -> dict[str, Any]:
+    """Блок `filter` страницы «Результаты»: что отобрано, чем подтверждено, почему нет.
+
+    Пульт обязан сказать не только «показано 104», но и **откуда** известен состав и что
+    фильтр не применился: при недоступном составе (замечание P1) в интерфейсе прямо
+    написано «состав недоступен (P1): показаны все файлы реестра» (`FR-P-25`).
+    """
+    files_count = 0 if composition is None else int(composition.files_count)
+    raw = 0 if composition is None else len(composition.raw_ids)
+    markup = 0 if composition is None else len(composition.markup_ids)
+    resolved = str(mode) if str(mode) in FILTER_MODES else FILTER_OFF
+    label = _filter_label(
+        mode=resolved,
+        dataset_id=dataset_id,
+        name=name,
+        composition=composition,
+        applied=applied,
+        note=note,
+        registry_files=registry_files,
+        unavailable=unavailable,
+        counted=counted,
+    )
+    return {
+        "mode": resolved,
+        "dataset_id": str(dataset_id),
+        "name": str(name),
+        "source": "" if composition is None else str(composition.source),
+        "source_label": "" if composition is None else str(composition.source_label),
+        "trusted": bool(composition is not None and composition.is_trusted),
+        "files": files_count,
+        "raw": raw,
+        "markup": markup,
+        "registry_files": int(registry_files),
+        "shown_files": int(shown_files),
+        "shown_records": int(shown_records),
+        "applied": bool(applied),
+        "note": str(note),
+        "unavailable": [str(item) for item in unavailable],
+        "label": label,
+        "options": [dict(item) for item in options],
+        "sources": [
+            {"value": value, "label": SOURCE_MODE_LABELS.get(value, value)}
+            for value in composition_api.COMPOSITION_MODES
+        ],
+    }
+
+
+def _filter_label(
+    *,
+    mode: str,
+    dataset_id: str,
+    name: str,
+    composition: Any,
+    applied: bool,
+    note: str,
+    registry_files: int,
+    unavailable: Sequence[str],
+    counted: int = 0,
+) -> str:
+    """Подпись фильтра для зоны «Данные стенда»: что показано и на каком основании."""
+    if mode == FILTER_OFF:
+        return f"весь реестр: файлов {int(registry_files)} (фильтр по датасету не выбран)"
+    if not applied:
+        default_note = (
+            "составы датасетов недоступны (P1): показаны все файлы реестра"
+            if mode == FILTER_OUTSIDE
+            else UNKNOWN_COMPOSITION_NOTE
+        )
+        return join_parts("фильтр не применён", note or default_note)
+    if mode == FILTER_OUTSIDE:
+        return join_parts(
+            "файлы вне датасетов",
+            f"учтено датасетов: {int(counted)}",
+            f"состав не прочитан у {len(list(unavailable))}" if unavailable else "",
+            note,
+        )
+    trusted = bool(composition is not None and composition.is_trusted)
+    return join_parts(
+        f"датасет «{name or dataset_id}»",
+        "" if composition is None else str(composition.source_label),
+        f"файлов {int(composition.files_count)}"
+        f" (RAW {len(composition.raw_ids)} / markup {len(composition.markup_ids)})",
+        "достоверно" if trusted else "требует проверки",
+    )
 
 
 # ---------------------------------------------------------------------------

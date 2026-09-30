@@ -396,3 +396,29 @@ def test_composition_rows_and_session_schema_v5(tmp_path: Path) -> None:
 
     legacy = {key: value for key, value in payload.items() if key != "dataset_composition"}
     assert SessionModel.from_dict(legacy).dataset_composition == []
+
+
+def test_file_keys_match_ids_and_names() -> None:
+    """Ключи состава отбирают строки по `id`, а имена служат запасным ключом (`llm_tasks/49`).
+
+    Источники состава неоднородны: задача наполнения отдаёт идентификаторы файлов
+    реестра, гипотеза — только имена и пути. Отбор строк «Данных стенда» обязан работать
+    и с тем, и с другим, иначе фильтр «по датасету» молча ничего не находит.
+    """
+    composition = dc.DatasetComposition(
+        dataset_id="d1",
+        source=dc.SOURCE_SERVER_TASK,
+        files=(
+            dc.CompositionFile(file_id="a", role=dc.ROLE_RAW, file_name="A.raw.csv"),
+            dc.CompositionFile(file_id="b", role=dc.ROLE_MARKUP, file_name="b.markup.csv"),
+        ),
+    )
+
+    keys = dc.file_keys([composition])
+
+    assert keys.size == 4, "два id и два имени"
+    assert keys.matches("a") is True
+    assert keys.matches("", "b.markup.CSV") is True, "имя сравнивается без регистра"
+    assert keys.matches("z", "other.csv") is False
+    assert dc.file_keys([]).is_empty is True
+    assert dc.file_keys([dc.unknown_composition("d2")]).is_empty is True

@@ -348,6 +348,26 @@
           <div class="kpi" id="results-data-kpi"></div>
           <div class="warnings" id="results-data-warnings" hidden></div>
 
+          <!-- Фильтр «Данных стенда» по составу датасета: строки остаются теми же,
+               значения и подписи приходят с сервера (режим, источник, состав). -->
+          <div class="zone__actions" id="results-filter">
+            <label class="check">
+              датасет
+              <select id="results-dataset"></select>
+            </label>
+            <label class="check">
+              источник состава
+              <select id="results-source"></select>
+            </label>
+            <button class="btn btn--tiny" id="results-filter-apply" type="button">
+              🔍 показать файлы и записи этого датасета
+            </button>
+            <button class="btn btn--tiny btn--ghost" id="results-filter-reset" type="button">
+              сбросить фильтр
+            </button>
+            <span class="muted" id="results-filter-label"></span>
+          </div>
+
           <!-- Подразделы свёрнуты по умолчанию: в свёрнутом виде видно счётчик из Python,
                состояние сворачивания живёт в DOM и не сбрасывается автообновлением. -->
           <details class="zone__sub" id="results-sub-files">

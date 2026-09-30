@@ -1147,3 +1147,218 @@ def test_static_reads_binary_files_as_bytes(tmp_path: Path) -> None:
     assert icon.data == payload
     assert icon.content_type == "image/x-icon"
     assert icon.download is False
+
+
+# ---------------------------------------------------------------------------
+# Фильтр «Данных стенда» по датасету (`llm_tasks/49`, задача 1а)
+# ---------------------------------------------------------------------------
+#: Датасет с задачей наполнения `dataset-fill`: состав восстанавливается по задаче.
+FILLED_DATASET = "11111111-1111-1111-1111-111111111111"
+#: Датасет, о котором пульту ничего не известно: состав недоступен (замечание P1).
+UNKNOWN_DATASET = "22222222-2222-2222-2222-222222222222"
+FILL_TASK = "33333333-3333-3333-3333-333333333333"
+RAW_ONE = "aaaa0000-0000-0000-0000-000000000001"
+RAW_TWO = "aaaa0000-0000-0000-0000-000000000002"
+MARKUP_ONE = "bbbb0000-0000-0000-0000-000000000001"
+OUTSIDE_FILE = "cccc0000-0000-0000-0000-000000000001"
+DATA_AT = "2026-09-20T09:00:00"
+
+#: Реестр стенда: два RAW и markup датасета `skfu-train` плюс файл вне датасетов.
+STAND_FILES: list[dict[str, Any]] = [
+    {
+        "id": RAW_ONE,
+        "file_name": "skfu-record-1.raw.csv",
+        "size": 2048,
+        "s3_path": "s3://stand/skfu-record-1.raw.csv",
+        "import_date": DATA_AT,
+        "file_type": "RAW",
+    },
+    {
+        "id": MARKUP_ONE,
+        "file_name": "skfu-record-1.markup.csv",
+        "size": 512,
+        "s3_path": "s3://stand/skfu-record-1.markup.csv",
+        "import_date": DATA_AT,
+        "file_type": "markup",
+    },
+    {
+        "id": RAW_TWO,
+        "file_name": "skfu-record-2.raw.csv",
+        "size": 4096,
+        "s3_path": "s3://stand/skfu-record-2.raw.csv",
+        "import_date": DATA_AT,
+        "file_type": "RAW",
+    },
+    {
+        "id": OUTSIDE_FILE,
+        "file_name": "foreign-record-1.raw.csv",
+        "size": 1024,
+        "s3_path": "s3://stand/foreign-record-1.raw.csv",
+        "import_date": DATA_AT,
+        "file_type": "RAW",
+    },
+]
+
+STAND_DATASETS: list[dict[str, Any]] = [
+    {
+        "id": FILLED_DATASET,
+        "creation_date": DATA_AT,
+        "name": "skfu-train",
+        "description": "обучающий датасет",
+        "type": "direct_fill",
+    },
+    {
+        "id": UNKNOWN_DATASET,
+        "creation_date": DATA_AT,
+        "name": "без состава",
+        "description": "",
+        "type": "direct_fill",
+    },
+]
+
+FILL_TASK_SUMMARY: dict[str, Any] = {
+    "type": "dataset-fill",
+    "name": f"dataset-fill {FILLED_DATASET}",
+    "description": f"наполнение датасета {FILLED_DATASET}",
+    "id": FILL_TASK,
+    "created_at": DATA_AT,
+}
+
+FILL_TASK_DETAIL: dict[str, Any] = {
+    **FILL_TASK_SUMMARY,
+    "runtimes": [
+        {
+            "task_id": FILL_TASK,
+            "status": "completed",
+            "parameters": {
+                "dataset_id": FILLED_DATASET,
+                "raw_file_ids": [RAW_ONE, RAW_TWO],
+                "markup_file_ids": [MARKUP_ONE],
+            },
+            "result": {
+                "raw_processing": {"total_records": 2},
+                "markup_processing": {"total_records": 1},
+            },
+            "id": "44444444-4444-4444-4444-444444444444",
+        }
+    ],
+}
+
+
+def _data_handler(request: httpx.Request) -> httpx.Response:
+    """Подменённый стенд с реестром файлов, датасетами и задачей наполнения."""
+    path = request.url.path
+    if path.endswith("/version"):
+        return httpx.Response(200, json={"branch": "dev", "revision": "83319ae1234"})
+    if path.startswith("/api/data/files"):
+        return httpx.Response(200, json={"files": STAND_FILES, "count": len(STAND_FILES)})
+    if path.startswith("/api/loads/list"):
+        return httpx.Response(200, json={"loads": [], "result_size": 0})
+    if path.startswith("/api/datasets"):
+        return httpx.Response(200, json={"datasets": STAND_DATASETS, "count": len(STAND_DATASETS)})
+    if path.startswith("/api/ml_models/models"):
+        return httpx.Response(200, json={"models": [], "count": 0})
+    if path.startswith("/api/tasks"):
+        if path.rstrip("/") == "/api/tasks":
+            return httpx.Response(200, json={"tasks": [FILL_TASK_SUMMARY], "count": 1})
+        return httpx.Response(200, json=FILL_TASK_DETAIL)
+    return httpx.Response(200, json={"status": "ok", "message": "test stand ready"})
+
+
+@pytest.fixture
+def data_stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PultApp:
+    """Пульт со стендом, у которого есть файлы, датасеты и задача наполнения."""
+    return _app(tmp_path, monkeypatch, _data_handler)
+
+
+def test_dataset_filter_narrows_files_and_records(data_stand: PultApp) -> None:
+    """`?dataset=` отбирает строки по составу из задачи наполнения и подписывает источник.
+
+    Проверяется главное обещание фильтра (`llm_tasks/49`, задача 1а): строки те же,
+    но их состав — только файлы датасета, и рядом видно, чем это подтверждено
+    (`server_task`), сколько файлов и что фильтр применён.
+    """
+    _ready_session(data_stand)
+    everything = get(data_stand, "/api/results")
+    assert len(everything["data"]["files"]) == len(STAND_FILES)
+    assert everything["data"]["filter"]["applied"] is False
+    assert everything["data"]["filter"]["mode"] == "off"
+    assert everything["data"]["sections"][0]["label"] == f"$Файлы · {len(STAND_FILES)}"
+
+    data = get(data_stand, "/api/results", dataset=FILLED_DATASET)["data"]
+    assert [row["name"] for row in data["files"]] == [
+        "skfu-record-1.raw.csv",
+        "skfu-record-1.markup.csv",
+        "skfu-record-2.raw.csv",
+    ]
+    assert len(data["records"]) == 2, "записи тоже отобраны по составу"
+    assert data["filter"]["applied"] is True
+    assert data["filter"]["source"] == "server_task"
+    assert data["filter"]["trusted"] is True
+    assert data["filter"]["files"] == 3
+    assert data["filter"]["raw"] == 2 and data["filter"]["markup"] == 1
+    assert data["filter"]["label"].startswith("датасет «skfu-train»")
+    assert "файлов 3" in data["filter"]["label"]
+    assert data["sections"][0]["label"] == f"$Файлы · 3 из {len(STAND_FILES)}"
+    assert data["sections"][0]["page_label"] == "показано 3 из 3"
+    assert data["filter"]["options"][0]["value"] == ""
+    assert data["filter"]["options"][1]["value"] == "none"
+    chosen = next(item for item in data["filter"]["options"] if item["value"] == FILLED_DATASET)
+    assert "файлов 3" in chosen["label"] and "достоверно" in chosen["label"]
+    assert len(data["filter"]["sources"]) == 5, "источник состава можно переключить"
+
+
+def test_dataset_filter_says_when_composition_is_unavailable(data_stand: PultApp) -> None:
+    """Состав недоступен → фильтр **не применён**, и в интерфейсе это сказано прямо.
+
+    Показать пустой список вместо реестра было бы обманом: оператор решил бы, что
+    в датасете нет файлов (`FR-P-25`, `llm_tasks/49`, задача 1а).
+    """
+    _ready_session(data_stand)
+    data = get(data_stand, "/api/results", dataset=UNKNOWN_DATASET)["data"]
+
+    assert len(data["files"]) == len(STAND_FILES), "показан весь реестр"
+    assert data["filter"]["applied"] is False
+    assert data["filter"]["trusted"] is False
+    assert "фильтр не применён" in data["filter"]["label"]
+    assert "состав недоступен" in data["filter"]["label"]
+    assert data["sections"][0]["label"] == f"$Файлы · {len(STAND_FILES)}"
+
+
+def test_outside_filter_shows_files_not_in_any_dataset(data_stand: PultApp) -> None:
+    """«Файлы вне датасетов»: остаётся то, чего нет ни в одном составе (ответ 1 = б)."""
+    _ready_session(data_stand)
+    data = get(data_stand, "/api/results", dataset="none")["data"]
+
+    assert [row["name"] for row in data["files"]] == ["foreign-record-1.raw.csv"]
+    assert data["filter"]["mode"] == "outside"
+    assert data["filter"]["applied"] is True
+    assert data["filter"]["label"].startswith("файлы вне датасетов")
+    assert "учтено датасетов: 2" in data["filter"]["label"]
+    assert data["filter"]["unavailable"] == ["без состава"]
+    assert data["filter"]["note"] == "состав не прочитан у без состава"
+    assert "состав не прочитан у 1" in data["filter"]["label"]
+
+
+def test_dataset_filter_can_force_source(data_stand: PultApp) -> None:
+    """`source=heuristic` заставляет читать состав как гипотезу (`read_composition(mode=…)`)."""
+    _ready_session(data_stand)
+    data = get(data_stand, "/api/results", dataset=FILLED_DATASET, source="heuristic")["data"]
+
+    assert data["filter"]["source"] == "heuristic"
+    assert data["filter"]["trusted"] is False
+    assert "требует проверки" in data["filter"]["label"]
+    assert [row["name"] for row in data["files"]] == [
+        "skfu-record-1.raw.csv",
+        "skfu-record-1.markup.csv",
+        "skfu-record-2.raw.csv",
+    ]
+
+
+def test_dataset_filter_rejects_unknown_dataset(data_stand: PultApp) -> None:
+    """Датасета нет в реестре → 404 с понятным текстом, а не пустой экран."""
+    _ready_session(data_stand)
+    with pytest.raises(ApiError) as unknown:
+        get(data_stand, "/api/data", dataset="99999999-0000-0000-0000-000000000000")
+    assert unknown.value.status == 404
+    assert "не найден" in unknown.value.message

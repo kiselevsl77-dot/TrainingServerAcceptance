@@ -306,6 +306,22 @@ class PultState:
 
         return self._cached("models", MODELS_TTL, load, refresh=refresh)
 
+    def composition_cache(
+        self,
+        loader: Callable[[], Any],
+        *,
+        key: str = "compositions|all",
+        refresh: bool = False,
+    ) -> Any:
+        """Составы датасетов из кэша: (ключ, загрузчик) → значение.
+
+        Режим «файлы вне датасетов» требует составов всех датасетов (`llm_tasks/49`,
+        вопрос 3 = а): без кэша каждый запрос страницы читал бы задачу наполнения для
+        каждого датасета. Сброс тот же, что у реестров: `refresh=1` или явный
+        `invalidate("compositions|all")`.
+        """
+        return self._cached(key, COMPOSITIONS_TTL, loader, refresh=refresh)
+
     def tasks(
         self,
         *,
