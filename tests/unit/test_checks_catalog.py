@@ -81,20 +81,36 @@ CLASSES_BY_GROUP: dict[str, dict[str, int]] = {
 #: Проверки, которые закрывает оператор: класс `manual`, сценария нет.
 OPERATOR_CHECKS: tuple[str, ...] = ("TC-SYS-06", "TC-REC-03", "TC-TASK-08", "TC-CLEAN-04")
 
-#: Проверки без автоматического сценария (M0: описания есть, сценарии этапов
-#: T6–T9 — впереди). «▶ Следующая» отказывает и **не** ставит статус «пропущена».
+#: Проверки без автоматического сценария: только `manual` — их закрывает оператор.
+#: Ранее здесь были все 20 проверок групп T6–T9 (этап M0); сценарии T6–T9 добавлены
+#: этапами M2, поэтому без сценария остаются ровно ручные проверки. «▶ Следующая»
+#: отказывает и **не** ставит им статус «пропущена».
 NO_SCENARIO_CHECKS: tuple[str, ...] = (
     "TC-SYS-06",
     "TC-REC-03",
     "TC-TASK-08",
+    "TC-CLEAN-04",
+)
+
+#: Проверки групп T6–T9, у которых сценарий уже описан (этап M2, партия 1).
+AUTOMATED_M2_CHECKS: tuple[str, ...] = (
     "TC-MOD-01",
-    "TC-MOD-02",
     "TC-MOD-03",
-    "TC-MOD-04",
     "TC-MOD-05",
     "TC-MOD-06",
-    "TC-MOD-07",
     "TC-TR-01",
+    "TC-INF-03",
+    "TC-INF-04",
+    "TC-CLEAN-02",
+    "TC-CLEAN-03",
+)
+
+#: Проверки T6–T9, сценарии которых ещё впереди (партии 2–4 этапа M2): до их появления
+#: проверки выполняются «по вызовам» или закрываются ручной отметкой.
+PENDING_M2_CHECKS: tuple[str, ...] = (
+    "TC-MOD-02",
+    "TC-MOD-04",
+    "TC-MOD-07",
     "TC-TR-02",
     "TC-TR-03",
     "TC-TR-04",
@@ -102,13 +118,11 @@ NO_SCENARIO_CHECKS: tuple[str, ...] = (
     "TC-TR-06",
     "TC-INF-01",
     "TC-INF-02",
-    "TC-INF-03",
-    "TC-INF-04",
     "TC-CLEAN-01",
-    "TC-CLEAN-02",
-    "TC-CLEAN-03",
-    "TC-CLEAN-04",
 )
+
+#: Проверки, источник факта у которых — сессия и отчёт, а не операции стенда.
+SESSION_ONLY_CHECKS: tuple[str, ...] = ("TC-CLEAN-02", "TC-CLEAN-03")
 
 CHECK_ROW = re.compile(
     r"^\|\s*(?P<id>TC-[A-Z]+-\d{2})\s*\|(?P<title>[^|]*)\|(?P<requirement>[^|]*)\|"
@@ -204,9 +218,9 @@ def test_catalog_is_ready_for_next_stages():
         group = catalog.group(key)
         assert group is not None
         assert group.is_implemented and group.is_complete
-    # M0: проверки групп T6–T9 описаны, но сценариев у них пока нет
+    # Сценарии групп T6–T9 подключаются партиями (этап M2) и полноту каталога не
+    # меняют: состав проверок (10 групп, 69 проверок) описан полностью.
     assert catalog.by_group("TC-MOD")[0].check_id == "TC-MOD-01"
-    assert all(spec.automation is None for spec in catalog.by_group("TC-MOD"))
     assert summary["classes"] == {"tech": 44, "live": 15, "heavy": 6, "manual": 4}
 
 
@@ -252,55 +266,82 @@ def test_endpoints_exist_in_console_registry():
                 f"{spec.check_id}: проба {path} не должна быть в реестре консоли — "
                 "проверка подтверждает отсутствие маршрута"
             )
-        assert spec.endpoints or spec.probe_paths or spec.automation is None, spec.check_id
+        # Факт проверки берётся либо из операций стенда, либо из сценария сессии:
+        # у `TC-CLEAN-02/03` операций нет — источник сессия, поэтому нужен сценарий,
+        # а у ручных проверок источник — оператор (`manual`).
+        assert (
+            spec.endpoints
+            or spec.probe_paths
+            or spec.automation
+            or spec.check_class == CheckClass.MANUAL
+        ), spec.check_id
 
 
 def test_automations_are_declared():
     """Сценарии объявлены в модулях-владельцах и видны общему реестру `runner`."""
     automated = [spec for spec in catalog.CHECKS if spec.automation]
     without = [spec for spec in catalog.CHECKS if not spec.automation]
+    expected_without = [
+        spec.check_id
+        for spec in catalog.CHECKS
+        if spec.check_id in (*NO_SCENARIO_CHECKS, *PENDING_M2_CHECKS)
+    ]
 
-    assert [spec.check_id for spec in without] == list(NO_SCENARIO_CHECKS)
+    assert [spec.check_id for spec in without] == expected_without
     for spec in automated:
         assert runner.scenario(spec) is not None, spec.check_id
     for spec in without:
         assert runner.scenario(spec) is None, spec.check_id
 
     names = runner.automation_names()
-    # 45 проверок автоматизированы; 46-й сценарий (`tasks.external_observation`) —
-    # вспомогательный: он подтверждает ручную проверку TC-TASK-08 (BR-R5)
-    assert len(names) == len(automated) + 1 == 46
+    # Сценариев на один больше числа автоматизированных проверок: вспомогательный
+    # `tasks.external_observation` подтверждает ручную проверку TC-TASK-08 (BR-R5)
+    assert len(names) == len(automated) + 1
     assert len(set(names)) == len(names)
     assert "tasks.external_observation" in names
     assert "files.round_trip" in names
     assert "loads.missing_path" not in names
+    assert "models.card" in names
+    assert "training.contract" in names
+    assert "inference.repeatability" in names
+    assert "cleanup.snapshots" in names
 
 
 def test_checks_without_scenario_are_kept_for_operator():
-    """M0: описанные, но ещё не автоматизированные проверки закрывает оператор.
+    """У проверок T6–T9 этапа M2 есть сценарии; без сценария остаются только ручные.
 
-    Группы `TC-MOD`…`TC-CLEAN` (21 проверка) появились в каталоге раньше сценариев:
-    каждая должна быть помечена классом из `docs/02`, иметь операции для режима
-    «по вызовам» **или** закрываться ручной отметкой, и ни одна из них не должна
-    числиться `manual` без описания шагов ручного выполнения.
+    Ранее (M0) без сценария были все 20 проверок групп `TC-MOD`…`TC-CLEAN`: они
+    закрывались «по вызовам» или ручной отметкой. Сценарии описываются партиями
+    (дешёвые → записывающие → тяжёлые), поэтому у каждой проверки без сценария
+    по-прежнему должны быть операции для «по вызовам», а ручные — с шагами и
+    ожидаемым результатом.
     """
     described = [spec for spec in catalog.CHECKS if spec.check_id in NO_SCENARIO_CHECKS]
-    fresh = [spec for spec in described if spec.module in ("ML models", "Прочее")]
-    # Проверки, у которых источник факта — сессия и отчёт, а не операции стенда.
-    session_only = ("TC-CLEAN-02", "TC-CLEAN-03")
+    automated = [spec for spec in catalog.CHECKS if spec.check_id in AUTOMATED_M2_CHECKS]
+    pending = [spec for spec in catalog.CHECKS if spec.check_id in PENDING_M2_CHECKS]
 
-    assert [spec.check_id for spec in fresh] == list(NO_SCENARIO_CHECKS[3:])
-    assert all(spec.automation is None for spec in fresh)
+    assert [spec.check_id for spec in automated] == list(AUTOMATED_M2_CHECKS)
+    assert all(spec.automation for spec in automated), "у проверок партии 1 должен быть сценарий"
+    assert [spec.check_id for spec in pending] == list(PENDING_M2_CHECKS)
+    assert all(spec.automation is None for spec in pending), "сценарий этой проверки ещё впереди"
+
+    for spec in (*automated, *pending):
+        assert spec.requirement and spec.expected and spec.steps, spec.check_id
+        assert spec.endpoints or spec.check_id in SESSION_ONLY_CHECKS, spec.check_id
+
+    assert [spec.check_id for spec in described] == list(OPERATOR_CHECKS)
     assert [spec.check_id for spec in described if spec.check_class == CheckClass.MANUAL] == (
         list(OPERATOR_CHECKS)
     )
-    for spec in fresh:
+    for spec in described:
         assert spec.requirement, spec.check_id
         assert spec.expected, spec.check_id
         assert spec.steps, spec.check_id
         # источник факта: операции стенда, сессия/отчёт или решение оператора
         assert (
-            spec.endpoints or spec.check_class == CheckClass.MANUAL or spec.check_id in session_only
+            spec.endpoints
+            or spec.check_class == CheckClass.MANUAL
+            or spec.check_id in SESSION_ONLY_CHECKS
         ), spec.check_id
 
 

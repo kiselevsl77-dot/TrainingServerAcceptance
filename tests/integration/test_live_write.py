@@ -44,8 +44,15 @@ pytestmark = pytest.mark.integration
 #: Проверки, которые пишут на стенд (класс `live`): прогон только под флагом.
 WRITE_CHECKS = ("TC-FILE-11", "TC-FILE-12", "TC-FILE-13")
 
-#: Проверки, выводимые из автоматического прогона (деструктивная проба удаления нагрузки).
-EXCLUDED_FROM_BULK = ("TC-LOAD-07",)
+#: Проверки, выводимые из автоматического прогона: деструктивная проба удаления нагрузки
+#: и пробы валидации `TC-MOD-03`, которые отправляют POST на стенд (модель может быть
+#: создана дефектным сервером — пусть их запускает оператор, а не общий прогон).
+EXCLUDED_FROM_BULK = ("TC-LOAD-07", "TC-MOD-03")
+
+#: Сколько проверок общего прогона T3 могут закончиться «пропущена»: ML-проверки
+#: требуют обученной модели, ASCII RAW-файла и сущностей сессии, а CLEAN-проверки —
+#: снимков «Начало»/«Окончание».
+EXPECTED_SKIPS = 6
 
 
 def _live_write_or_skip():
@@ -174,7 +181,7 @@ def test_live_tech_checklist_produces_verdicts():
     for result in results:
         assert result.verdict or result.evidence, f"{result.check_id}: нет вердикта и доказательств"
     skipped = [key for key, status in statuses.items() if status == str(CheckStatus.SKIPPED)]
-    assert len(skipped) <= 3, f"слишком много пропущенных проверок на живом стенде: {skipped}"
+    assert len(skipped) <= EXPECTED_SKIPS, f"слишком много пропущенных проверок: {skipped}"
 
 
 def test_live_inference_single_returns_classes():

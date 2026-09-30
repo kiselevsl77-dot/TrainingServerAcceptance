@@ -275,7 +275,15 @@ def test_live_celery_test_task_fsm_1(live_journal: Journal):
         assert task_id, f"сервер не вернул task_id: {payload}"
 
         session = new_session(base_url=settings.base_url)
-        monitor.register(session, task_id=task_id, task_type=str(TaskType.CELERY_TEST))
+        # метка задаётся явно: сценарий относится к управлению задачей (TC-TASK-05,
+        # прерывание) и наблюдению за переходами FSM-1 (TC-TASK-04) — вне контекста
+        # проверки монитор иначе помечает обмены общей меткой `TC-TASK`
+        monitor.register(
+            session,
+            task_id=task_id,
+            task_type=str(TaskType.CELERY_TEST),
+            check_id="TC-TASK-05",
+        )
 
         # ждём статус `running`: сценарий требует задачи, у которой есть время на команды
         running = poll_until(

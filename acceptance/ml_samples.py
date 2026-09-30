@@ -23,7 +23,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,6 +54,42 @@ SAMPLE_PARAM_FIELDS: tuple[str, ...] = (
 
 #: Поля строки RAW, которые переносятся в доказательства (`RawSample.identity`).
 IDENTITY_FIELDS: tuple[str, ...] = ("chunkID", "timestamp")
+
+#: Канонический заголовок raw_data CSV живого стенда (24 колонки; проверяется и при
+#: загрузке файла: сервер отклоняет CSV, где нет обязательных колонок).
+RAW_COLUMNS: tuple[str, ...] = (
+    "chunkID",
+    "timestamp",
+    "U_A_rms",
+    "U_B_rms",
+    "U_C_rms",
+    "I_A_rms",
+    "I_B_rms",
+    "I_C_rms",
+    "sample_rate",
+    "signal_length",
+    "channel_mask",
+    "signal_bytes",
+    "byte_order",
+    "coding",
+    "U_mult",
+    "U_dev",
+    "I_mult",
+    "I_dev",
+    *SAMPLE_SIGNAL_FIELDS,
+)
+
+
+def raw_row(
+    values: Mapping[str, Any] | None = None, *, columns: Sequence[str] = RAW_COLUMNS
+) -> str:
+    """Строка данных RAW-CSV: значения по каноническому перечню колонок.
+
+    Незаданные колонки заполняются нулём — так собираются тела для загрузки
+    `__TEST__`-файлов, где сервер проверяет прежде всего состав колонок.
+    """
+    source = dict(values or {})
+    return RAW_SEPARATOR.join(str(source.get(name, "0")) for name in columns)
 
 
 def is_ascii(value: str) -> bool:

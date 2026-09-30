@@ -45,6 +45,7 @@ if TYPE_CHECKING:  # pragma: no cover - только для аннотаций
     from client.datasets import DatasetsApi
     from client.files import FilesApi
     from client.loads import LoadsApi
+    from client.models import ModelsApi
     from client.system import SystemApi
 
 #: Модули-владельцы автоматических сценариев (ленивый импорт — см. `automations`).
@@ -55,6 +56,10 @@ AUTOMATION_DOMAINS: tuple[str, ...] = (
     "acceptance.checks.loads",
     "acceptance.checks.tasks",
     "acceptance.checks.datasets",
+    "acceptance.checks.models",
+    "acceptance.checks.training",
+    "acceptance.checks.inference",
+    "acceptance.checks.cleanup",
 )
 
 
@@ -234,6 +239,12 @@ class AutomationContext:
         if self.apis is None:
             raise PreconditionError("API датасетов недоступен: не задан адрес испытуемого сервера")
         return self.apis.datasets
+
+    def models_api(self) -> ModelsApi:
+        """API моделей (`client.models.ModelsApi`); «пропущена», если стенд не настроен."""
+        if self.apis is None:
+            raise PreconditionError("API моделей недоступен: не задан адрес испытуемого сервера")
+        return self.apis.models
 
     def probe_request(
         self,

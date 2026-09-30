@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from typing import Any
 from uuid import uuid4
@@ -32,6 +33,7 @@ from acceptance.checks.runner import (
 )
 from acceptance.endpoints import TEST_PREFIX
 from acceptance.exchange import ExchangeResult, MultipartPayload
+from acceptance.ml_samples import RAW_COLUMNS, RAW_SEPARATOR, SAMPLE_SIGNAL_FIELDS, raw_row
 from acceptance.session import SNAP_START, add_test_entity, mark_test_entity_deleted
 from client.errors import ApiError, ClientError, ServerUnavailableError
 from client.schemas import FileMetadataListResponse, FileMetadataResponse
@@ -71,8 +73,16 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "file_type",
 )
 
-#: Строка RAW-CSV для кругового рейса (проверку колонок делает сервер).
-ROUND_TRIP_BODY = "chunkID;timestamp;U_A_rms;I_A_rms\n1;2026-01-01T00:00:00;0.1;0.2\n"
+#: Base64-сигналы кругового рейса: 8 нулевых байт (валидный Base64, длину сервер не сверяет).
+ROUND_TRIP_SIGNAL = base64.b64encode(bytes(8)).decode("ascii")
+
+#: Строка RAW-CSV для кругового рейса: сервер проверяет состав колонок и отклоняет
+#: «минимальный» CSV строкой `CSV header is missing required columns` (сборка 30.09.2026),
+#: поэтому тело собирается из канонического перечня колонок raw_data.
+ROUND_TRIP_BODY = (
+    f"{RAW_SEPARATOR.join(RAW_COLUMNS)}\n"
+    f"{raw_row(dict.fromkeys(SAMPLE_SIGNAL_FIELDS, ROUND_TRIP_SIGNAL))}\n"
+)
 
 #: CSV «без обязательных колонок» — негативная проба TC-FILE-11.
 INVALID_BODY = "a;b\n1;2\n"

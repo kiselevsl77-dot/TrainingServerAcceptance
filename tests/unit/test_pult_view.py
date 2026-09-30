@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from acceptance import dataset_composition as composition_api
 from acceptance import results as results_api
@@ -54,6 +57,23 @@ def _item(
         requirement="FR-T1",
         expected="200 OK",
     )
+
+
+def _without_scenario(monkeypatch: pytest.MonkeyPatch, check_id: str) -> None:
+    """Показывает проверку как «сценарий ещё не описан» (состояние этапа M0).
+
+    Группы T6–T9 автоматизируются партиями, поэтому проверки способа выполнения и
+    предупреждений не должны зависеть от прогресса M2: описание подменяется точечно.
+    """
+    original = catalog.find
+
+    def find(value: str) -> Any:
+        spec = original(value)
+        if spec is not None and spec.check_id == check_id:
+            return replace(spec, automation=None)
+        return spec
+
+    monkeypatch.setattr(catalog, "find", find)
 
 
 def _queue(*items: QueueItem, mode: str = "сценарием") -> Queue:
@@ -541,18 +561,22 @@ def test_catalog_rows_mark_membership_and_confirmable() -> None:
     assert by_id["TC-SYS-01"]["in_programme"] is False
 
 
-def test_scenario_labels_name_how_check_runs() -> None:
-    """Способ выполнения проверки (`M0`): сценарий, «по вызовам» или ручная отметка."""
+def test_scenario_labels_name_how_check_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Способ выполнения проверки: сценарий, «по вызовам» или ручная отметка."""
     assert view.scenario_label("TC-SYS-01") == view.SCENARIO_RUN
-    assert view.scenario_label("TC-MOD-01") == view.SCENARIO_CALL
+    assert view.scenario_label("TC-MOD-01") == view.SCENARIO_RUN
     assert view.scenario_label("TC-CLEAN-04") == view.SCENARIO_OPERATOR
     assert view.scenario_label("TC-NOPE-01") == ""
 
     assert view.scenario_note("TC-SYS-01") == "", "у автоматизированной проверки — без оговорок"
+    assert view.scenario_note("TC-CLEAN-04").startswith("TC-CLEAN-04: проверка ручная")
+    assert view.scenario_note("TC-NOPE-01") == ""
+
+    # проверка без сценария (состояние M0) — подпись «по вызовам» и предупреждение
+    _without_scenario(monkeypatch, "TC-MOD-01")
+    assert view.scenario_label("TC-MOD-01") == view.SCENARIO_CALL
     assert "сценарий проверки ещё не описан" in view.scenario_note("TC-MOD-01")
     assert "«по вызовам»" in view.scenario_note("TC-MOD-01")
-    assert "ручная" in view.scenario_note("TC-CLEAN-04")
-    assert view.scenario_note("TC-NOPE-01") == ""
 
 
 def test_catalog_rows_cover_full_programme_with_run_modes() -> None:
@@ -562,11 +586,27 @@ def test_catalog_rows_cover_full_programme_with_run_modes() -> None:
         mode: sum(1 for row in rows if row["scenario"] == mode)
         for mode in (view.SCENARIO_RUN, view.SCENARIO_CALL, view.SCENARIO_OPERATOR)
     }
+    by_id = {row["check_id"]: row["scenario"] for row in rows}
+    automated = sum(1 for spec in catalog.CHECKS if spec.automation)
+    pending = sum(
+        1
+        for spec in catalog.CHECKS
+        if not spec.automation and spec.check_class != CheckClass.MANUAL
+    )
 
     assert len(rows) == catalog.catalog_summary()["checks_total"] == 69
     assert all(row["scenario"] for row in rows), "подпись способа есть у каждой строки"
-    assert modes == {view.SCENARIO_RUN: 45, view.SCENARIO_CALL: 20, view.SCENARIO_OPERATOR: 4}
-    assert view.catalog_rows(only_section="TC-CLEAN")[0]["scenario"] == view.SCENARIO_CALL
+    # способ выполнения выводится из каталога: сколько проверок автоматизировано —
+    # столько строк «сценарием», остальные — «по вызовам» (партии этапа M2 впереди)
+    assert modes == {
+        view.SCENARIO_RUN: automated,
+        view.SCENARIO_CALL: pending,
+        view.SCENARIO_OPERATOR: 4,
+    }
+    assert by_id["TC-SYS-01"] == view.SCENARIO_RUN
+    assert by_id["TC-MOD-01"] == view.SCENARIO_RUN
+    assert by_id["TC-CLEAN-04"] == view.SCENARIO_OPERATOR
+    assert len(view.catalog_rows(only_section="TC-CLEAN")) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -783,13 +823,15 @@ def test_outcome_rows_hint_about_card_and_mark() -> None:
     assert "отметку" in mark_row["hint"]
 
 
-def test_next_view_warns_about_missing_scenario() -> None:
+def test_next_view_warns_about_missing_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
     """Следующая проверка без сценария приходит со способом прогона и предупреждением.
 
     Оператор видит это **до** нажатия «▶ Следующая»: иначе отказ ядра выглядел бы
-    как необъяснимая ошибка (`M0`, группы T6–T9).
+    как необъяснимая ошибка (`M0`). Состояние «сценария нет» задаётся подменой
+    описания: сценарии групп T6–T9 описываются партиями.
     """
     item = _item("TC-MOD-01", check_class="tech", title="Каталог архитектур")
+    _without_scenario(monkeypatch, "TC-MOD-01")
 
     next_view = view.run_next_view(item)
 
@@ -799,8 +841,9 @@ def test_next_view_warns_about_missing_scenario() -> None:
     assert next_view["steps"] and next_view["payload"], "что вызывать — известно уже сейчас"
 
 
-def test_outcome_rows_hint_about_missing_scenario() -> None:
+def test_outcome_rows_hint_about_missing_scenario(monkeypatch: pytest.MonkeyPatch) -> None:
     """Итог шага объясняет, что делать с проверкой без сценария (`M0`)."""
+    _without_scenario(monkeypatch, "TC-MOD-01")
 
     class _NoScenario:
         check_id = "TC-MOD-01"

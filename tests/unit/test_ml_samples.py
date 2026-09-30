@@ -259,6 +259,22 @@ def test_parse_raw_sample_reads_signals_and_params():
     assert SIGNAL not in str(evidence)  # Base64 в доказательства не попадает
 
 
+def test_raw_columns_and_row_helpers():
+    """Канонический заголовок RAW и сборка строки данных: сигналы, шкалы, нули."""
+    assert ml_samples.RAW_COLUMNS[0] == "chunkID"
+    assert ml_samples.RAW_COLUMNS[-6:] == ml_samples.SAMPLE_SIGNAL_FIELDS
+    assert len(ml_samples.RAW_COLUMNS) == 24
+
+    row = ml_samples.raw_row({"chunkID": "abc", "U_mult": "721"})
+    values = dict(zip(ml_samples.RAW_COLUMNS, row.split(ml_samples.RAW_SEPARATOR), strict=True))
+
+    assert values["chunkID"] == "abc"
+    assert values["U_mult"] == "721"
+    assert values["I_A_signal"] == "0"
+    assert row.count(ml_samples.RAW_SEPARATOR) == len(ml_samples.RAW_COLUMNS) - 1
+    assert ml_samples.raw_row(columns=("a", "b")) == "0;0"
+
+
 def test_parse_raw_sample_reports_problems():
     with pytest.raises(ValueError, match="нет строк данных"):
         ml_samples.parse_raw_sample("только заголовок")

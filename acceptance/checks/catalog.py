@@ -1041,6 +1041,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "получен перечень архитектур с `description`, `default_config`, `suitable_for_phases`"
         ),
         endpoints=("get /api/ml_models/architectures",),
+        automation="models.architectures",
     ),
     CheckSpec(
         check_id="TC-MOD-02",
@@ -1082,6 +1083,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "`device_id` → ошибка (дешёвая проверка контракта, модель не создаётся)"
         ),
         endpoints=("post /api/ml_models/models",),
+        automation="models.create_validation",
     ),
     CheckSpec(
         check_id="TC-MOD-04",
@@ -1119,6 +1121,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "`output_size`/`device_id`"
         ),
         endpoints=("get /api/ml_models/models",),
+        automation="models.list_filters",
     ),
     CheckSpec(
         check_id="TC-MOD-06",
@@ -1140,6 +1143,7 @@ TC_MOD_SPECS: tuple[CheckSpec, ...] = (
             "get /api/ml_models/models",
             "get /api/ml_models/models/{model_id}",
         ),
+        automation="models.card",
     ),
     CheckSpec(
         check_id="TC-MOD-07",
@@ -1198,6 +1202,7 @@ TC_TR_SPECS: tuple[CheckSpec, ...] = (
             "post /api/ml_models/models/{model_id}/train",
             "get /api/ml_models/models",
         ),
+        automation="training.contract",
     ),
     CheckSpec(
         check_id="TC-TR-02",
@@ -1376,6 +1381,7 @@ TC_INF_SPECS: tuple[CheckSpec, ...] = (
         ),
         expected="значения 0.0 и 1.0 допустимы; значение вне диапазона → ошибка валидации",
         endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+        automation="inference.threshold_bounds",
     ),
     CheckSpec(
         check_id="TC-INF-04",
@@ -1391,6 +1397,7 @@ TC_INF_SPECS: tuple[CheckSpec, ...] = (
         ),
         expected="результат повторяем (расхождения фиксируются как замечание)",
         endpoints=("post /api/ml_models/models/{model_id}/inference/single",),
+        automation="inference.repeatability",
     ),
 )
 
@@ -1444,6 +1451,7 @@ TC_CLEAN_SPECS: tuple[CheckSpec, ...] = (
         expected=(
             "отчёт содержит перечень (`id`, тип, действие, время) по каждому `__TEST__`-объекту"
         ),
+        automation="cleanup.entities",
     ),
     CheckSpec(
         check_id="TC-CLEAN-03",
@@ -1461,6 +1469,7 @@ TC_CLEAN_SPECS: tuple[CheckSpec, ...] = (
             "изменение счётчиков объясняется созданными/удалёнными сущностями; "
             "расхождения описаны в отчёте"
         ),
+        automation="cleanup.snapshots",
     ),
     CheckSpec(
         check_id="TC-CLEAN-04",

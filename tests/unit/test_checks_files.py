@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -23,6 +24,7 @@ from uuid import uuid4
 
 import httpx
 
+from acceptance import ml_samples
 from acceptance.api import Apis
 from acceptance.checks import catalog
 from acceptance.checks import engine as checks_engine
@@ -667,6 +669,23 @@ def test_wrong_mime_accepted_creates_failed_check_with_cleanup():
 # ---------------------------------------------------------------------------
 # Круговой рейс и удаление: TC-FILE-13/14
 # ---------------------------------------------------------------------------
+def test_round_trip_body_uses_full_raw_columns():
+    """Круговой рейс загружает CSV со всеми колонками raw_data.
+
+    Стенд проверяет заголовок: «минимальный» CSV отклоняется с 400 «CSV header is
+    missing required columns» (проверено на сборке 30.09.2026), поэтому тело
+    собирается из канонического перечня колонок (`ml_samples.RAW_COLUMNS`).
+    """
+    lines = check_files.ROUND_TRIP_BODY.strip().splitlines()
+    values = lines[1].split(ml_samples.RAW_SEPARATOR)
+
+    assert lines[0] == ml_samples.RAW_SEPARATOR.join(ml_samples.RAW_COLUMNS)
+    assert len(values) == len(ml_samples.RAW_COLUMNS)
+    for name in ml_samples.SAMPLE_SIGNAL_FIELDS:
+        signal = values[ml_samples.RAW_COLUMNS.index(name)]
+        assert base64.b64decode(signal) == bytes(8)
+
+
 def test_round_trip_uploads_lists_downloads_and_deletes():
     """Полный круговой рейс: файл создан, найден, скачан байт-в-байт и удалён."""
     fake = FakeStand()

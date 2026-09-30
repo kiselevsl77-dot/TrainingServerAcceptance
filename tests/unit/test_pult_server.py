@@ -32,6 +32,7 @@ import pytest
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.api import Apis
+from acceptance.checks import catalog
 from acceptance.config import PultConfig
 from acceptance.http_log import HttpExchange, Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
@@ -687,14 +688,36 @@ def test_catalog_lists_all_programme_checks_with_run_modes(pult: PultApp) -> Non
     assert len(rows) == 69
     assert all(row["scenario"] for row in rows), "у каждой строки — способ выполнения"
     modes = {row["scenario"] for row in rows}
-    assert modes == {"сценарием", "по вызовам", "вручную"}
+    assert modes <= {"сценарием", "по вызовам", "вручную"}
+    assert "сценарием" in modes and "вручную" in modes
     fresh = {row["check_id"]: row for row in rows if row["check_id"].startswith("TC-MOD-")}
-    assert fresh["TC-MOD-01"]["scenario"] == "по вызовам"
+    assert fresh["TC-MOD-01"]["scenario"] == "сценарием", "сценарий T6 описан"
     assert fresh["TC-MOD-01"]["class_key"] == "tech"
     assert fresh["TC-MOD-02"]["confirm_required"] is True, "live-проверка требует карточку"
+    clean = {row["check_id"]: row for row in rows if row["check_id"].startswith("TC-CLEAN-")}
+    assert clean["TC-CLEAN-04"]["scenario"] == "вручную", "ручную проверку закрывает оператор"
 
 
-def test_run_warns_and_refuses_check_without_scenario(pult: PultApp) -> None:
+def _without_scenario(monkeypatch: pytest.MonkeyPatch, check_id: str) -> None:
+    """Показывает проверку как «сценарий ещё не описан» (состояние этапа M0).
+
+    Сценарии групп T6–T9 описываются партиями, поэтому правило «проверка каталога без
+    сценария не закрывается статусом» проверяется подменой описания.
+    """
+    original = catalog.find
+
+    def find(value: str) -> Any:
+        spec = original(value)
+        if spec is not None and spec.check_id == check_id:
+            return replace(spec, automation=None)
+        return spec
+
+    monkeypatch.setattr(catalog, "find", find)
+
+
+def test_run_warns_and_refuses_check_without_scenario(
+    pult: PultApp, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Проверка без сценария (M0): предупреждение до нажатия и отказ без статуса.
 
     Отказ ядра не должен выглядеть как «проверка пропущена»: пункт остаётся
@@ -702,6 +725,7 @@ def test_run_warns_and_refuses_check_without_scenario(pult: PultApp) -> None:
     подсказку с доступными способами выполнения.
     """
     check_id = _with_checks(pult, check_class="tech", check_id="TC-MOD-01")
+    _without_scenario(monkeypatch, check_id)
 
     run = get(pult, "/api/run")
     assert run["next"]["check_id"] == check_id

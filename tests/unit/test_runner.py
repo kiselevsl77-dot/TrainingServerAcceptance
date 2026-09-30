@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -364,17 +365,40 @@ def test_unknown_check_is_closed_as_skipped(wired: Any, library: sets_api.SetsLi
 # ---------------------------------------------------------------------------
 # M0: проверка описана в каталоге, сценария ещё нет
 # ---------------------------------------------------------------------------
-def test_check_without_scenario_is_not_closed_by_next(wired: Any, library: sets_api.SetsLibrary):
+def _without_scenario(monkeypatch: pytest.MonkeyPatch, check_id: str) -> None:
+    """Показывает проверку как «сценарий ещё не описан» (состояние этапа M0).
+
+    Сценарии групп T6–T9 описываются партиями, поэтому правило «проверка каталога без
+    сценария не закрывается статусом» проверяется подменой описания: иначе тест-страж
+    зависел бы от прогресса автоматизации.
+    """
+    original = catalog.find
+
+    def find(value: str) -> CheckSpec | None:
+        spec = original(value)
+        if spec is not None and spec.check_id == check_id:
+            return replace(spec, automation=None)
+        return spec
+
+    monkeypatch.setattr(catalog, "find", find)
+
+
+def test_check_without_scenario_is_not_closed_by_next(
+    wired: Any, library: sets_api.SetsLibrary, monkeypatch: pytest.MonkeyPatch
+):
     """«▶ Следующая» на проверке без сценария отказывает и **не** ставит статус.
 
-    Группы T6–T9 описаны в каталоге на этапе M0 раньше сценариев: если закрывать
-    такие пункты статусом «пропущена», протокол испытаний заявлял бы пропуск
-    проверки, которая ещё не выполнялась.
+    Правило M0 (проверка описана, сценария ещё нет) остаётся в силе и после того,
+    как сценарии групп T6–T9 появились: описание проверки подменяется без сценария,
+    поэтому тест-страж не зависит от того, сколько партий M2 уже готово. Если закрывать
+    такие пункты статусом «пропущена», протокол заявлял бы пропуск проверки, которая
+    не выполнялась.
     """
     runtime, journal, client, session = wired
     programme = _programme(library)
     programme.add_check("TC-MOD-01")
     queue = _queue(programme)
+    _without_scenario(monkeypatch, "TC-MOD-01")
 
     outcome = runner_api.execute_check(
         queue, programme, session, runtime, check_id="TC-MOD-01", client=client
@@ -409,12 +433,15 @@ def test_manual_check_without_scenario_still_asks_operator(
     assert _item(queue, "TC-CLEAN-04").is_pending
 
 
-def test_batch_tech_stops_on_check_without_scenario(wired: Any, library: sets_api.SetsLibrary):
+def test_batch_tech_stops_on_check_without_scenario(
+    wired: Any, library: sets_api.SetsLibrary, monkeypatch: pytest.MonkeyPatch
+):
     """«Пачка tech» доводит до проверки без сценария и останавливается с причиной."""
     runtime, _journal, client, session = wired
     # набор TC-MOD: первая проверка `tech`, вторая уже `live` — пачка берёт только первую
     programme = _programme(library, "SET-MOD")
     queue = _queue(programme)
+    _without_scenario(monkeypatch, "TC-MOD-01")
 
     outcomes = runner_api.run_batch_tech(queue, programme, session, runtime, client=client)
 

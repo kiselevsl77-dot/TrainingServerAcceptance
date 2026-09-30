@@ -389,6 +389,23 @@ KNOWN_DEFECTS: tuple[dict[str, str], ...] = (
         "expected": "Заполнять signals при создании модели и/или полю device_id в реестре нагрузок.",
         "reproduction": "GET /api/ml_models/models — проверить пустые signals у живых моделей.",
     },
+    {
+        "title": "GET /api/ml_models/models?device_id → 500",
+        "module": "ML models",
+        "endpoint": "GET /api/ml_models/models",
+        "priority": "P1",
+        "fact": "Фильтр `device_id` объявлен в спецификации (UC-18, NFR-4), но живой сервер "
+        "отвечает `500 Internal Server Error` на любое значение: и на существующий "
+        "`device_id` из карточки модели (`Antminer S19`), и на заведомо отсутствующий. "
+        "Остальные фильтры (`model_id`, `architecture`, `version`, `name`, `phase_type`, "
+        "`output_size`) работают; список моделей при этом не отдаёт `signals` — привязки "
+        "видны только в карточке `GET /api/ml_models/models/{model_id}` (проверка TC-MOD-05, "
+        "30.09.2026).",
+        "expected": "Фильтр `device_id` возвращает модели, связанные с нагрузкой, либо "
+        "отклоняется понятной ошибкой 400/422, а не 500; привязки `signals` отдаются и списком.",
+        "reproduction": "GET /api/ml_models/models?device_id=Antminer%20S19 → 500; "
+        "то же с несуществующим значением → 500.",
+    },
 )
 
 
@@ -471,6 +488,10 @@ DEFECT_BY_CHECK: dict[str, str] = {
     # этап T5: замечания к модулю «Datasets» — состав/агрегаты и обходной путь задачи fill
     "TC-DS-03": "Нет связи «датасет ↔ файлы» и агрегатов (записи/чанки)",
     "TC-DS-05": "POST /api/datasets/fill/{id} не возвращает task_id",
+    # этап M2: замечание к фильтру моделей — сервер отвечает 500 (проверка TC-MOD-05);
+    # статус проверки при этом «отказ» (остальные фильтры работают), поэтому замечание
+    # оператор берёт одной кнопкой из реестра известных дефектов
+    "TC-MOD-05": "GET /api/ml_models/models?device_id → 500",
 }
 
 
