@@ -10,6 +10,9 @@ import pytest
 from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.notes import new_note
 from acceptance.session import (
+    ARTIFACT_ACTIONS,
+    ARTIFACT_DELETED,
+    ARTIFACT_KEPT,
     ENTITY_CREATED,
     ENTITY_DELETED,
     ORIGIN_EXTERNAL,
@@ -247,6 +250,50 @@ def test_add_artifact_and_set_markup_stats_write_history():
     assert "artifact_saved" in events
     assert "markup_stats" in events
     assert session.artifacts[0]["path"] == "artifacts/pair.zip"
+
+
+def test_add_artifact_records_decision_without_file(tmp_path: Path):
+    """Решение по артефакту живёт без файла: модель остаётся на стенде (`FR-T10`)."""
+    session = _session(tmp_path)
+
+    kept = add_artifact(
+        session,
+        kind="модель",
+        name="__TEST__trained",
+        entity_id="11111111-2222-4333-8444-555555555555",
+        action=ARTIFACT_KEPT,
+        check_id="TC-TR-02",
+        note="результат обучения оставлен артефактом",
+    )
+    deleted = add_artifact(
+        session,
+        kind="модель",
+        name="__TEST__trained",
+        entity_id="11111111-2222-4333-8444-555555555555",
+        action=ARTIFACT_DELETED,
+        check_id="TC-TR-04",
+    )
+    save_session(session, tmp_path)
+    restored = load_session(session.session_id, tmp_path)
+
+    assert kept["path"] == "" and kept["size_bytes"] == 0, "у решения нет файла на диске"
+    assert deleted["at"] and deleted["action"] == ARTIFACT_DELETED
+    assert restored.artifacts[0]["action"] == ARTIFACT_KEPT
+    assert restored.artifacts[1]["action"] == ARTIFACT_DELETED
+    assert restored.artifacts[0]["entity_id"] == "11111111-2222-4333-8444-555555555555"
+    assert restored.artifacts[0]["check_id"] == "TC-TR-02"
+    assert ARTIFACT_ACTIONS == (ARTIFACT_KEPT, ARTIFACT_DELETED)
+
+
+def test_export_artifact_has_no_decision():
+    """У выгруженного доказательства решения нет: пустое `action` не путается с решением."""
+    session = _session(Path("."))
+
+    record = add_artifact(session, kind="выгрузка", path=Path("artifacts/pair.zip"))
+
+    assert record["action"] == ""
+    assert record["entity_id"] == ""
+    assert record["name"] == "pair.zip"
 
 
 def test_schema_v1_file_is_read_with_defaults():

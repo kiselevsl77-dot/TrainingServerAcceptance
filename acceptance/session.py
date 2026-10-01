@@ -359,27 +359,59 @@ def set_snapshot(session: TestSession, phase: str, snapshot: dict[str, Any]) -> 
     return session
 
 
+# ---------------------------------------------------------------------------
+# Артефакты ресурсоёмких проверок: решение оператора (FR-T10, TC-CLEAN-04)
+# ---------------------------------------------------------------------------
+#: Решение по артефакту ресурсоёмкой проверки (`TC-CLEAN-04`).
+#:
+#: Тяжёлая проверка оставляет на стенде дорого добытый результат — обученную модель
+#: или файл `.h5`/`.onnx`. Убирать его молча нельзя (результат нужен отчёту),
+#: оставлять «как есть» — тоже (стенд общий): решение принимает оператор, и по
+#: каждому такому объекту оно должно быть видно в отчёте. Решение фиксируется
+#: записью в `session.artifacts` — в той же таблице, что выгруженные доказательства.
+ARTIFACT_KEPT = "сохранён артефактом"
+ARTIFACT_DELETED = "удалён после проверки"
+ARTIFACT_ACTIONS: tuple[str, ...] = (ARTIFACT_KEPT, ARTIFACT_DELETED)
+
+
 def add_artifact(
     session: TestSession,
     *,
     kind: str,
-    path: Any,
+    path: Any = None,
     size_bytes: int | None = None,
     note: str = "",
+    name: str = "",
+    entity_id: str = "",
+    action: str = "",
+    check_id: str = "",
 ) -> dict[str, Any]:
-    """Регистрирует выгруженный артефакт сессии (манифест, запрошенная выгрузка).
+    """Регистрирует артефакт сессии: выгруженное доказательство или решение по нему.
 
-    Артефакт — доказательство испытаний: он указывается в отчёте, чтобы результат
-    можно было проверить. Файлы лежат в `acceptance_data/artifacts/`.
+    Артефакт — доказательство испытаний: он указывается в отчёте (раздел 8), чтобы
+    результат можно было проверить. Файлы лежат в `acceptance_data/artifacts/`.
+
+    У записи две роли, и обе нужны отчёту (`FR-T10`, `TC-CLEAN-04`):
+
+    * **выгруженное доказательство** — есть `path` (манифест, скачанный ONNX): имя и
+      размер берутся из файла, если не переданы явно, а `action` пуст: у выгрузки
+      нет решения — она сама и есть доказательство;
+    * **решение по артефакту ресурсоёмкой проверки** — есть `entity_id` (модель или
+      файл стенда) и `action` (`ARTIFACT_KEPT` при `keep_artifact`, `ARTIFACT_DELETED`
+      при уборке). Файла может не быть: обученная модель остаётся **на стенде**, а в
+      сессии фиксируется само решение — по нему оператор закрывает `TC-CLEAN-04`.
     """
-    file_path = Path(str(path))
+    file_path = Path(str(path)) if str(path or "").strip() else None
     record: dict[str, Any] = {
         "at": now_iso(),
         "kind": kind,
-        "name": file_path.name,
-        "path": file_path.as_posix(),
+        "name": name or (file_path.name if file_path else str(entity_id)),
+        "path": file_path.as_posix() if file_path else "",
         "size_bytes": size_bytes if size_bytes is not None else _safe_size(file_path),
         "note": note,
+        "entity_id": str(entity_id or ""),
+        "action": str(action or ""),
+        "check_id": str(check_id or ""),
     }
     session.artifacts.append(record)
     session.add_history(
@@ -519,8 +551,10 @@ def pending_test_entities(session: TestSession) -> list[dict[str, Any]]:
     ]
 
 
-def _safe_size(path: Path) -> int:
-    """Размер файла, если он есть (иначе 0)."""
+def _safe_size(path: Path | None) -> int:
+    """Размер файла, если он есть (иначе 0; решения по артефактам файла не имеют)."""
+    if path is None:
+        return 0
     try:
         return path.stat().st_size
     except OSError:

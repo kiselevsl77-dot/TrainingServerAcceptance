@@ -22,7 +22,7 @@ from acceptance.checks import training as check_training
 from acceptance.checks.registry import CheckSpec, CheckStatus
 from acceptance.exchange import build_console_client
 from acceptance.http_log import Journal, LoggingTransport
-from acceptance.session import new_session
+from acceptance.session import ARTIFACT_DELETED, ARTIFACT_KEPT, new_session
 from acceptance.tasks_monitor import TaskMonitor
 from client.http import ApiHttpClient
 from client.settings import TrainingServerSettings
@@ -499,6 +499,9 @@ def test_training_result_compares_card_and_removes_model():
     assert outcome.evidence["artifact"]["action"] == "удалена"
     assert TRAINED_ID in fake.deleted, "модель-результат удалена по решению по умолчанию"
     assert not any(str(row["id"]) == TRAINED_ID for row in fake.models)
+    decision = started.session.artifacts[-1]
+    assert decision["action"] == ARTIFACT_DELETED, "удаление тоже решение — вход TC-CLEAN-04"
+    assert decision["entity_id"] == TRAINED_ID
 
 
 def test_training_result_keeps_model_as_artifact():
@@ -522,6 +525,10 @@ def test_training_result_keeps_model_as_artifact():
     assert fake.deleted == [], "модель не удаляется, если оператор оставил её артефактом"
     types = [item["type"] for item in started.session.counters["test_entities"]]
     assert "модель (артефакт)" in types
+    decision = started.session.artifacts[-1]
+    assert decision["action"] == ARTIFACT_KEPT, "решение видно отчёту (TC-CLEAN-04)"
+    assert decision["entity_id"] == TRAINED_ID
+    assert decision["check_id"] == "TC-TR-04"
 
 
 def test_training_result_skipped_without_training():

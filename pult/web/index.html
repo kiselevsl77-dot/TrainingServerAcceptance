@@ -420,6 +420,34 @@
             <tbody></tbody>
           </table>
         </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Артефакты ресурсоёмких проверок</h3>
+            <span class="muted" id="artifacts-meta"></span>
+          </div>
+          <p class="hint">
+            Обученные модели и файлы <code>.h5</code>/<code>.onnx</code>, оставленные тяжёлыми
+            проверками: по каждому объекту решение — сохранить артефактом испытаний («💾 в
+            артефакты») или удалить со стенда («🗑 удалить»). Решение попадает в отчёт, им
+            закрывается <code>TC-CLEAN-04</code>.
+          </p>
+          <div id="artifacts-note" class="notice" hidden></div>
+          <table class="grid" id="artifacts-table">
+            <thead>
+              <tr>
+                <th>Вид</th>
+                <th>Объект</th>
+                <th>Размер</th>
+                <th>След</th>
+                <th>Решение</th>
+                <th>Проверка</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </section>
       </section>
 
       <section class="panel" id="panel-results">

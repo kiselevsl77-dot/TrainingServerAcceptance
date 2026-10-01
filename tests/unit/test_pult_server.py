@@ -30,12 +30,13 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from acceptance import paths, tasks_monitor
 from acceptance import session as session_api
 from acceptance import sets as sets_api
-from acceptance import tasks_monitor
 from acceptance.api import Apis
 from acceptance.checks import catalog
 from acceptance.config import PultConfig
+from acceptance.endpoints import TEST_PREFIX
 from acceptance.http_log import HttpExchange, Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
 from client.http import ApiHttpClient
@@ -1691,3 +1692,253 @@ def test_ml_params_reach_the_train_call(ml_stand: tuple[PultApp, list[Any]]) -> 
     raw = request.content.decode("utf-8")
     assert json.loads(raw)["dataset_id"] == FILLED_DATASET
     assert "<uuid>" not in raw, "заглушка не ушла на стенд"
+
+
+# ---------------------------------------------------------------------------
+# Артефакты ресурсоёмких проверок (шаг 6 плана M2, FR-T10, TC-CLEAN-04)
+# ---------------------------------------------------------------------------
+ARTIFACT_MODEL = "aaaaaaaa-bbbb-4ccc-8ddd-111111111111"
+ARTIFACT_FILE = "22222222-3333-4444-8555-666666666666"
+
+
+def _artifact_handler(request: httpx.Request) -> httpx.Response:
+    """Подменённый стенд с одним `__TEST__`-результатом: модель и её ONNX.
+
+    Нужен ровно один объект каждого вида, чтобы проверять решения: список моделей,
+    список файлов, карточка модели (имя для записи) и удаление.
+    """
+    path = request.url.path
+    if request.method == "DELETE":
+        return httpx.Response(200, json={"message": "удалено"})
+    if path.endswith("/download_onnx"):
+        return httpx.Response(
+            200,
+            content=b"onnx-test-bytes",
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Content-Disposition": 'attachment; filename="trained.onnx"',
+            },
+        )
+    if path.startswith(f"/api/ml_models/models/{ARTIFACT_MODEL}"):
+        return httpx.Response(200, json=_artifact_model(ARTIFACT_MODEL))
+    if path.startswith("/api/ml_models/models"):
+        return httpx.Response(200, json={"models": [_artifact_model(ARTIFACT_MODEL)], "count": 1})
+    if path.startswith("/api/data/files"):
+        return httpx.Response(
+            200,
+            json={
+                "files": [
+                    {
+                        "id": ARTIFACT_FILE,
+                        "file_name": f"{TEST_PREFIX}typo_capture.onnx",
+                        "size": 1024,
+                        "s3_path": "s3://bucket/x.onnx",
+                        "import_date": "2026-10-01T12:00:00",
+                        "file_type": "ONNX",
+                    }
+                ],
+                "count": 1,
+            },
+        )
+    if path.startswith("/api/tasks/"):
+        return httpx.Response(200, json={"tasks": [], "count": 0})
+    # всё остальное — как у базового стенда тестов (версия, датасеты, нагрузки)
+    return _handler(request)
+
+
+def _artifact_model(model_id: str) -> dict[str, Any]:
+    """Карточка модели стенда (`ModelMetadata`)."""
+    return {
+        "id": model_id,
+        "file_id": "33333333-4444-4555-8666-777777777777",
+        "architecture": "cnn_1d",
+        "version": "cnn_1d.7f3a91c2",
+        "name": f"{TEST_PREFIX}trained_artifact",
+        "description": None,
+        "phase_type": "single",
+        "output_size": 2,
+        "config": {"architecture": "cnn_1d"},
+        "metrics": {"accuracy": 0.9},
+        "pruning_mask": None,
+        "created_at": "2026-10-01T11:00:00",
+        "updated_at": "2026-10-01T12:00:00",
+        "signals": None,
+        "signal_aliases": None,
+    }
+
+
+@pytest.fixture
+def artifact_stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PultApp:
+    """Пульт со стендом, на котором остался `__TEST__`-результат тяжёлой проверки.
+
+    Каталог артефактов подменён временным: тест не трогает `acceptance_data/`.
+    """
+    monkeypatch.setattr(paths, "ARTIFACT_DIR", tmp_path / "artifacts")
+    return _app(tmp_path, monkeypatch, _artifact_handler)
+
+
+def test_artifacts_panel_lists_stand_candidates(artifact_stand: PultApp) -> None:
+    """`GET /api/artifacts` — кандидаты стенда и «решение не принято», пока его нет."""
+    _with_checks(artifact_stand, check_class="tech", check_id="TC-SYS-01")
+
+    panel = get(artifact_stand, "/api/artifacts")
+
+    assert panel["configured"] is True
+    assert panel["errors"] == []
+    assert [row["kind"] for row in panel["rows"]] == ["model", "file"]
+    assert panel["rows"][0]["name"] == f"{TEST_PREFIX}trained_artifact"
+    assert panel["rows"][0]["ours"] is False, "имя без id сессии — след прошлого прогона"
+    assert panel["summary"]["undecided"] == 2
+    assert "TC-CLEAN-04 ставить рано" in panel["note"]
+    card = panel["view"]["rows"][0]
+    assert card["decision"] == ""
+    assert card["decision_label"] == "решение не принято"
+    assert [item["action"] for item in card["actions"]] == ["keep", "delete"]
+
+
+def test_artifact_keep_records_decision_and_downloads_onnx(artifact_stand: PultApp) -> None:
+    """`keep` фиксирует артефакт испытаний и выгружает ONNX как доказательство."""
+    _with_checks(artifact_stand, check_class="tech", check_id="TC-SYS-01")
+
+    answer = post(
+        artifact_stand,
+        "/api/artifacts",
+        action="keep",
+        kind="model",
+        id=ARTIFACT_MODEL,
+        check_id="TC-TR-02",
+        download=True,
+    )
+
+    record = answer["artifact"]
+    assert answer["decision"] == "keep"
+    assert record["action"] == session_api.ARTIFACT_KEPT
+    assert record["entity_id"] == ARTIFACT_MODEL
+    assert record["check_id"] == "TC-TR-02"
+    assert record["kind"] == "модель"
+    assert record["path"].endswith(f"{TEST_PREFIX}trained_artifact.onnx"), record["path"]
+    assert record["size_bytes"] == len(b"onnx-test-bytes")
+    assert Path(record["path"]).is_file(), "выгрузка действительно записана"
+    assert "остаётся на стенде" in record["note"]
+    assert answer["summary"]["kept"] == 1
+    assert answer["summary"]["undecided"] == 1, "второй кандидат (файл) ещё ждёт решения"
+    assert "решение принято по каждому" not in answer["conclusion"]
+
+
+def test_artifact_delete_removes_entity_and_closes_clean_04(artifact_stand: PultApp) -> None:
+    """`delete` убирает объект со стенда, пишет решение и закрывает `TC-CLEAN-04`."""
+    _with_checks(artifact_stand, check_class="tech", check_id="TC-SYS-01")
+    post(
+        artifact_stand,
+        "/api/artifacts",
+        action="keep",
+        kind="model",
+        id=ARTIFACT_MODEL,
+        check_id="TC-TR-02",
+    )
+
+    answer = post(
+        artifact_stand,
+        "/api/artifacts",
+        action="delete",
+        kind="file",
+        id=ARTIFACT_FILE,
+        check_id="TC-TR-06",
+    )
+
+    record = answer["artifact"]
+    assert answer["decision"] == "delete"
+    assert record["action"] == session_api.ARTIFACT_DELETED
+    assert record["entity_id"] == ARTIFACT_FILE
+    assert "удалён со стенда" in record["note"]
+    assert answer["summary"] == {
+        "total": 2,
+        "ours": 0,
+        "foreign": 2,
+        "kept": 1,
+        "deleted": 1,
+        "decided": 2,
+        "undecided": 0,
+    }
+    assert "решение принято по каждому объекту" in answer["conclusion"]
+
+    # решение переживает перезапуск пульта: оно записано в сессию на диске
+    restored = session_api.load_session(artifact_stand.state.session_id() or "")
+    assert [item["action"] for item in restored.artifacts] == [
+        session_api.ARTIFACT_KEPT,
+        session_api.ARTIFACT_DELETED,
+    ]
+
+
+def test_artifact_delete_marks_test_entity_deleted(artifact_stand: PultApp) -> None:
+    """Удалённая сущность видна самоочистке `TC-CLEAN-01`: учёт не теряется."""
+    _with_checks(artifact_stand, check_class="tech", check_id="TC-SYS-01")
+    session = artifact_stand.state.current_session()
+    assert session is not None
+    session_api.add_test_entity(
+        session, entity_id=ARTIFACT_FILE, entity_type="файл ONNX", check_id="TC-TR-06"
+    )
+    artifact_stand.save(session)
+
+    post(artifact_stand, "/api/artifacts", action="delete", kind="file", id=ARTIFACT_FILE)
+
+    current = artifact_stand.state.current_session()
+    assert current is not None
+    assert [item["action"] for item in session_api.test_entities(current)] == [
+        session_api.ENTITY_CREATED,
+        session_api.ENTITY_DELETED,
+    ]
+    assert session_api.pending_test_entities(current) == []
+
+
+def test_artifact_action_rejects_unknown_words(artifact_stand: PultApp) -> None:
+    """Нераспознанное действие, вид и пустой `id` отвергаются с понятным текстом."""
+    _with_checks(artifact_stand, check_class="tech", check_id="TC-SYS-01")
+
+    with pytest.raises(ApiError) as action_error:
+        post(artifact_stand, "/api/artifacts", action="выгрузить на луну", kind="model", id="x")
+    assert action_error.value.status == 422
+    assert "не распознано" in action_error.value.message
+
+    with pytest.raises(ApiError) as kind_error:
+        post(artifact_stand, "/api/artifacts", action="keep", kind="dataset", id="x")
+    assert kind_error.value.status == 422
+    assert "Вид артефакта" in kind_error.value.message
+
+    with pytest.raises(ApiError) as id_error:
+        post(artifact_stand, "/api/artifacts", action="keep", kind="model")
+    assert id_error.value.status == 422
+    assert "Не указан объект" in id_error.value.message
+
+
+def test_artifact_action_needs_session(artifact_stand: PultApp) -> None:
+    """Без сессии решение не принимается: отказ понятным текстом, а не «тихо ничего»."""
+    with pytest.raises(ApiError) as no_session:
+        post(artifact_stand, "/api/artifacts", action="keep", kind="model", id=ARTIFACT_MODEL)
+
+    assert no_session.value.status == 409
+    assert "Сессия испытаний не выбрана" in no_session.value.message
+
+
+def test_artifacts_panel_needs_stand(no_stand: PultApp) -> None:
+    """Без адреса стенда панель отдаётся с подсказкой, а не падает (`FR-P-25`)."""
+    panel = get(no_stand, "/api/artifacts")
+
+    assert panel["configured"] is False
+    assert panel["rows"] == []
+    assert "не задан" in panel["note"]
+
+
+def test_artifact_action_needs_stand(no_stand: PultApp) -> None:
+    """Без стенда решение ушло бы в пустоту: `POST` отвечает отказом."""
+    post(
+        no_stand,
+        "/api/sessions",
+        info={"title": "Без стенда", "object_of_test": "Объект", "operator_fio": AUTHOR},
+    )
+
+    with pytest.raises(ApiError) as no_stand_error:
+        post(no_stand, "/api/artifacts", action="keep", kind="model", id=ARTIFACT_MODEL)
+
+    assert no_stand_error.value.status == 409
+    assert "не задан" in no_stand_error.value.message

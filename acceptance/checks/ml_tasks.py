@@ -28,7 +28,13 @@ from acceptance.checks.registry import CheckStatus
 from acceptance.checks.runner import AutomationContext, CheckOutcome, PreconditionError
 from acceptance.endpoints import TEST_PREFIX
 from acceptance.ml_samples import pick_dataset, pick_model
-from acceptance.session import add_test_entity, mark_test_entity_deleted
+from acceptance.session import (
+    ARTIFACT_DELETED,
+    ARTIFACT_KEPT,
+    add_artifact,
+    add_test_entity,
+    mark_test_entity_deleted,
+)
 from acceptance.tasks_monitor import task_id_from_payload
 from client.errors import ApiError, ClientError, ServerUnavailableError
 from client.schemas import ModelMetadata
@@ -47,6 +53,9 @@ POLL_INTERVAL = 2.0
 
 #: Тип учёта модели, оставленной артефактом испытаний (`TC-CLEAN-04`).
 ENTITY_ARTIFACT = "модель (артефакт)"
+
+#: Вид записи о судьбе модели-результата в артефактах сессии (`FR-T10`).
+ARTIFACT_KIND_MODEL = "модель"
 
 
 def param_int(context: AutomationContext, name: str, default: int) -> int:
@@ -298,12 +307,24 @@ def cleanup_model(
     model_id = str(model.id)
     if keep:
         session_id = str(context.session.session_id)
+        note = f"{reason or 'результат проверки'} оставлен артефактом (сессия {session_id})"
         add_test_entity(
             context.session,
             entity_id=model_id,
             entity_type=ENTITY_ARTIFACT,
             check_id=context.spec.check_id,
-            note=f"{reason or 'результат проверки'} оставлен артефактом (сессия {session_id})",
+            note=note,
+        )
+        # решение попадает в артефакты сессии: по нему в отчёте видно судьбу модели
+        # (`FR-T10`, `TC-CLEAN-04`) — таблица решений одна для всех тяжёлых проверок
+        add_artifact(
+            context.session,
+            kind=ARTIFACT_KIND_MODEL,
+            name=str(model.name),
+            entity_id=model_id,
+            action=ARTIFACT_KEPT,
+            check_id=context.spec.check_id,
+            note=note,
         )
         return {
             "action": "оставлена артефактом",
@@ -317,7 +338,17 @@ def cleanup_model(
     mark_test_entity_deleted(
         context.session, model_id, check_id=context.spec.check_id, note="самоочистка результата"
     )
-    return {"action": "удалена", "detail": _cleanup_file(context, model)}
+    detail = _cleanup_file(context, model)
+    add_artifact(
+        context.session,
+        kind=ARTIFACT_KIND_MODEL,
+        name=str(model.name),
+        entity_id=model_id,
+        action=ARTIFACT_DELETED,
+        check_id=context.spec.check_id,
+        note=f"{reason or 'результат проверки'} удалён: {detail}",
+    )
+    return {"action": "удалена", "detail": detail}
 
 
 def _cleanup_file(context: AutomationContext, model: ModelMetadata) -> str:

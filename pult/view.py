@@ -43,6 +43,7 @@ from acceptance.exchange import curl_command
 from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICONS, QUEUE_STATES
 from acceptance.session import TestSession
 from acceptance.tasks_monitor import TaskMonitor, status_color, status_glyph, status_label
+from pult import artifacts as artifacts_api
 
 #: Разделитель подписей в «одной строке» (макет печатает ` · `).
 SEPARATOR = " · "
@@ -2336,3 +2337,74 @@ def jobs_view(jobs: Iterable[Any], *, active: Mapping[str, Any] | None = None) -
     else:
         note = "Фоновых прогонов ещё не было."
     return {"rows": rows, "active": active_row, "note": note}
+
+
+def _size_text(value: Any) -> str:
+    """Размер объекта: байты с разрядами или «—», если размер неизвестен."""
+    if value is None:
+        return "—"
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{number:,}".replace(",", " ") + " Б"
+
+
+def artifact_rows(
+    rows: Iterable[Mapping[str, Any]], records: Iterable[Any]
+) -> list[dict[str, Any]]:
+    """Строки панели «Артефакты»: объект стенда, решение по нему и что можно сделать.
+
+    Кандидатов собирает `pult.artifacts.candidate_rows` (данные реестров стенда),
+    решения — записи `session.artifacts`. Строка показывает и то, и другое: оператор
+    видит, что уже решено, а что ещё ждёт решения (`FR-T10`, `TC-CLEAN-04`).
+
+    Оба действия остаются доступными и после решения: передумать можно (модель,
+    оставленную артефактом, разрешено убрать позже), а отчёт покажет последнее
+    решение — тем и закрывается `TC-CLEAN-04`.
+    """
+    index = artifacts_api.decision_index(records)
+    display: list[dict[str, Any]] = []
+    for row in rows:
+        kind = str(row.get("kind") or "")
+        entity_id = str(row.get("entity_id") or "")
+        decision = index.get(entity_id) or {}
+        action = str(decision.get("action") or "")
+        word = artifacts_api.decision_word(action)
+        display.append(
+            {
+                "kind": kind,
+                "kind_label": artifacts_api.KIND_LABELS.get(kind, kind),
+                "entity_id": entity_id,
+                "short_id": entity_id[:8],
+                "name": str(row.get("name") or ""),
+                "detail": str(row.get("detail") or ""),
+                "version": str(row.get("version") or ""),
+                "size": _size_text(row.get("size_bytes")),
+                "ours": bool(row.get("ours")),
+                "owner": "наша сессия" if row.get("ours") else "прошлый прогон",
+                "created_at": str(row.get("created_at") or ""),
+                "decision": word,
+                "decision_label": action or "решение не принято",
+                "decided": bool(action),
+                "decided_at": str(decision.get("at") or ""),
+                "check_id": str(decision.get("check_id") or ""),
+                "note": str(decision.get("note") or ""),
+                "actions": [
+                    {"action": name, "label": label}
+                    for name, label in artifacts_api.DECISION_LABELS.items()
+                ],
+            }
+        )
+    return display
+
+
+def artifacts_view(rows: Iterable[Mapping[str, Any]], records: Iterable[Any]) -> dict[str, Any]:
+    """Панель «Артефакты ресурсоёмких проверок»: строки, итог и подсказка оператору."""
+    listed = [dict(row) for row in rows]
+    index = artifacts_api.decision_index(records)
+    return {
+        "rows": artifact_rows(listed, records),
+        "summary": artifacts_api.summary(listed, index),
+        "note": artifacts_api.conclusion(listed, index),
+    }

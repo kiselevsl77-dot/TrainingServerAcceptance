@@ -24,6 +24,7 @@ from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.exchange import build_console_client
 from acceptance.http_log import Journal
 from acceptance.session import (
+    ARTIFACT_KEPT,
     SessionInfo,
     add_artifact,
     add_task,
@@ -396,13 +397,34 @@ def test_artifacts_and_entities_sections():
     session = full_session()
     bundle = report.build(session)
 
-    assert "| manifest | manifest.json | 120 |" in bundle.markdown
+    assert "| manifest | manifest.json | — | 120 |" in bundle.markdown
     assert "__TEST__file-1" in bundle.markdown
     assert "| __TEST__file-1 | file | создан |" in bundle.markdown
     assert "| __TEST__file-1 | file | удалён |" in bundle.markdown
     assert bundle.payload["readiness"]["artifacts"]["total"] == 1
     assert bundle.payload["readiness"]["test_entities"] == {"total": 2, "pending": 0}
     assert [item["action"] for item in bundle.payload["test_entities"]] == ["создан", "удалён"]
+
+
+def test_artifacts_section_shows_heavy_check_decisions() -> None:
+    """Раздел 8 показывает решение по артефакту тяжёлой проверки (`FR-T10`, `TC-CLEAN-04`)."""
+    session = new_session(base_url=BASE_URL, info=filled_info())
+    add_artifact(
+        session,
+        kind="модель",
+        name="__TEST__TC_TR_02_trained",
+        entity_id="11111111-2222-4333-8444-555555555555",
+        action=ARTIFACT_KEPT,
+        check_id="TC-TR-02",
+        note="результат обучения оставлен артефактом",
+    )
+
+    bundle = report.build(session)
+
+    assert "| модель | __TEST__TC_TR_02_trained | сохранён артефактом |" in bundle.markdown
+    assert "результат обучения оставлен артефактом" in bundle.markdown
+    assert bundle.payload["readiness"]["artifacts"]["total"] == 1
+    assert bundle.payload["artifacts"][0]["check_id"] == "TC-TR-02"
 
 
 def test_details_section_shows_evidence_and_journal_range():

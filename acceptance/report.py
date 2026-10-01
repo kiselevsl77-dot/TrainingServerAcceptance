@@ -523,13 +523,14 @@ def _artifacts_section(session: TestSession) -> str:
                 {
                     "kind": item.get("kind"),
                     "name": item.get("name"),
+                    "action": item.get("action") or "—",
                     "size_bytes": item.get("size_bytes"),
                     "at": item.get("at"),
                     "note": item.get("note"),
                 }
                 for item in artifacts
             ],
-            ("kind", "name", "size_bytes", "at", "note"),
+            ("kind", "name", "action", "size_bytes", "at", "note"),
         ),
         "**`__TEST__`-сущности (создано/удалено):**",
         "",

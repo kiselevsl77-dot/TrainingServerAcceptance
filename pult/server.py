@@ -1,4 +1,4 @@
-"""Сервер пульта: тонкий JSON-API (20 маршрутов) и раздача статического интерфейса.
+"""Сервер пульта: тонкий JSON-API (27 маршрутов) и раздача статического интерфейса.
 
 Замена Streamlit (`llm_tasks/31.4` §3): сервер отвечает на `/api/*` готовыми
 view-моделями (`pult/view.py`), а браузер только рисует их — бизнес-логики в JS нет.
@@ -37,7 +37,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import httpx
 
-from acceptance import api, run_card, run_state
+from acceptance import api, paths, run_card, run_state
 from acceptance import dataset_composition as composition_api
 from acceptance import programme as programme_api
 from acceptance import queue as queue_api
@@ -58,6 +58,7 @@ from acceptance.runner import (
 from acceptance.session import TestSession
 from acceptance.tasks_monitor import TASK_COMMANDS, TaskMonitor
 from client.errors import ClientError
+from pult import artifacts as artifacts_api
 from pult import jobs as jobs_api
 from pult import view
 from pult.state import READ_ERRORS, STAND_NOT_CONFIGURED, TASK_LIMIT, PultState
@@ -1263,6 +1264,234 @@ class PultApp:
             }
         raise ApiError(f"неизвестное действие задачи: {action or '—'}", status=422)
 
+    # -- артефакты ресурсоёмких проверок -------------------------------------
+    def api_artifacts(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`GET /api/artifacts` — кандидаты и решения по артефактам (`FR-T10`).
+
+        Кандидаты — объекты **стенда** (`__TEST__`-модели и файлы `.h5`/`.onnx`),
+        решения — записи сессии: так оператор видит и то, что оставила его проверка,
+        и чужие следы прошлых прогонов. Ошибка чтения реестра не ломает панель: текст
+        уходит в `errors`, а не превращается в пустой список — иначе «кандидатов нет»
+        и «реестр не прочитан» выглядели бы одинаково.
+        """
+        return self._artifacts_view(self.state.current_session())
+
+    def _artifacts_view(self, session: TestSession | None) -> dict[str, Any]:
+        """Данные панели «Артефакты»: кандидаты стенда, решения сессии, итог."""
+        data: dict[str, Any] = {
+            "configured": False,
+            "rows": [],
+            "summary": {},
+            "view": {"rows": [], "summary": {}, "note": ""},
+            "errors": [],
+            "note": "",
+        }
+        runtime = self.state.runtime()
+        if runtime is None:
+            data["note"] = STAND_NOT_CONFIGURED
+            return data
+        session_id = "" if session is None else str(session.session_id or "")
+        models: list[Any] = []
+        files: list[Any] = []
+        try:
+            models = list(runtime.apis.models.list_models())
+        except READ_ERRORS as exc:
+            data["errors"].append(f"реестр моделей не прочитан: {exc}")
+        try:
+            files = list(runtime.apis.files.list_files().files)
+        except READ_ERRORS as exc:
+            data["errors"].append(f"реестр файлов не прочитан: {exc}")
+        rows = artifacts_api.candidate_rows(models, files, session_id=session_id)
+        records = [] if session is None else list(session.artifacts or [])
+        data["configured"] = True
+        data["rows"] = rows
+        data["view"] = view.artifacts_view(rows, records)
+        data["summary"] = dict(data["view"]["summary"])
+        data["note"] = str(data["view"]["note"])
+        if session is None:
+            data["note"] = "Сессия испытаний не выбрана: решения по артефактам недоступны"
+        return data
+
+    def api_artifacts_action(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`POST /api/artifacts` — решение по артефакту: `keep` или `delete` (`FR-T10`).
+
+        `keep` фиксирует артефакт испытаний: модель остаётся **на стенде** (убирать
+        обученный результат нечем — он стоил ресурсов), а по требованию (`download`)
+        её ONNX выгружается в `acceptance_data/artifacts/` как доказательство.
+        `delete` убирает объект со стенда (модель — `DELETE /api/ml_models/models/{id}`,
+        файл — в корне `/api/{file_id}`) и отмечает `__TEST__`-сущность удалённой,
+        чтобы самоочистка `TC-CLEAN-01` видела полную картину.
+
+        Решение в обоих случаях записывается в артефакты сессии (`entity_id`, `action`)
+        и попадает в раздел 8 отчёта — по нему оператор закрывает `TC-CLEAN-04`.
+        """
+        session = self.session()
+        runtime = self.runtime()
+        decision = artifacts_api.normalize_decision(payload.get("action"))
+        if not decision:
+            raise ApiError(
+                "Действие по артефакту не распознано: ожидается "
+                + " или ".join(f"`{name}`" for name in artifacts_api.DECISIONS),
+                status=422,
+            )
+        kind = str(payload.get("kind") or "").strip()
+        if kind not in artifacts_api.ENTITY_KINDS:
+            raise ApiError(
+                "Вид артефакта не распознан: ожидается "
+                + " или ".join(f"`{name}`" for name in artifacts_api.ENTITY_KINDS),
+                status=422,
+            )
+        entity_id = str(payload.get("id") or "").strip()
+        if not entity_id:
+            raise ApiError("Не указан объект: нужен `id` модели или файла стенда", status=422)
+        check_id = str(payload.get("check_id") or "").strip()
+        note = str(payload.get("note") or "").strip()
+        download = _flag(payload.get("download"), False)
+
+        if decision == artifacts_api.DECISION_KEEP:
+            record = self._keep_artifact(
+                session,
+                runtime,
+                kind=kind,
+                entity_id=entity_id,
+                check_id=check_id,
+                note=note,
+                download=download,
+            )
+        else:
+            record = self._delete_artifact(
+                session, runtime, kind=kind, entity_id=entity_id, check_id=check_id, note=note
+            )
+        self.save(session)
+        panel = self._artifacts_view(session)
+        return {
+            "decision": decision,
+            "artifact": record,
+            "entity": {"kind": kind, "id": entity_id},
+            "conclusion": str(panel.get("note") or ""),
+            "artifacts": [dict(item) for item in (session.artifacts or [])],
+            "view": panel.get("view") or {},
+            "summary": panel.get("summary") or {},
+        }
+
+    def _keep_artifact(
+        self,
+        session: TestSession,
+        runtime: Any,
+        *,
+        kind: str,
+        entity_id: str,
+        check_id: str,
+        note: str,
+        download: bool,
+    ) -> dict[str, Any]:
+        """Сохраняет артефакт: модель остаётся на стенде, файл при нужде выгружается.
+
+        `download` для файла стенда обязателен по смыслу: «оставить» файл, лежащий
+        на общем стенде, — это не доказательство, а надежда на то, что его не уберут.
+        Поэтому `keep` без `download` оставляет файл на стенде и честно пишет об этом
+        в примечании.
+        """
+        name = self._artifact_name(kind, entity_id)
+        path: Path | None = None
+        size: int | None = None
+        if download:
+            if kind == artifacts_api.ENTITY_MODEL:
+                path, size = self._download_onnx(runtime, entity_id, name)
+            else:
+                path, size = self._download_file(runtime, entity_id, name)
+        if kind == artifacts_api.ENTITY_MODEL:
+            detail = f"{name} остаётся на стенде как артефакт испытаний"
+        elif path is not None:
+            detail = f"{name} выгружен в артефакты испытаний"
+        else:
+            detail = f"{name} оставлен на стенде (выгрузка не запрошена)"
+        return session_api.add_artifact(
+            session,
+            kind=artifacts_api.KIND_LABELS[kind],
+            name=name,
+            path=path,
+            size_bytes=size,
+            entity_id=entity_id,
+            action=session_api.ARTIFACT_KEPT,
+            check_id=check_id,
+            note="; ".join(part for part in (detail, note) if part),
+        )
+
+    def _delete_artifact(
+        self,
+        session: TestSession,
+        runtime: Any,
+        *,
+        kind: str,
+        entity_id: str,
+        check_id: str,
+        note: str,
+    ) -> dict[str, Any]:
+        """Убирает объект со стенда и фиксирует решение об удалении (`NFR-T4`)."""
+        name = self._artifact_name(kind, entity_id)
+        try:
+            if kind == artifacts_api.ENTITY_MODEL:
+                runtime.apis.models.delete_model(entity_id)
+            else:
+                runtime.apis.files.delete(entity_id)
+        except ClientError as exc:
+            raise self.fail(exc) from exc
+        session_api.mark_test_entity_deleted(
+            session, entity_id, check_id=check_id, note="решение оператора: удалить"
+        )
+        return session_api.add_artifact(
+            session,
+            kind=artifacts_api.KIND_LABELS[kind],
+            name=name,
+            entity_id=entity_id,
+            action=session_api.ARTIFACT_DELETED,
+            check_id=check_id,
+            note="; ".join(part for part in (f"{name} удалён со стенда", note) if part),
+        )
+
+    def _artifact_name(self, kind: str, entity_id: str) -> str:
+        """Имя объекта для записи об артефакте: из реестра, иначе — идентификатор."""
+        runtime = self.state.runtime()
+        if runtime is not None:
+            try:
+                if kind == artifacts_api.ENTITY_MODEL:
+                    return str(runtime.apis.models.get_model(entity_id).name or entity_id)
+                rows = runtime.apis.files.list_files(file_id=entity_id).files
+                if rows:
+                    return str(rows[0].file_name or entity_id)
+            except READ_ERRORS:
+                return entity_id
+        return entity_id
+
+    def _download_onnx(self, runtime: Any, entity_id: str, name: str) -> tuple[Path, int]:
+        """Выгружает ONNX модели в артефакты и возвращает путь с размером."""
+        try:
+            payload = runtime.apis.models.download_onnx(entity_id)
+        except ClientError as exc:
+            raise self.fail(exc) from exc
+        target = paths.ARTIFACT_DIR / f"{Path(name).stem or entity_id}.onnx"
+        return self._write_artifact(target, payload.content)
+
+    def _download_file(self, runtime: Any, entity_id: str, name: str) -> tuple[Path, int]:
+        """Выгружает файл стенда в артефакты и возвращает путь с размером."""
+        try:
+            payload = runtime.apis.files.download(entity_id)
+        except ClientError as exc:
+            raise self.fail(exc) from exc
+        target = paths.ARTIFACT_DIR / (Path(name).name or payload.file_name or entity_id)
+        return self._write_artifact(target, payload.content)
+
+    def _write_artifact(self, target: Path, content: bytes) -> tuple[Path, int]:
+        """Пишет выгрузку в `acceptance_data/artifacts/` (каталог создаётся по требованию)."""
+        paths.ensure_dirs()
+        target.write_bytes(content)
+        return target, len(content)
+
     # -- действия по пункту, лента обмена ------------------------------------
     def api_check_action(
         self, check_id: str, *, query: Mapping[str, str], payload: Mapping[str, Any]
@@ -1921,6 +2150,8 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/jobs/{job_id}", "api_job"),
     ("GET", "/api/tasks", "api_tasks"),
     ("POST", "/api/tasks/{task_id}", "api_task_action"),
+    ("GET", "/api/artifacts", "api_artifacts"),
+    ("POST", "/api/artifacts", "api_artifacts_action"),
     ("POST", "/api/checks/{check_id}", "api_check_action"),
     ("GET", "/api/journal", "api_journal"),
     ("POST", "/api/journal/repeat", "api_journal_repeat"),

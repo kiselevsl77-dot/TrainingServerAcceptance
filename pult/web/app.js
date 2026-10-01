@@ -1618,6 +1618,70 @@ function renderTasks(data) {
   ]);
 }
 
+const artifactsView = { data: null };
+
+/** Панель «Артефакты»: объекты стенда и решения по ним (`FR-T10`, `TC-CLEAN-04`). */
+function renderArtifacts(data) {
+  artifactsView.data = data || {};
+  const view = artifactsView.data;
+  const panel = view.view || {};
+  const rows = panel.rows || [];
+  const summary = panel.summary || view.summary || {};
+
+  document.getElementById("artifacts-meta").textContent = [
+    `объектов: ${summary.total || 0}`,
+    `наша сессия: ${summary.ours || 0}`,
+    `ждут решения: ${summary.undecided || 0}`,
+    summary.undecided ? "TC-CLEAN-04 ставить рано" : "TC-CLEAN-04 можно ставить",
+  ].join(" · ");
+
+  const note = document.getElementById("artifacts-note");
+  const noteText = text((view.errors || []).join("; ") || panel.note || "");
+  note.hidden = !noteText;
+  note.textContent = noteText;
+
+  fillTable(document.getElementById("artifacts-table").querySelector("tbody"), rows, (row) => [
+    row.kind_label,
+    row.version ? `${row.name} · ${row.version}` : row.name,
+    row.size,
+    row.owner,
+    row.decided ? `${row.decision_label} · ${row.decided_at}` : "решение не принято",
+    row.check_id || "—",
+    artifactButtons(row),
+  ]);
+}
+
+/** Кнопки решения по строке: «💾 в артефакты» и «🗑 удалить» (решение пишется в сессию). */
+function artifactButtons(row) {
+  const cell = document.createElement("span");
+  const payload = { kind: row.kind, id: row.entity_id, check_id: row.check_id || "" };
+  // файл стенда становится доказательством только выгруженным: просим скачивание
+  const keep = row.kind === "file" ? { ...payload, download: true } : payload;
+  cell.appendChild(
+    button(
+      "💾 в артефакты",
+      row.decision === "keep" ? "btn btn--tiny btn--primary" : "btn btn--tiny",
+      async () => {
+        const data = await act("/api/artifacts", { action: "keep", ...keep });
+        if (data) {
+          flash("ok", `Артефакт зафиксирован. ${text(data.conclusion)}`);
+          renderArtifacts({ ...artifactsView.data, view: data.view, summary: data.summary });
+        }
+      }
+    )
+  );
+  cell.appendChild(
+    button("🗑 удалить", "btn btn--tiny btn--ghost", async () => {
+      const data = await act("/api/artifacts", { action: "delete", ...payload });
+      if (data) {
+        flash("ok", `Объект удалён со стенда. ${text(data.conclusion)}`);
+        renderArtifacts({ ...artifactsView.data, view: data.view, summary: data.summary });
+      }
+    })
+  );
+  return cell;
+}
+
 /** Ячейка с кнопками FSM-1: пускаются только команды, допустимые статусом. */
 function commandButtons(row) {
   const cell = document.createElement("span");
@@ -1685,7 +1749,14 @@ async function loadPanel(name) {
   } else if (name === "sessions") {
     renderSessions(await call("GET", "/api/sessions"));
   } else if (name === "tasks") {
-    renderTasks(await call("GET", "/api/jobs"));
+    // панель показывает и прогоны, и судьбу их результатов: два независимых запроса,
+    // чтобы отказ одного не прятал другой (ошибка видна в своей зоне)
+    const [jobs, artifacts] = await Promise.all([
+      call("GET", "/api/jobs"),
+      call("GET", "/api/artifacts"),
+    ]);
+    renderTasks(jobs);
+    renderArtifacts(artifacts);
   } else if (name === "results") {
     await refreshResults();
   } else if (name === "journal") {
