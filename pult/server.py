@@ -1,4 +1,4 @@
-"""Сервер пульта: тонкий JSON-API (27 маршрутов) и раздача статического интерфейса.
+"""Сервер пульта: тонкий JSON-API (30 маршрутов) и раздача статического интерфейса.
 
 Замена Streamlit (`llm_tasks/31.4` §3): сервер отвечает на `/api/*` готовыми
 view-моделями (`pult/view.py`), а браузер только рисует их — бизнес-логики в JS нет.
@@ -60,6 +60,7 @@ from acceptance.tasks_monitor import TASK_COMMANDS, TaskMonitor
 from client.errors import ClientError
 from pult import artifacts as artifacts_api
 from pult import jobs as jobs_api
+from pult import models as models_api
 from pult import view
 from pult.state import READ_ERRORS, STAND_NOT_CONFIGURED, TASK_LIMIT, PultState
 
@@ -1492,6 +1493,178 @@ class PultApp:
         target.write_bytes(content)
         return target, len(content)
 
+    # -- «Реальная тренировка»: карточка модели и профиль прогона (Э1 К2) -----
+    def api_model(
+        self, model_id: str, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`GET /api/models/{model_id}` — карточка модели: свойства, сигналы, метрики.
+
+        До этой правки свойства модели были видны только в ленте обмена, открыв ответ
+        `GET /api/ml_models/models` (`llm_tasks/59`). Карточка берётся из реестра, а не
+        отдельным запросом к стенду: списком пульт уже владеет, а лишнее обращение к
+        общему стенду — расход, которого можно избежать. `?refresh=1` читает заново.
+        """
+        runtime = self.state.runtime()
+        if runtime is None:
+            raise ApiError(STAND_NOT_CONFIGURED, kind="state", status=409)
+        models, error = self.state.models(refresh=_flag(query.get("refresh"), False))
+        if error:
+            raise ApiError(error, kind="client", status=502)
+        found = next((item for item in models if str(item.id) == str(model_id)), None)
+        if found is None:
+            raise ApiError(
+                f"модель {model_id} не найдена в реестре стенда", kind="http", status=404
+            )
+        files, _files_error = self.state.files()
+        session = self.state.current_session()
+        return {
+            "card": view.model_card_view(found, session=session, files=files),
+            "session_id": "" if session is None else str(session.session_id),
+        }
+
+    def _train_view(
+        self, session: TestSession | None, query: Mapping[str, str], *, note: str = ""
+    ) -> dict[str, Any]:
+        """Экран «Реальная тренировка»: профиль сессии, отбор моделей и карточка.
+
+        Отбор моделей идёт на стороне пульта: фильтр `device_id` у стенда отвечает `500`
+        (`TC-MOD-05`), поэтому реестр читается целиком, а фильтры применяются здесь.
+        """
+        runtime = self.state.runtime()
+        profile = dict(getattr(session, "ml_profile", None) or {}) if session is not None else {}
+        session_id = "" if session is None else str(session.session_id)
+        if runtime is None:
+            return view.train_view(
+                profile=profile, configured=False, session_id=session_id, note=STAND_NOT_CONFIGURED
+            )
+        models, models_error = self.state.models(refresh=_flag(query.get("refresh"), False))
+        files, _files_error = self.state.files()
+        datasets, datasets_error = self.state.datasets()
+        filters: dict[str, Any] = {
+            "query": str(query.get("query") or ""),
+            "architecture": str(query.get("architecture") or ""),
+            "phase_type": str(query.get("phase_type") or ""),
+            "output_size": str(query.get("output_size") or ""),
+            "only_trained": _flag(query.get("only_trained"), False),
+            "only_test": _flag(query.get("only_test"), False),
+            "only_battle": _flag(query.get("only_battle"), False),
+        }
+        chosen = models_api.filter_models(
+            models,
+            query=filters["query"],
+            architecture=filters["architecture"],
+            phase_type=filters["phase_type"],
+            output_size=filters["output_size"],
+            only_trained=filters["only_trained"],
+            only_test=filters["only_test"],
+            only_battle=filters["only_battle"],
+        )
+        wanted = str(query.get("model") or "").strip() or str(profile.get("model_id") or "")
+        card_model = next((item for item in models if str(item.id) == wanted), None)
+        notes = [
+            part
+            for part in (
+                note,
+                f"реестр моделей не прочитан: {models_error}" if models_error else "",
+                f"реестр датасетов не прочитан: {datasets_error}" if datasets_error else "",
+            )
+            if part
+        ]
+        return view.train_view(
+            profile=profile,
+            models=chosen,
+            files=files,
+            datasets=datasets,
+            filters=filters,
+            options=models_api.filter_options(models),
+            card=(
+                view.model_card_view(card_model, files=files, session=session)
+                if card_model is not None
+                else {}
+            ),
+            session_id=session_id,
+            note="; ".join(notes),
+        )
+
+    def api_train(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
+        """`GET /api/train` — состояние «Реальной тренировки» (`llm_tasks/59`)."""
+        return self._train_view(self.state.current_session(), query)
+
+    def api_train_action(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`POST /api/train` — действия профиля: `save-profile`, `choose`, `clear`.
+
+        Профиль живёт в сессии испытаний: без выбранной сессии действие отклоняется, иначе
+        решение оператора ушло бы «в никуда» — не попало ни в отчёт, ни в протокол.
+        Боевые имена в режиме полной нагрузки разрешены (решение заказчика 01.10.2026),
+        но сама загрузка данных и создание сущностей — этап Э2: здесь фиксируется профиль.
+
+        Идентификатор выбранной сущности не сверяется с реестром стенда намеренно: в Э3
+        модель появляется **после** обучения, а реестр живёт в кэше 30 секунд — проверка
+        «есть ли такая модель» отвергала бы только что созданную. Расхождение видно
+        оператору честно: карточка по такому `id` отвечает 404 (`GET /api/models/{id}`).
+        """
+        session = self.session()
+        action = str(payload.get("action") or "").strip()
+        author = self._author()
+        if action == "save-profile":
+            session_api.update_ml_profile(
+                session,
+                object_of_test=str(payload.get("object_of_test") or "").strip(),
+                goal=str(payload.get("goal") or "").strip(),
+                responsible=str(payload.get("responsible") or "").strip() or author,
+                full_load=_flag(payload.get("full_load"), False),
+                dataset_validated=_flag(payload.get("dataset_validated"), False),
+            )
+        elif action == "choose":
+            kind = str(payload.get("kind") or "").strip()
+            entity_id = str(payload.get("id") or "").strip()
+            label = str(payload.get("label") or "").strip()
+            if kind == "model":
+                if not entity_id:
+                    raise ApiError("Не указана модель: нужен `id` модели стенда", status=422)
+                session_api.update_ml_profile(
+                    session, model_id=entity_id, model_label=label or entity_id
+                )
+            elif kind == "dataset":
+                if not entity_id:
+                    raise ApiError("Не указан датасет: нужен `id` датасета стенда", status=422)
+                session_api.update_ml_profile(
+                    session, dataset_id=entity_id, dataset_label=label or entity_id
+                )
+            else:
+                raise ApiError(
+                    f"неизвестный объект выбора: {kind or '—'}; ожидалось `model` или `dataset`",
+                    status=422,
+                )
+        elif action == "clear":
+            kind = str(payload.get("kind") or "").strip()
+            keys: dict[str, dict[str, str]] = {
+                "model": {"model_id": "", "model_label": ""},
+                "dataset": {
+                    "dataset_id": "",
+                    "dataset_label": "",
+                    "dataset_validated": "",
+                },
+                "profile": dict.fromkeys(session_api.ML_PROFILE_KEYS, ""),
+            }
+            if kind not in keys:
+                raise ApiError(
+                    "неизвестный объект сброса: "
+                    f"{kind or '—'}; ожидалось " + ", ".join(f"`{name}`" for name in keys),
+                    status=422,
+                )
+            session_api.update_ml_profile(session, **keys[kind])
+        else:
+            raise ApiError(
+                f"неизвестное действие «Реальной тренировки»: {action or '—'}", status=422
+            )
+        self.save(session)
+        answer = self._train_view(session, query)
+        answer["profile"] = dict(session.ml_profile or {})
+        return answer
+
     # -- действия по пункту, лента обмена ------------------------------------
     def api_check_action(
         self, check_id: str, *, query: Mapping[str, str], payload: Mapping[str, Any]
@@ -2158,6 +2331,9 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/protocol", "api_protocol"),
     ("GET", "/api/results", "api_results"),
     ("GET", "/api/data", "api_data"),
+    ("GET", "/api/models/{model_id}", "api_model"),
+    ("GET", "/api/train", "api_train"),
+    ("POST", "/api/train", "api_train_action"),
     ("GET", "/api/report/readiness", "api_report_readiness"),
     ("POST", "/api/report/build", "api_report_build"),
 )

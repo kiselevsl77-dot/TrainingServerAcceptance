@@ -33,14 +33,17 @@
       <div id="warnings" class="warnings" hidden></div>
     </header>
 
-    <!-- Порядок вкладок согласован: Планирование → Сессии → Прогон → Задачи → Результаты →
-         Лента обмена (стартовая — «Планирование»). «Задачи» — панель фоновых прогонов
-         проверок и наблюдения за задачами стенда (`FR-T11`). Стража порядка — тест
+    <!-- Порядок вкладок согласован: Планирование → Сессии → Прогон → Реальная тренировка →
+         Задачи → Результаты → Лента обмена (стартовая — «Планирование»). «Задачи» — панель
+         фоновых прогонов проверок и наблюдения за задачами стенда (`FR-T11`).
+         «Реальная тренировка» — контекст К2 (`llm_tasks/59`): получить пригодную модель
+         на боевом датасете. Стража порядка — тест
          `test_tab_order_matches_agreed_sequence`. -->
     <nav class="tabs">
       <button class="tab is-active" data-panel="planning" type="button">Планирование</button>
       <button class="tab" data-panel="sessions" type="button">Сессии</button>
       <button class="tab" data-panel="run" type="button">Прогон</button>
+      <button class="tab" data-panel="train" type="button">Реальная тренировка</button>
       <button class="tab" data-panel="tasks" type="button">Задачи</button>
       <button class="tab" data-panel="results" type="button">Результаты</button>
       <button class="tab" data-panel="journal" type="button">Лента обмена</button>
@@ -447,6 +450,165 @@
             </thead>
             <tbody></tbody>
           </table>
+        </section>
+      </section>
+
+      <section class="panel" id="panel-train">
+        <div class="panel__head">
+          <h2>Реальная тренировка</h2>
+          <span class="muted" id="train-meta"></span>
+          <span class="grow"></span>
+          <button class="btn btn--ghost" id="train-refresh" type="button">↻ Обновить реестр</button>
+        </div>
+        <div class="warnings" id="train-warnings" hidden></div>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Шаги прогона</h3>
+            <span class="muted">Э1 работает · Э2–Э4 запланированы</span>
+          </div>
+          <div class="outcomes" id="train-steps"></div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Профиль прогона</h3>
+            <span class="muted">объект, цель и подтверждения — в сессию испытаний (схема v9)</span>
+            <span class="grow"></span>
+            <button class="btn btn--primary" id="train-save-profile" type="button">💾 Сохранить профиль</button>
+            <button class="btn btn--ghost" id="train-clear-profile" type="button">Сбросить профиль</button>
+          </div>
+          <div class="row">
+            <input id="train-object" placeholder="объект испытаний (например: сервер обучения ML)" size="38" />
+            <input id="train-goal" placeholder="цель прогона (например: обучить stft_mlp на боевом датасете)" size="46" />
+            <input id="train-responsible" placeholder="ответственный" size="24" />
+          </div>
+          <div class="row">
+            <label class="check" title="Разрешает боевые имена без __TEST__: ресурсы стенда не экономим">
+              <input type="checkbox" id="train-full-load" /> полная нагрузка
+            </label>
+            <label class="check" title="Пульт не валидирует датасет: он фиксирует, что оператор проверил его вне пульта">
+              <input type="checkbox" id="train-dataset-validated" /> датасет валидирован вне пульта
+            </label>
+            <span class="hint">Подтверждения записываются в сессию с автором и временем</span>
+          </div>
+          <div class="zone__sub">
+            <h4>Что записано в сессию</h4>
+            <div class="outcomes" id="train-profile"></div>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Модель</h3>
+            <span class="muted" id="train-model-meta"></span>
+            <span class="grow"></span>
+            <button class="btn btn--ghost" id="train-choose-clear" type="button">Снять выбор</button>
+            <button class="btn btn--primary" id="train-choose" type="button">✔ Выбрать для прогона</button>
+          </div>
+          <div class="row">
+            <input id="train-query" placeholder="поиск: имя, описание, идентификатор" size="30" />
+            <select id="train-arch"></select>
+            <select id="train-phase"></select>
+            <select id="train-output"></select>
+            <label class="check"><input type="checkbox" id="train-only-trained" /> только обученные</label>
+            <label class="check"><input type="checkbox" id="train-only-test" /> только <code>__TEST__</code></label>
+            <label class="check"><input type="checkbox" id="train-only-battle" /> только боевые</label>
+            <button class="btn btn--ghost" id="train-filter" type="button">Отобрать</button>
+          </div>
+          <table class="grid grid--scroll" id="train-models">
+            <thead>
+              <tr>
+                <th>Модель</th>
+                <th>Владелец</th>
+                <th>Архитектура</th>
+                <th>Фаза</th>
+                <th>Выход</th>
+                <th>Сигналы</th>
+                <th>Обучение</th>
+                <th>Точность</th>
+                <th>Обновлена</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="zone__sub">
+            <h4>Свойства модели</h4>
+            <p class="muted" id="train-card-meta"></p>
+            <div class="outcomes" id="train-card-props"></div>
+          </div>
+          <details class="zone__sub" id="train-card-signals-zone">
+            <summary id="train-card-signals-count">Группы сигналов и классы</summary>
+            <table class="grid" id="train-card-signals">
+              <thead>
+                <tr>
+                  <th>Группа</th>
+                  <th>Устройств</th>
+                  <th>Устройства</th>
+                  <th>Категории</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <table class="grid" id="train-card-classes">
+              <thead>
+                <tr>
+                  <th>Группа</th>
+                  <th>Класс</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
+          <details class="zone__sub" id="train-card-metrics-zone">
+            <summary>Метрики и данные обучения</summary>
+            <div class="outcomes" id="train-card-metrics"></div>
+            <table class="grid" id="train-card-stats">
+              <thead>
+                <tr>
+                  <th>Состав датасета обучения</th>
+                  <th>Значение</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <table class="grid" id="train-card-training">
+              <thead>
+                <tr>
+                  <th>Эпоха</th>
+                  <th>loss</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <table class="grid" id="train-card-testing">
+              <thead>
+                <tr>
+                  <th>Проверка</th>
+                  <th>accuracy</th>
+                  <th>Датасет</th>
+                  <th>Отчёт</th>
+                  <th>Когда</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
+          <details class="zone__sub" id="train-card-layers-zone">
+            <summary id="train-card-layers-count">Слои архитектуры</summary>
+            <table class="grid" id="train-card-layers">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Слой</th>
+                  <th>Параметры</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </details>
+          <p class="hint" id="train-note"></p>
         </section>
       </section>
 

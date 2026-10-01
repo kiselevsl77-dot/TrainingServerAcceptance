@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from acceptance import session as session_api
 from acceptance.checks.registry import CheckResult, CheckStatus
 from acceptance.notes import new_note
 from acceptance.session import (
@@ -310,22 +311,66 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_eight():
-    """Схема сессии — v8: очередь не хранится, есть ревизия прогона и режим.
+def test_current_schema_version_is_nine():
+    """Схема сессии — v9: добавлен профиль «Реальной тренировки» (`ml_profile`).
 
-    Очередь прогона как сущность убрана (решение заказчика 25.09.2026): она
-    вычисляется по ревизии программы, поэтому в сессии живут только номер
-    исполняемой ревизии (`run_revision`) и режим «только невыполненное» (`skip_done`).
+    Профиль (объект и цель прогона, ответственный, режим полной нагрузки с подтверждением,
+    выбранные датасет и модель, отметка «датасет валидирован вне пульта») живёт в сессии,
+    а не в браузере: он переживает перезапуск пульта и попадает в отчёт (`llm_tasks/59`).
+    Правила v8 остаются в силе: очередь прогона не хранится, есть ревизия и режим.
     """
-    assert SCHEMA_VERSION == 8
+    assert SCHEMA_VERSION == 9
     payload = _session(Path(".")).to_dict()
 
-    assert payload["schema_version"] == 8
+    assert payload["schema_version"] == 9
     assert payload["programme"] == {}
     assert payload["run_revision"] == 0
     assert payload["skip_done"] is True
     assert payload["check_history"] == {}
+    assert payload["ml_profile"] == {}
     assert "queue" not in payload, "очередь вычисляется и в сессии не хранится (v8)"
+
+
+def test_ml_profile_updates_and_clears_choices():
+    """Профиль прогона обновляется по частям и умеет снимать выбор (К2, схема v9)."""
+    session = _session(Path("."))
+
+    session_api.update_ml_profile(
+        session, object_of_test="Стенд ML", goal="обучить stft_mlp", full_load=False
+    )
+    assert session.ml_profile["object_of_test"] == "Стенд ML"
+    assert "full_load" not in session.ml_profile, "ложное подтверждение не хранится"
+
+    session_api.update_ml_profile(session, full_load=True, dataset_validated=True)
+    assert session.ml_profile["full_load"] is True
+    assert session.ml_profile["full_load_at"], "подтверждение режима фиксируется временем"
+    assert session.ml_profile["dataset_validated_at"]
+
+    session_api.update_ml_profile(session, model_id="m-1", model_label="stft_mlp dev")
+    assert session.ml_profile["model_label"] == "stft_mlp dev"
+
+    session_api.update_ml_profile(session, model_id="", model_label="")
+    assert "model_id" not in session.ml_profile and "model_label" not in session.ml_profile
+
+    session_api.update_ml_profile(session, unknown_key="значение")
+    assert "unknown_key" not in session.ml_profile, "неизвестные ключи не попадают в профиль"
+
+    events = [item["event"] for item in session.history]
+    assert events.count("ml_profile_updated") == 4, "каждое изменение профиля — событие сессии"
+
+
+def test_ml_profile_survives_round_trip():
+    """Профиль прогона читается с диска вместе с сессией (переживает перезапуск пульта)."""
+    session = _session(Path("."))
+    session_api.update_ml_profile(
+        session, object_of_test="Стенд ML", model_id="m-1", dataset_id="d-1"
+    )
+
+    restored = SessionModel.from_dict(session.to_dict())
+
+    assert restored.ml_profile["model_id"] == "m-1"
+    assert restored.ml_profile["dataset_id"] == "d-1"
+    assert restored.schema_version == SCHEMA_VERSION
 
 
 def test_programme_and_run_mode_are_stored_in_session(tmp_path: Path):

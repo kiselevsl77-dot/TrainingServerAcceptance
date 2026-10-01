@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -286,3 +287,51 @@ def test_vertical_slice_through_live_server(pult: str) -> None:
     assert finished["snapshots"]["taken"]["end"] is True, "завершение снимает снимок «Окончание»"
     assert api(pult, "/api/state")["phase"]["code"] == "Ф4"
     assert api(pult, "/api/state")["session"]["status"] == "завершена"
+
+
+def test_train_slice_through_live_server(pult: str) -> None:
+    """«Реальная тренировка» (К2) проходит через живой сервер: профиль доходит до сессии.
+
+    Контекст К2 добавлен отдельной вкладкой (`llm_tasks/59`), поэтому гейт проверяет не
+    только разметку страницы, но и то, что профиль прогона **записывается в сессию** и
+    переживает следующий запрос, а карточка несуществующей модели отвечает понятной
+    ошибкой, а не пустым экраном.
+    """
+    page = text_of(pult, "/")
+    assert 'data-panel="train"' in page and 'id="panel-train"' in page, (
+        "вкладка «Реальная тренировка» должна быть в разметке страницы"
+    )
+
+    created = api(
+        pult,
+        "/api/sessions",
+        {"info": {"title": "К2", "object_of_test": "Стенд ML", "operator_fio": AUTHOR}},
+    )
+    session_id = created["id"]
+    api(pult, f"/api/sessions/{session_id}/start", {})
+
+    train = api(pult, "/api/train")
+    assert train["configured"] is True and train["session_id"] == session_id
+    assert [step["key"] for step in train["steps"]] == [
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "onnx",
+    ]
+    assert train["total"] == 0, "реестр моделей подменённого стенда пуст — отбор честно пуст"
+
+    saved = api(
+        pult,
+        "/api/train",
+        {"action": "save-profile", "object_of_test": "Стенд ML", "goal": "обучить stft_mlp"},
+    )
+    assert saved["profile"]["object_of_test"] == "Стенд ML"
+    assert saved["steps"][0]["status"] == "готово"
+    assert api(pult, "/api/train")["profile"]["goal"] == "обучить stft_mlp", (
+        "профиль прогона живёт в сессии, а не в памяти браузера"
+    )
+
+    with pytest.raises(urllib.error.HTTPError) as missing:
+        api(pult, "/api/models/00000000-0000-4000-8000-0000000000ff")
+    assert missing.value.code == 404, "неизвестная модель — понятная ошибка, а не пустая карточка"

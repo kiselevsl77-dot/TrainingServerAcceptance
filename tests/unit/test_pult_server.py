@@ -537,7 +537,10 @@ def test_data_zone_has_sections_counters_and_details(pult: PultApp) -> None:
     assert data["models"] == [] and data["errors"]["models"] == ""
 
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-    details = re.findall(r'<details class="zone__sub"[^>]*>', html)
+    # Считаем подразделы именно «Данных стенда» (`results-sub-*`): у других вкладок свои
+    # `<details>` (например, карточка модели на «Реальной тренировке»), и общий подсчёт
+    # ловил бы чужие правки вместо этой зоны.
+    details = re.findall(r'<details class="zone__sub" id="results-sub-[^"]*"[^>]*>', html)
     assert len(details) == 5, "каждый подраздел — отдельный <details>"
     assert not any(" open" in tag for tag in details), "подразделы свёрнуты по умолчанию"
     assert 'id="results-sub-models"' in html and '<summary id="results-files-count">' in html
@@ -1122,13 +1125,16 @@ def test_protocol_csv_is_served_as_attachment(pult: PultApp) -> None:
     thread.join(timeout=5)
 
 
-#: Порядок вкладок пульта, согласованный с заказчиком (`llm_tasks/49`): работа идёт
-#: от подготовки (планирование, сессии) к прогону, результатам и разбору обмена.
+#: Порядок вкладок пульта, согласованный с заказчиком (`llm_tasks/49`, `llm_tasks/59`):
+#: работа идёт от подготовки (планирование, сессии) к прогону, а «Реальная тренировка» —
+#: второй способ прогона (контекст К2: получить пригодную модель на боевом датасете),
+#: затем наблюдение за задачами, результаты и разбор обмена.
 #: Список один на HTML и JS: иначе кнопки на экране и `panelFromHash` разъедутся.
 PANEL_ORDER: tuple[tuple[str, str], ...] = (
     ("planning", "Планирование"),
     ("sessions", "Сессии"),
     ("run", "Прогон"),
+    ("train", "Реальная тренировка"),
     ("tasks", "Задачи"),
     ("results", "Результаты"),
     ("journal", "Лента обмена"),
@@ -1942,3 +1948,214 @@ def test_artifact_action_needs_stand(no_stand: PultApp) -> None:
 
     assert no_stand_error.value.status == 409
     assert "не задан" in no_stand_error.value.message
+
+
+# ---------------------------------------------------------------------------
+# «Реальная тренировка»: карточка модели и профиль прогона (Э1 К2, llm_tasks/59)
+# ---------------------------------------------------------------------------
+def test_model_card_route_shows_properties_and_file(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """`GET /api/models/{id}` отдаёт свойства модели: сигналы, метрики и размер `.h5`.
+
+    Раньше свойства были видны только в ленте обмена, открыв ответ реестра: пульт не мог
+    показать, на чём обучалась модель и какова её точность (`llm_tasks/59`).
+    """
+    pult, _sent = ml_stand
+    data = get(pult, f"/api/models/{ML_MODEL}")
+
+    card = data["card"]
+    assert card["id"] == ML_MODEL
+    assert card["name"] == "skfu-net"
+    assert card["trained"] is False and card["trained_label"] == "не обучена"
+    assert card["file"]["id"] == MODEL_FILE
+    assert card["file"]["known"] is False, "файла модели нет в реестре — карточка не выдумывает"
+    assert card["file"]["size_text"] == ""
+    assert card["signals"] == [], "у модели стенда сигналов нет — карточка не выдумывает"
+    assert data["session_id"], "карточка показывает сессию, в которой работает оператор"
+
+
+def test_model_card_finds_model_file_in_registry(tmp_path: Path, monkeypatch) -> None:
+    """`file_id` модели находит размер `.h5` в реестре `$Файлов` — это и есть «вес» модели."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/version"):
+            return httpx.Response(200, json={"branch": "dev", "revision": "83319ae1234"})
+        if path.startswith("/api/data/files"):
+            return httpx.Response(
+                200,
+                json={
+                    "files": [
+                        {
+                            "id": MODEL_FILE,
+                            "file_name": "stft_mlp.h5",
+                            "size": 204800,
+                            "s3_path": "s3://stand/stft_mlp.h5",
+                            "import_date": DATA_AT,
+                            "file_type": "MODEL",
+                        }
+                    ],
+                    "count": 1,
+                },
+            )
+        if path.startswith("/api/ml_models/models"):
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "id": ML_MODEL,
+                            "file_id": MODEL_FILE,
+                            "architecture": "stft_mlp",
+                            "version": "2",
+                            "name": "stft_mlp-train-dev",
+                            "phase_type": "three",
+                            "output_size": 2,
+                            "signals": [
+                                {"signal_num": 0, "device_id": "Antminer S19"},
+                                {"signal_num": 1, "device_id": "__OTHER__"},
+                            ],
+                            "signal_aliases": {"0": "miner", "1": "not_miner"},
+                            "config": {"layers": [{"layer_type": "dense", "parameters": {}}]},
+                            "metrics": {"epochs": 1, "batch_size": 64},
+                            "created_at": DATA_AT,
+                            "updated_at": DATA_AT,
+                        }
+                    ],
+                    "count": 1,
+                },
+            )
+        if path.startswith("/api/datasets"):
+            return httpx.Response(200, json={"datasets": [], "count": 0})
+        if path.startswith("/api/tasks"):
+            return httpx.Response(200, json={"tasks": [], "count": 0})
+        return httpx.Response(200, json={"status": "ok", "message": "test stand ready"})
+
+    pult = _app(tmp_path, monkeypatch, handler)
+    card = get(pult, f"/api/models/{ML_MODEL}")["card"]
+
+    assert card["file"]["known"] is True
+    assert card["file"]["name"] == "stft_mlp.h5"
+    assert card["file"]["size_text"] == "200 КБ"
+    assert card["signals_meta"] == "2 группы сигналов · 2 класса · 1 слой"
+    assert card["trained"] is True
+    assert card["metrics"]["accuracy_label"] == ""
+
+
+def test_model_card_route_reports_missing_model(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """Неизвестная модель — 404: оператор не гадает, почему карточка пуста."""
+    pult, _sent = ml_stand
+
+    with pytest.raises(ApiError) as missing:
+        get(pult, "/api/models/нет-такой-модели")
+
+    assert missing.value.status == 404
+    assert "не найдена" in missing.value.message
+
+
+def test_model_card_and_train_need_stand(no_stand: PultApp) -> None:
+    """Без адреса стенда карточка и вкладка честно говорят «стенд не задан»."""
+    with pytest.raises(ApiError) as refused:
+        get(no_stand, f"/api/models/{ML_MODEL}")
+    assert refused.value.status == 409
+    assert refused.value.kind == "state"
+
+    data = get(no_stand, "/api/train")
+    assert data["configured"] is False and data["rows"] == []
+    assert "не задан" in data["note"]
+    assert [step["key"] for step in data["steps"]][:2] == ["profile", "model"]
+
+
+def test_train_view_filters_models_on_pult_side(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """Отбор моделей идёт на пульте: фильтр `device_id` у стенда падает (`TC-MOD-05`)."""
+    pult, _sent = ml_stand
+    data = get(pult, "/api/train")
+
+    assert data["configured"] is True
+    assert [row["id"] for row in data["rows"]] == [ML_MODEL]
+    assert [item["value"] for item in data["options"]["architectures"]] == ["cnn"]
+    assert data["datasets"] and data["datasets"][0]["value"] == str(STAND_DATASETS[0]["id"])
+    assert {step["key"] for step in data["steps"]} == {
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "onnx",
+    }
+
+    filtered = get(pult, "/api/train", query="нет-такой")
+    assert filtered["rows"] == [] and filtered["total"] == 0
+    by_arch = get(pult, "/api/train", architecture="cnn")
+    assert [row["id"] for row in by_arch["rows"]] == [ML_MODEL]
+
+
+def test_train_profile_is_written_into_session(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """`POST /api/train` пишет профиль и выбор модели в сессию, а не в память браузера."""
+    pult, _sent = ml_stand
+    _ready_session(pult)
+
+    saved = post(
+        pult,
+        "/api/train",
+        action="save-profile",
+        object_of_test="Стенд ML",
+        goal="обучить stft_mlp",
+        responsible="",
+        full_load=True,
+    )
+    profile = saved["profile"]
+    assert profile["object_of_test"] == "Стенд ML"
+    assert profile["goal"] == "обучить stft_mlp"
+    assert profile["responsible"] == AUTHOR, "пустой ответственный берётся из сессии"
+    assert profile["full_load"] is True and profile["full_load_at"]
+
+    chosen = post(pult, "/api/train", action="choose", kind="model", id=ML_MODEL, label="skfu-net")
+    assert chosen["profile"]["model_id"] == ML_MODEL
+    assert chosen["profile"]["model_label"] == "skfu-net"
+    assert chosen["steps"][1]["status"] == "выбрана"
+    assert chosen["card"]["chosen"] is True, "карточка помечает выбранную модель"
+
+    cleared = post(pult, "/api/train", action="clear", kind="model")
+    assert "model_id" not in cleared["profile"]
+    assert cleared["steps"][1]["status"] == "не выбрана"
+
+    dataset = post(
+        pult, "/api/train", action="choose", kind="dataset", id="d-1", label="skfu-train"
+    )
+    assert dataset["profile"]["dataset_id"] == "d-1"
+
+    rest = post(pult, "/api/train", action="clear", kind="profile")
+    assert rest["profile"] == {}
+
+
+def test_train_action_rejects_unknown_commands(ml_stand: tuple[PultApp, list[Any]]) -> None:
+    """Чужая команда и выбор без идентификатора отклоняются понятным текстом."""
+    pult, _sent = ml_stand
+    _ready_session(pult)
+
+    with pytest.raises(ApiError) as unknown:
+        post(pult, "/api/train", action="обучить-всё")
+    assert unknown.value.status == 422
+    assert "неизвестное действие" in unknown.value.message
+
+    with pytest.raises(ApiError) as no_id:
+        post(pult, "/api/train", action="choose", kind="model")
+    assert no_id.value.status == 422
+    assert "Не указана модель" in no_id.value.message
+
+    with pytest.raises(ApiError) as wrong_kind:
+        post(pult, "/api/train", action="choose", kind="файл", id="x")
+    assert wrong_kind.value.status == 422
+
+    with pytest.raises(ApiError) as wrong_clear:
+        post(pult, "/api/train", action="clear", kind="всё")
+    assert wrong_clear.value.status == 422
+    assert "объект сброса" in wrong_clear.value.message
+
+
+def test_train_profile_needs_session(pult: PultApp) -> None:
+    """Без выбранной сессии профиль некуда писать: пульт отказывает, а не теряет решение."""
+    with pytest.raises(ApiError) as refused:
+        post(pult, "/api/train", action="save-profile", object_of_test="Стенд ML")
+
+    assert refused.value.status == 409
+    assert "сессия" in refused.value.message.lower()

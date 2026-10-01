@@ -1740,6 +1740,244 @@ function observeButton(row) {
   return cell;
 }
 
+/**
+ * «Реальная тренировка» (контекст К2, `llm_tasks/59`): отбор конкретной модели и профиль
+ * прогона. Браузер ничего не считает: строки, подписи и шаги приходят из `/api/train`.
+ */
+const trainView = { data: null, model: "" };
+
+/** Фильтры вкладки из полей формы: отбор делает сервер, он же отвечает подписями. */
+function trainQuery(refresh) {
+  const parts = [
+    `query=${encodeURIComponent(document.getElementById("train-query").value.trim())}`,
+    `architecture=${encodeURIComponent(document.getElementById("train-arch").value)}`,
+    `phase_type=${encodeURIComponent(document.getElementById("train-phase").value)}`,
+    `output_size=${encodeURIComponent(document.getElementById("train-output").value)}`,
+    `only_trained=${document.getElementById("train-only-trained").checked ? 1 : 0}`,
+    `only_test=${document.getElementById("train-only-test").checked ? 1 : 0}`,
+    `only_battle=${document.getElementById("train-only-battle").checked ? 1 : 0}`,
+  ];
+  if (trainView.model) {
+    parts.push(`model=${encodeURIComponent(trainView.model)}`);
+  }
+  if (refresh) {
+    parts.push("refresh=1");
+  }
+  return parts.join("&");
+}
+
+/** Обновляет вкладку с сервера: отбор моделей, карточка и профиль (Э1 К2). */
+async function refreshTrain(refresh) {
+  renderTrain(await call("GET", `/api/train?${trainQuery(refresh)}`));
+}
+
+/** Действие профиля: сохранение, выбор модели и снятие выбора. */
+async function actTrain(payload, message) {
+  const data = await act("/api/train", payload);
+  if (data) {
+    renderTrain(data);
+    flash("ok", message);
+    await refresh();
+  }
+  return data;
+}
+
+/** Поля профиля подставляются из сессии, пока оператор в них не печатает. */
+function trainSetInputs(profile) {
+  const values = profile || {};
+  [
+    ["train-object", "object_of_test"],
+    ["train-goal", "goal"],
+    ["train-responsible", "responsible"],
+  ].forEach(([id, key]) => {
+    const element = document.getElementById(id);
+    if (document.activeElement !== element) {
+      element.value = text(values[key]);
+    }
+  });
+  [
+    ["train-full-load", "full_load"],
+    ["train-dataset-validated", "dataset_validated"],
+  ].forEach(([id, key]) => {
+    document.getElementById(id).checked = Boolean(values[key]);
+  });
+}
+
+/** Строка таблицы моделей: свойства и кнопка «свойства» (карточка читается по клику). */
+function trainRowCells(row) {
+  const profile = (trainView.data || {}).profile || {};
+  const chosen = text(profile.model_id) === row.id;
+  return [
+    `${chosen ? "✔ " : ""}${text(row.name)}`,
+    text(row.owner),
+    text(row.architecture),
+    text(row.phase_type),
+    text(row.output_size),
+    text(row.signal_count),
+    text(row.trained_label),
+    text(row.accuracy),
+    text(row.updated_at_text),
+    button(chosen ? "выбрана" : "свойства", "btn btn--tiny btn--ghost", () => {
+      trainView.model = row.id;
+      refreshTrain();
+    }),
+  ];
+}
+
+/** Карточка модели: свойства, сигналы, классы, метрики, история и слои. */
+function renderTrainCard(card) {
+  const meta = document.getElementById("train-card-meta");
+  const props = document.getElementById("train-card-props");
+  if (!card.id) {
+    meta.textContent = "выберите модель в таблице — её свойства появятся здесь";
+    props.textContent = "";
+    [
+      "train-card-metrics",
+      "train-card-signals",
+      "train-card-classes",
+      "train-card-stats",
+      "train-card-training",
+      "train-card-testing",
+      "train-card-layers",
+    ].forEach((id) => {
+      const box = document.getElementById(id);
+      if (box.tagName === "TABLE") {
+        fillTable(box.querySelector("tbody"), [], () => []);
+      } else {
+        renderLines(id, [], () => "");
+      }
+    });
+    return;
+  }
+  meta.textContent = joinText([
+    text(card.name),
+    card.test_model ? "модель испытаний (`__TEST__`)" : "боевая модель",
+    text(card.metrics_meta),
+    card.file.size_text ? `файл ${text(card.file.name)} · ${text(card.file.size_text)}` : "",
+    card.updated_at_text ? `обновлена ${text(card.updated_at_text)}` : "",
+  ]);
+  renderLines("train-card-props", card.rows || [], (row) =>
+    `${text(row.label)}: ${text(row.value) || "—"}`
+  );
+  document.getElementById("train-card-signals-count").textContent = joinText([
+    "Группы сигналов и классы",
+    text(card.signals_meta),
+  ]);
+  fillTable(document.querySelector("#train-card-signals tbody"), card.signals || [], (row) => [
+    text(row.signal_num),
+    text(row.count),
+    text(row.devices_text),
+    (row.categories || []).join(", "),
+  ]);
+  fillTable(document.querySelector("#train-card-classes tbody"), card.classes || [], (row) => [
+    text(row.signal_num),
+    text(row.alias),
+  ]);
+  const metrics = card.metrics || {};
+  renderLines("train-card-metrics", metrics.rows || [], (row) =>
+    `${text(row.label)}: ${text(row.value)}`
+  );
+  fillTable(document.querySelector("#train-card-stats tbody"), metrics.dataset_stats || [], (row) => [
+    text(row.label),
+    text(row.value),
+  ]);
+  fillTable(document.querySelector("#train-card-training tbody"), card.training || [], (row) => [
+    text(row.epoch),
+    text(row.loss),
+  ]);
+  fillTable(document.querySelector("#train-card-testing tbody"), card.testing || [], (row) => [
+    text(row.accuracy),
+    text(row.dataset_id),
+    text(row.report_file_id),
+    text(row.tested_at),
+  ]);
+  document.getElementById("train-card-layers-count").textContent = joinText([
+    "Слои архитектуры",
+    `${(card.layers || []).length}`,
+  ]);
+  fillTable(document.querySelector("#train-card-layers tbody"), card.layers || [], (row) => [
+    text(row.order),
+    text(row.layer_type),
+    text(row.parameters),
+  ]);
+}
+
+/** Отрисовка вкладки «Реальная тренировка» целиком (сервер — источник правды). */
+function renderTrain(data) {
+  trainView.data = data;
+  const profile = data.profile || {};
+  if (profile.model_id) {
+    trainView.model = text(profile.model_id);
+  }
+  document.getElementById("train-meta").textContent = joinText([
+    data.configured ? "стенд подключён" : "стенд не задан",
+    data.session_id ? `сессия ${text(data.session_id)}` : "сессия не выбрана",
+    `в отборе моделей: ${text(data.total)}`,
+    data.file_count ? `файлов в реестре: ${text(data.file_count)}` : "",
+  ]);
+  const warnings = document.getElementById("train-warnings");
+  warnings.hidden = !text(data.note);
+  warnings.textContent = text(data.note);
+
+  renderLines("train-steps", data.steps || [], (step) =>
+    `${step.ready ? "✅" : "▫️"} ${text(step.stage)} · ${text(step.title)}` +
+    ` — ${text(step.status)}: ${text(step.note)}`
+  );
+  renderLines("train-profile", data.profile_rows || [], (row) =>
+    `${text(row.label)}: ${text(row.value) || "—"}`
+  );
+  trainSetInputs(profile);
+
+  const options = data.options || {};
+  fillSelect(
+    document.getElementById("train-arch"),
+    "архитектура: все",
+    options.architectures || [],
+    (item) => item.value,
+    (item) => item.label
+  );
+  fillSelect(
+    document.getElementById("train-phase"),
+    "фаза: все",
+    options.phases || [],
+    (item) => item.value,
+    (item) => item.label
+  );
+  fillSelect(
+    document.getElementById("train-output"),
+    "выход: любой",
+    options.output_sizes || [],
+    (item) => item.value,
+    (item) => item.label
+  );
+  const filters = data.filters || {};
+  document.getElementById("train-arch").value = text(filters.architecture);
+  document.getElementById("train-phase").value = text(filters.phase_type);
+  document.getElementById("train-output").value = text(filters.output_size);
+  document.getElementById("train-only-trained").checked = Boolean(filters.only_trained);
+  document.getElementById("train-only-test").checked = Boolean(filters.only_test);
+  document.getElementById("train-only-battle").checked = Boolean(filters.only_battle);
+  const query = document.getElementById("train-query");
+  if (document.activeElement !== query) {
+    query.value = text(filters.query);
+  }
+
+  fillTable(document.querySelector("#train-models tbody"), data.rows || [], trainRowCells);
+  renderTrainCard(data.card || {});
+  const chosen = Boolean(text(profile.model_id));
+  const chooseButton = document.getElementById("train-choose");
+  chooseButton.disabled = !trainView.model;
+  chooseButton.textContent = chosen ? "✔ Заменить выбор модели" : "✔ Выбрать для прогона";
+  document.getElementById("train-note").textContent = chosen
+    ? joinText([
+        "Выбрана модель",
+        text(profile.model_label) || trainView.model,
+        "— данные (Э2) и обучение (Э3) подключатся к тому же профилю сессии",
+      ])
+    : "Отбор моделей идёт на стороне пульта: фильтр `device_id` у стенда отвечает 500 " +
+      "(`TC-MOD-05`), поэтому фильтры применяются локально.";
+}
+
 /** Перерисовывает активную панель с сервера (сервер — единственный источник правды). */
 async function loadPanel(name) {
   if (name === "run") {
@@ -1757,6 +1995,9 @@ async function loadPanel(name) {
     ]);
     renderTasks(jobs);
     renderArtifacts(artifacts);
+  } else if (name === "train") {
+    // «Реальная тренировка» (контекст К2): профиль сессии, отбор моделей и карточка
+    await refreshTrain();
   } else if (name === "results") {
     await refreshResults();
   } else if (name === "journal") {
@@ -1777,7 +2018,7 @@ async function refresh() {
 /** Порядок вкладок, согласованный с заказчиком (стража — тест в `test_pult_server.py`).
  *  Стартовая вкладка — «Планирование»: пульт открывается на подготовке испытаний.
  */
-const PANELS = ["planning", "sessions", "run", "tasks", "results", "journal"];
+const PANELS = ["planning", "sessions", "run", "train", "tasks", "results", "journal"];
 
 /** Панель из адреса страницы: `#planning`, `#journal/12` — открыть вкладку и запись (`IR-P-4`). */
 function panelFromHash() {
@@ -1863,6 +2104,46 @@ function bind() {
       flash("ok", `Внешняя задача ${taskId.slice(0, 8)} поставлена на наблюдение`);
     }
   });
+
+  // «Реальная тренировка» (контекст К2): профиль прогона, отбор и выбор модели (`llm_tasks/59`)
+  document.getElementById("train-refresh").addEventListener("click", () => refreshTrain(true));
+  document.getElementById("train-filter").addEventListener("click", () => refreshTrain());
+  document.getElementById("train-query").addEventListener("keyup", (event) => {
+    if (event.key === "Enter") {
+      refreshTrain();
+    }
+  });
+  ["train-arch", "train-phase", "train-output", "train-only-trained", "train-only-test",
+    "train-only-battle"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", () => refreshTrain());
+  });
+  document.getElementById("train-save-profile").addEventListener("click", () =>
+    actTrain(
+      {
+        action: "save-profile",
+        object_of_test: document.getElementById("train-object").value,
+        goal: document.getElementById("train-goal").value,
+        responsible: document.getElementById("train-responsible").value,
+        full_load: document.getElementById("train-full-load").checked,
+        dataset_validated: document.getElementById("train-dataset-validated").checked,
+      },
+      "Профиль прогона записан в сессию испытаний"
+    )
+  );
+  document.getElementById("train-clear-profile").addEventListener("click", () =>
+    actTrain({ action: "clear", kind: "profile" }, "Профиль прогона сброшен")
+  );
+  document.getElementById("train-choose").addEventListener("click", () => {
+    const rows = (trainView.data || {}).rows || [];
+    const row = rows.find((item) => item.id === trainView.model) || {};
+    actTrain(
+      { action: "choose", kind: "model", id: trainView.model, label: text(row.name) },
+      `Модель выбрана для прогона: ${text(row.name) || trainView.model}`
+    );
+  });
+  document.getElementById("train-choose-clear").addEventListener("click", () =>
+    actTrain({ action: "clear", kind: "model" }, "Выбор модели снят")
+  );
 
   // «Результаты»: данные стенда, протокол, отчёт и завершение сессии (`SCR-401`, `SCR-404`)
   document.getElementById("results-refresh").addEventListener("click", () => refreshResults(true));

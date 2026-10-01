@@ -975,6 +975,127 @@ def test_model_rows_describe_registry() -> None:
     assert view.model_rows([]) == []
 
 
+# ---------------------------------------------------------------------------
+# «Реальная тренировка»: карточка модели и экран профиля (Э1 плана `llm_tasks/59`)
+# ---------------------------------------------------------------------------
+def _model_card_payload() -> dict[str, Any]:
+    """Модель в форме ответа стенда: сигналы, классы, слои и метрики (с живого стенда)."""
+    return {
+        "id": "m-1",
+        "name": "stft_mlp-train-dev (trained)",
+        "architecture": "stft_mlp",
+        "version": "2",
+        "phase_type": "three",
+        "output_size": 2,
+        "file_id": "f-1",
+        "created_at": "2026-09-14T19:00:00",
+        "updated_at": "2026-09-21T15:14:26",
+        "signals": [
+            {"signal_num": 0, "device_id": "Antminer S19", "device_info": {"category": "Ном."}},
+            {"signal_num": 1, "device_id": "__OTHER__", "device_info": {"category": "Прочая"}},
+        ],
+        "signal_aliases": {"0": "miner", "1": "not_miner"},
+        "config": {"layers": [{"layer_type": "dense", "parameters": {"units": 2}}]},
+        "metrics": {
+            "epochs": 1,
+            "batch_size": 64,
+            "learning_rate": 0.001,
+            "preprocessing_converter": "stft",
+            "dataset_stats": {"total_chunks": 386869, "loads": {"Antminer S19": 10}},
+            "training_history": {"loss": [0.06698943079180995]},
+            "testing_history": {"tests": [{"accuracy": 0.9765274365274366}]},
+        },
+    }
+
+
+def test_model_card_view_collects_properties_signals_and_metrics() -> None:
+    """Карточка модели: свойства, группы сигналов, классы, метрики и размер `.h5`."""
+    session = SessionModel(session_id="20261001-120000-0001")
+    session.ml_profile = {"model_id": "m-1"}
+
+    card = view.model_card_view(
+        _model_card_payload(),
+        session=session,
+        files=[SimpleNamespace(id="f-1", file_name="model.h5", size=204800)],
+    )
+
+    assert card["chosen"] is True
+    assert card["trained"] is True and card["trained_label"] == "обучена"
+    assert card["signal_count"] == 2
+    assert card["signals_meta"].startswith("2 группы сигналов · 2 класса · 1 слой")
+    assert card["metrics_meta"].startswith("обучена · точность 0.9765")
+    assert card["file"]["size_text"] == "200 КБ"
+    assert card["file"]["known"] is True
+    assert card["updated_at_text"] == "21.09 15:14"
+    labels = {row["label"]: row["value"] for row in card["rows"]}
+    assert labels["Имя"] == "stft_mlp-train-dev (trained)"
+    assert labels["Выход (классов)"] == "2"
+    assert [row["label"] for row in card["metrics"]["dataset_stats"]] == ["total_chunks"]
+
+
+def test_model_card_view_is_honest_without_file_and_metrics() -> None:
+    """Нет файла в реестре и нет метрик — карточка говорит об этом, а не показывает нули."""
+    card = view.model_card_view({"id": "m-2", "name": "новая"}, files=[])
+
+    assert card["chosen"] is False
+    assert card["trained"] is False and card["trained_label"] == "не обучена"
+    assert card["file"]["size_text"] == ""
+    assert card["file"]["known"] is False
+    assert card["signals"] == [] and card["signals_meta"] == "0 групп сигналов"
+
+
+def test_train_view_shows_profile_and_planned_steps() -> None:
+    """Экран «Реальной тренировки»: профиль сессии, шаги Э1–Э4 и отобранные строки."""
+    data = view.train_view(
+        profile={
+            "object_of_test": "Стенд ML",
+            "goal": "обучить stft_mlp",
+            "responsible": "Петров П.П.",
+            "full_load": True,
+            "model_id": "m-1",
+            "model_label": "stft_mlp dev",
+        },
+        models=[_model_card_payload()],
+        filters={"query": "", "only_trained": True},
+        options={"architectures": [{"value": "stft_mlp", "label": "stft_mlp"}]},
+        datasets=[SimpleNamespace(id="d-1", name="skfu-train")],
+        session_id="20261001-120000-0001",
+        files=[1, 2, 3],
+    )
+
+    assert data["configured"] is True
+    assert data["total"] == 1 and data["rows"][0]["id"] == "m-1"
+    assert data["file_count"] == 3
+    assert [step["key"] for step in data["steps"]] == [
+        "profile",
+        "model",
+        "dataset",
+        "training",
+        "onnx",
+    ]
+    steps = {step["key"]: step for step in data["steps"]}
+    assert steps["profile"]["status"] == "готово" and steps["profile"]["ready"] is True
+    assert steps["model"]["status"] == "выбрана"
+    assert steps["dataset"]["status"] == "этап Э2" and steps["dataset"]["ready"] is False
+    assert steps["training"]["stage"] == "Э3" and steps["onnx"]["stage"] == "Э4"
+    assert [item["key"] for item in data["flags"]] == ["only_trained", "only_test", "only_battle"]
+    assert data["datasets"] == [{"value": "d-1", "label": "skfu-train"}]
+    assert data["profile_rows"][0] == {"label": "Объект испытаний", "value": "Стенд ML"}
+
+
+def test_train_view_states_what_is_not_done_yet() -> None:
+    """Нет профиля и нет выбранной модели — экран не обещает готового прогона."""
+    data = view.train_view(configured=False, note="Адрес испытанного сервера не задан")
+
+    assert data["configured"] is False
+    assert data["profile_rows"][0]["value"] == ""
+    steps = {step["key"]: step for step in data["steps"]}
+    assert steps["profile"]["status"] == "заполнить" and steps["profile"]["ready"] is False
+    assert steps["model"]["status"] == "не выбрана"
+    assert data["card"] == {} and data["rows"] == []
+    assert data["note"].startswith("Адрес испытанного сервера")
+
+
 def test_row_selection_filters_by_id_name_and_outside() -> None:
     """Отбор строк «Данных стенда»: `id` решает, имя — когда `id` неизвестен (`llm_tasks/49`)."""
     keys = composition_api.FileKeys(ids=frozenset({"a"}), names=frozenset({"raw_2.csv"}))

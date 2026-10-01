@@ -44,6 +44,7 @@ from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICO
 from acceptance.session import TestSession
 from acceptance.tasks_monitor import TaskMonitor, status_color, status_glyph, status_label
 from pult import artifacts as artifacts_api
+from pult import models as models_api
 
 #: Разделитель подписей в «одной строке» (макет печатает ` · `).
 SEPARATOR = " · "
@@ -1720,24 +1721,172 @@ def model_rows(models: Iterable[Any]) -> list[dict[str, Any]]:
 
     Поля берутся из ответа (`ModelMetadata`), а не из выдуманной схемы: список нужен
     и на «Результатах» (`UC-18`), и как варианты выбора модели для проверок T6–T9.
+    Дополнено признаками «Реальной тренировки» (`llm_tasks/59`): обучена ли модель,
+    сколько у неё групп сигналов, последняя точность и владелец (`__TEST__`/боевая) —
+    без этого «выбрать конкретную модель» было нечем.
     """
     rows: list[dict[str, Any]] = []
     for item in models:
-        payload = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        data = models_api.row(item)
         rows.append(
             {
-                "id": str(payload.get("id") or ""),
-                "name": str(payload.get("name") or ""),
-                "architecture": str(payload.get("architecture") or ""),
-                "version": str(payload.get("version") or ""),
-                "phase_type": str(payload.get("phase_type") or ""),
-                "output_size": int(payload.get("output_size") or 0),
-                "description": str(payload.get("description") or ""),
-                "created_at": short_time(payload.get("created_at")),
-                "updated_at": short_time(payload.get("updated_at")),
+                **data,
+                "created_at": short_time(data.get("created_at")),
+                "updated_at": short_time(data.get("updated_at")),
             }
         )
     return rows
+
+
+def model_card_view(
+    model: Any, *, file: Any = None, session: Any = None, files: Iterable[Any] | None = None
+) -> dict[str, Any]:
+    """Карточка модели для интерфейса: свойства, сигналы, классы, слои и метрики.
+
+    `files` — реестр файлов стенда: по нему находится размер `.h5` (модель хранит только
+    `file_id`). Если файл не найден, карточка честно пишет «нет в реестре файлов», а не
+    показывает нули.
+    """
+    card = models_api.card(model, file=file, session=session)
+    rows = list(files or [])
+    file_row = None
+    if card["file"]["id"]:
+        file_row = next(
+            (row for row in rows if str(getattr(row, "id", "") or "") == card["file"]["id"]),
+            None,
+        )
+    if file_row is not None:
+        card["file"]["name"] = card["file"]["name"] or str(getattr(file_row, "file_name", "") or "")
+        card["file"]["size"] = card["file"]["size"] or int(getattr(file_row, "size", 0) or 0)
+        card["file"]["known"] = True
+    card["created_at_text"] = short_time(card["created_at"])
+    card["updated_at_text"] = short_time(card["updated_at"])
+    card["file"]["size_text"] = (
+        f"{card['file']['size'] / 1024:.0f} КБ" if card["file"]["size"] else ""
+    )
+    card["signals_meta"] = join_parts(
+        plural(len(card["signals"]), ("группа сигналов", "группы сигналов", "групп сигналов")),
+        plural(len(card["classes"]), ("класс", "класса", "классов")) if card["classes"] else "",
+        plural(len(card["layers"]), ("слой", "слоя", "слоёв")) if card["layers"] else "",
+    )
+    card["metrics_meta"] = join_parts(
+        card["trained_label"],
+        f"точность {card['metrics']['accuracy_label']}"
+        if card["metrics"]["accuracy_label"]
+        else "",
+        card["metrics"]["origin_label"],
+    )
+    return card
+
+
+#: Шаги «Реальной тренировки» (`llm_tasks/59`): что уже работает и что запланировано.
+#: Порядок шагов — порядок работы оператора: профиль → модель → данные → обучение → ONNX.
+TRAIN_STEPS: tuple[tuple[str, str, str], ...] = (
+    ("profile", "Профиль прогона", "Э1"),
+    ("model", "Модель", "Э1"),
+    ("dataset", "Данные (датасет)", "Э2"),
+    ("training", "Обучение", "Э3"),
+    ("onnx", "ONNX и комплект", "Э4"),
+)
+
+
+def train_view(
+    *,
+    profile: Mapping[str, Any] | None = None,
+    models: Iterable[Any] = (),
+    files: Iterable[Any] = (),
+    datasets: Iterable[Any] = (),
+    filters: Mapping[str, Any] | None = None,
+    options: Mapping[str, Any] | None = None,
+    card: Mapping[str, Any] | None = None,
+    session_id: str = "",
+    configured: bool = True,
+    note: str = "",
+) -> dict[str, Any]:
+    """Экран «Реальная тренировка»: профиль, отбор моделей, карточка и состояние шагов.
+
+    Шаги Э2–Э4 показываются как запланированные: интерфейс не выглядит сломанным и не
+    обещает того, чего ещё нет. Строки моделей, варианты фильтров и подписи считает
+    сервер — JS только рисует (правило `llm_tasks/31.4` §3).
+    """
+    values = dict(profile or {})
+    rows = model_rows(models)
+    chosen_id = str(values.get("model_id") or "")
+    dataset_id = str(values.get("dataset_id") or "")
+    selected = next((row for row in rows if row["id"] == chosen_id), None)
+    chosen_label = str(values.get("model_label") or (selected["name"] if selected else ""))
+    states = {
+        "profile": ("готово" if values.get("object_of_test") else "заполнить"),
+        "model": ("выбрана" if chosen_id else "не выбрана"),
+        "dataset": ("выбран" if dataset_id else "этап Э2"),
+        "training": "этап Э3",
+        "onnx": "этап Э4",
+    }
+    notes = {
+        "profile": "объект, цель, ответственный и режим нагрузки",
+        "model": chosen_label or "выберите модель по свойствам",
+        "dataset": str(values.get("dataset_label") or dataset_id)
+        or "загрузка файлов и наполнение датасета — этап Э2",
+        "training": "параметры обучения, задача FSM-1 и метрики «до/после» — этап Э3",
+        "onnx": "экспорт ONNX, скачивание и комплект доказательств — этап Э4",
+    }
+    ready = {
+        "profile": bool(values.get("object_of_test")),
+        "model": bool(chosen_id),
+        "dataset": bool(dataset_id and values.get("dataset_validated")),
+        "training": False,
+        "onnx": False,
+    }
+    return {
+        "configured": bool(configured),
+        "session_id": str(session_id or ""),
+        "profile": values,
+        "profile_rows": [
+            {"label": "Объект испытаний", "value": str(values.get("object_of_test") or "")},
+            {"label": "Цель прогона", "value": str(values.get("goal") or "")},
+            {"label": "Ответственный", "value": str(values.get("responsible") or "")},
+            {
+                "label": "Режим полной нагрузки",
+                "value": "да" if values.get("full_load") else "",
+            },
+            {"label": "Датасет", "value": str(values.get("dataset_label") or dataset_id)},
+            {
+                "label": "Датасет валидирован вне пульта",
+                "value": str(values.get("dataset_validated_at") or ""),
+            },
+            {"label": "Модель", "value": str(values.get("model_label") or chosen_id)},
+        ],
+        "steps": [
+            {
+                "key": key,
+                "title": title,
+                "stage": stage,
+                "status": states[key],
+                "ready": ready[key],
+                "note": notes[key],
+            }
+            for key, title, stage in TRAIN_STEPS
+        ],
+        "filters": dict(filters or {}),
+        "options": {
+            "architectures": list((options or {}).get("architectures") or []),
+            "phases": list((options or {}).get("phases") or []),
+            "output_sizes": list((options or {}).get("output_sizes") or []),
+        },
+        "flags": [{"key": key, "label": label} for key, label in models_api.FILTER_FLAGS],
+        "rows": rows,
+        "total": len(rows),
+        "card": dict(card or {}),
+        "datasets": [
+            {
+                "value": str(getattr(item, "id", "") or ""),
+                "label": str(getattr(item, "name", "") or ""),
+            }
+            for item in datasets
+        ],
+        "file_count": len(list(files)),
+        "note": str(note or ""),
+    }
 
 
 #: Лимит строк в подразделах «Данных стенда»: реестр файлов бывает в сотни строк,

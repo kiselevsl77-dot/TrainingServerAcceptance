@@ -27,7 +27,7 @@ from uuid import uuid4
 from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -52,7 +52,10 @@ TOOL_VERSION = "0.1.0"
 #:        (`acceptance/queue.py::queue_for_revision`), а сессия помнит только номер
 #:        исполняемой ревизии (`run_revision`) и режим «только невыполненное»
 #:        (`skip_done`) — решение заказчика 25.09.2026 (`llm_tasks/31.4` §1 п.6–7).
-#: Файлы v1–v7 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:   v9 — добавлен `ml_profile` (профиль «Реальной тренировки», контекст К2): объект и
+#:        цель прогона, ответственный, режим полной нагрузки с подтверждением, выбранные
+#:        датасет и модель, отметка «датасет валидирован вне пульта» (`llm_tasks/59` §2).
+#: Файлы v1–v8 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
 ORIGIN_PULT = "пульт"
@@ -149,6 +152,10 @@ class TestSession:
     #: Режим прогона: True — «только невыполненное», False — «всё подряд» (UC-09).
     skip_done: bool = True
     check_history: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    #: Профиль «Реальной тренировки» (контекст К2, схема v9): объект/цель прогона,
+    #: ответственный, режим полной нагрузки с подтверждением, выбранные датасет и модель,
+    #: отметка «датасет валидирован вне пульта» (`llm_tasks/59` §2).
+    ml_profile: dict[str, Any] = field(default_factory=dict)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -220,6 +227,7 @@ class TestSession:
             "run_revision": self.run_revision,
             "skip_done": self.skip_done,
             "check_history": self.check_history,
+            "ml_profile": self.ml_profile,
             "history": self.history,
         }
 
@@ -256,6 +264,7 @@ class TestSession:
                 str(key): [dict(item) for item in (value or [])]
                 for key, value in (data.get("check_history") or {}).items()
             },
+            ml_profile=dict(data.get("ml_profile") or {}),
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
@@ -327,6 +336,66 @@ def start_session(session: TestSession) -> TestSession:
         session.started_at = now_iso()
     session.add_history("session_started", "Сессия начата", server_build=session.server_build)
     return session
+
+
+#: Ключи профиля «Реальной тренировки» (контекст К2, схема v9). Пустое значение удаляет
+#: ключ, поэтому снятие выбора не оставляет мусора от прежних решений оператора.
+ML_PROFILE_KEYS: tuple[str, ...] = (
+    "object_of_test",
+    "goal",
+    "responsible",
+    "full_load",
+    "full_load_at",
+    "dataset_id",
+    "dataset_label",
+    "dataset_validated",
+    "dataset_validated_at",
+    "model_id",
+    "model_label",
+)
+
+
+#: Отметки времени, которые ставятся автоматически вместе с подтверждением: «режим полной
+#: нагрузки включён» и «датасет валидирован» — решения с ценой, у них должна быть дата.
+CONFIRMATION_STAMPS: dict[str, str] = {
+    "full_load": "full_load_at",
+    "dataset_validated": "dataset_validated_at",
+}
+
+
+def update_ml_profile(session: TestSession, **values: Any) -> dict[str, Any]:
+    """Обновляет профиль «Реальной тренировки» и пишет событие в историю сессии.
+
+    Профиль — часть сессии: он переживает перезапуск пульта и попадает в отчёт, поэтому
+    изменения фиксируются событием (`ml_profile_updated`), а не живут только в браузере.
+
+    Пульт **не валидирует** датасет: `dataset_validated` — отметка оператора о том, что
+    он использовал внешне проверенный датасет (`llm_tasks/59` §0, решение 4); время
+    отметки ставится здесь, чтобы она была одинаковой у всех вызывающих. Неизвестные
+    ключи игнорируются, пустое значение удаляет ключ вместе с его отметкой времени.
+    """
+    profile = dict(session.ml_profile or {})
+    changed: list[str] = []
+    for key, value in values.items():
+        name = str(key)
+        if name not in ML_PROFILE_KEYS:
+            continue
+        if value in ("", None, False):
+            for dropped in (name, CONFIRMATION_STAMPS.get(name, "")):
+                if dropped and dropped in profile:
+                    profile.pop(dropped)
+                    changed.append(f"-{dropped}")
+            continue
+        profile[name] = value
+        changed.append(f"+{name}")
+        stamp = CONFIRMATION_STAMPS.get(name, "")
+        if stamp and not str(profile.get(stamp) or "").strip():
+            profile[stamp] = now_iso()
+            changed.append(f"+{stamp}")
+    session.ml_profile = profile
+    if changed:
+        session.add_history("ml_profile_updated", f"Профиль прогона: {', '.join(changed)}")
+    return profile
 
 
 def close_session(session: TestSession, *, conclusion: str | None = None) -> TestSession:
