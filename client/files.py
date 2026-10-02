@@ -18,9 +18,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from uuid import UUID
 
 from client.http import ApiHttpClient, BinaryResponse
@@ -61,31 +63,43 @@ class FilesApi:
     def upload(
         self,
         *,
-        file_name: str,
-        content: bytes,
+        file_name: str | None = None,
+        content: bytes | None = None,
+        path: Path | None = None,
         file_type: str,
         description: str | None = None,
     ) -> FileMetadataResponse:
         """POST /api/data/file — загрузка файла (UC-02).
 
+        Файл передаётся одним из двух способов:
+
+        * `content` — байты в памяти (так работают сценарии проверок: файлы там маленькие);
+        * `path` — путь на диске: содержимое **стримится** (`httpx` читает файл порциями),
+          поэтому боевой RAW на 2 ГБ не занимает память пульта (этап Э2.1, `llm_tasks/64`).
+
         Args:
-            file_name: имя файла (в хранилище сохраняется только базовое имя).
-            content: содержимое файла.
+            file_name: имя файла для стенда (по умолчанию — имя файла из `path`).
+            content: содержимое файла (ровно один источник — `content` или `path`).
+            path: путь к файлу на диске (ровно один источник — `content` или `path`).
             file_type: `RAW`/`LOADS`/`ONNX` (`FileType`).
             description: необязательное описание.
 
         Returns:
             Метаданные сохранённого файла (ответ 201).
+
+        Raises:
+            ValueError: источник файла не задан, задан дважды или не хватает имени.
         """
         data: dict[str, str] = {"file_type": file_type}
         if description:
             data["description"] = description
 
-        payload: dict[str, Any] = self._client.post(
-            "/api/data/file",
-            files={"file": (Path(file_name).name, content, guess_content_type(file_name))},
-            data=data,
-        )
+        with _file_source(file_name=file_name, content=content, path=path) as (name, handle):
+            payload: dict[str, Any] = self._client.post(
+                "/api/data/file",
+                files={"file": (name, handle, guess_content_type(name))},
+                data=data,
+            )
         return FileMetadataResponse.model_validate(payload)
 
     # -- список --------------------------------------------------------------
@@ -127,6 +141,31 @@ class FilesApi:
     def delete(self, file_id: UUID | str) -> None:
         """DELETE /api/{file_id} — удаление файла из S3 и его метаданных (UC-05)."""
         self._client.delete(f"/api/{file_id}")
+
+
+@contextmanager
+def _file_source(
+    *,
+    file_name: str | None,
+    content: bytes | None,
+    path: Path | None,
+) -> Iterator[tuple[str, bytes | BinaryIO]]:
+    """Источник файла для multipart: имя и содержимое (байты или открытый поток).
+
+    Поток открывается здесь же и закрывается после отправки: вызывающий код не обязан
+    помнить о закрытии, а большой файл читается `httpx` порциями, а не целиком.
+    """
+    if (content is None) == (path is None):
+        raise ValueError("нужен ровно один источник файла: `content` или `path`")
+    if path is not None:
+        name = Path(file_name).name if file_name else Path(path).name
+        with Path(path).open("rb") as handle:
+            yield name, handle
+        return
+    name = Path(file_name or "").name
+    if not name:
+        raise ValueError("нужен `file_name` вместе с `content`")
+    yield name, content or b""
 
 
 def _drop_empty(params: dict[str, Any]) -> dict[str, Any]:

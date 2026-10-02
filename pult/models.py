@@ -419,3 +419,124 @@ def chosen_model(models: Sequence[Any], profile: Mapping[str, Any] | None = None
     return next(
         (model for model in models if str(_payload(model).get("id") or "") == model_id), None
     )
+
+
+# ---------------------------------------------------------------------------
+# Данные «Реальной тренировки» (Э2.1, `llm_tasks/64`): загруженные файлы и датасеты
+# ---------------------------------------------------------------------------
+#: Роли файлов данных стенда: измерения (`RAW`) и разметка (`LOADS`). Роль определяет,
+#: в какой список попадёт файл при наполнении датасета (`POST /api/datasets/fill/{id}`).
+FILE_ROLES: tuple[tuple[str, str], ...] = (
+    ("RAW", "измерения (RAW)"),
+    ("LOADS", "разметка (LOADS)"),
+)
+
+#: Шаги журнала К2, которые показывает экран (порядок — порядок работы оператора).
+FLOW_STEPS: tuple[tuple[str, str], ...] = (
+    ("files", "Загрузка файлов"),
+    ("dataset", "Датасет создан"),
+    ("fill", "Датасет наполнен"),
+    ("validated", "Проверен вне пульта"),
+)
+
+
+def human_size(value: Any) -> str:
+    """Размер файла для интерфейса: «2,44 ГБ» вместо «2621440000».
+
+    Боевые RAW доходят до 2,18 ГБ, поэтому «байты в столбик» читать нельзя: оператор
+    должен видеть порядок величины с одного взгляда.
+    """
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return ""
+    for unit, limit in (("ГБ", 1 << 30), ("МБ", 1 << 20), ("КБ", 1 << 10)):
+        if number >= limit:
+            return f"{number / limit:.2f} {unit}".replace(".", ",")
+    return f"{int(number)} Б"
+
+
+def role_label(value: Any) -> str:
+    """Подпись роли файла: `RAW` → «измерения (RAW)», `LOADS` → «разметка (LOADS)»."""
+    lookup = {str(key).upper(): label for key, label in FILE_ROLES}
+    return lookup.get(str(value or "").upper(), str(value or ""))
+
+
+def upload_rows(files: Iterable[Any]) -> list[dict[str, Any]]:
+    """Паспорта загруженных файлов для таблицы: имя, роль, размер, `sha256`, `file_id`."""
+    rows: list[dict[str, Any]] = []
+    for item in files:
+        data = _payload(item)
+        size = data.get("size")
+        digest = str(data.get("sha256") or "")
+        role = data.get("role") or data.get("file_type")
+        rows.append(
+            {
+                "name": str(data.get("name") or ""),
+                "role": str(role or ""),
+                "role_label": role_label(role),
+                "size": "" if size is None else str(size),
+                "size_text": human_size(size),
+                "sha256": digest,
+                "sha256_short": digest[:12],
+                "file_id": str(data.get("file_id") or ""),
+                "at": str(data.get("at") or ""),
+                "author": str(data.get("author") or ""),
+            }
+        )
+    return rows
+
+
+def dataset_rows(datasets: Iterable[Any]) -> list[dict[str, Any]]:
+    """Датасеты стенда для выбора: `id`, имя, тип, описание и дата создания."""
+    rows: list[dict[str, Any]] = []
+    for item in datasets:
+        data = _payload(item)
+        rows.append(
+            {
+                "id": str(data.get("id") or ""),
+                "name": str(data.get("name") or ""),
+                "type": str(data.get("type") or ""),
+                "description": str(data.get("description") or ""),
+                "created_at": str(data.get("created_at") or ""),
+            }
+        )
+    return rows
+
+
+def latest_steps(steps: Iterable[Any]) -> dict[str, dict[str, Any]]:
+    """Последняя запись по каждому шагу К2: `ключ → {status, at, note, author}`.
+
+    Журнал сессии хранит **все** записи (это история решений для отчёта), а экрану нужен
+    текущий статус шага — поэтому берётся последняя запись, а не первая.
+    """
+    result: dict[str, dict[str, Any]] = {}
+    for item in steps:
+        data = _payload(item)
+        key = str(data.get("step") or "")
+        if not key:
+            continue
+        result[key] = {
+            "status": str(data.get("status") or ""),
+            "at": str(data.get("at") or ""),
+            "note": str(data.get("note") or ""),
+            "author": str(data.get("author") or ""),
+        }
+    return result
+
+
+def manifest_summary(manifest: Mapping[str, Any] | None) -> list[dict[str, str]]:
+    """Подписи паспорта датасета: когда собран, сколько файлов, общий размер, кто собрал."""
+    data = dict(manifest or {})
+    if not data:
+        return []
+    rows = [
+        {"label": "Собран", "value": str(data.get("at") or "")},
+        {"label": "Файлов", "value": str(data.get("file_count") or 0)},
+        {"label": "Общий размер", "value": human_size(data.get("size_total"))},
+        {"label": "Собрал", "value": str(data.get("author") or "")},
+    ]
+    note = str(data.get("note") or "")
+    if note:
+        rows.append({"label": "Примечание", "value": note})
+    return rows

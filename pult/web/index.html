@@ -465,7 +465,7 @@
         <section class="zone">
           <div class="zone__head">
             <h3>Шаги прогона</h3>
-            <span class="muted">Э1 работает · Э2–Э4 запланированы</span>
+            <span class="muted">Э1–Э2 работают · Э3–Э4 запланированы</span>
           </div>
           <div class="outcomes" id="train-steps"></div>
         </section>
@@ -473,7 +473,7 @@
         <section class="zone">
           <div class="zone__head">
             <h3>Профиль прогона</h3>
-            <span class="muted">объект, цель и подтверждения — в сессию испытаний (схема v9)</span>
+            <span class="muted">объект, цель и подтверждения — в сессию испытаний (схема v10)</span>
             <span class="grow"></span>
             <button class="btn btn--primary" id="train-save-profile" type="button">💾 Сохранить профиль</button>
             <button class="btn btn--ghost" id="train-clear-profile" type="button">Сбросить профиль</button>
@@ -495,6 +495,76 @@
           <div class="zone__sub">
             <h4>Что записано в сессию</h4>
             <div class="outcomes" id="train-profile"></div>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone__head">
+            <h3>Данные (датасет)</h3>
+            <span class="muted" id="train-data-meta"></span>
+            <span class="grow"></span>
+            <button class="btn btn--ghost" id="train-files-refresh" type="button">↻ Файлы стенда</button>
+            <button class="btn btn--ghost" id="train-dataset-refresh" type="button">↻ Перечитать состав</button>
+          </div>
+          <div class="outcomes" id="train-data-steps"></div>
+
+          <div class="row">
+            <input type="file" id="train-upload-file" multiple />
+            <select id="train-upload-role" title="роль файла в датасете: измерения или разметка"></select>
+            <input id="train-upload-note" placeholder="описание загрузки (необязательно)" size="30" />
+            <button class="btn btn--primary" id="train-upload" type="button">⬆ Загрузить на стенд</button>
+            <progress id="train-upload-progress" value="0" max="100" hidden></progress>
+            <span class="hint" id="train-upload-status"></span>
+          </div>
+          <p class="muted" id="train-upload-hint"></p>
+
+          <div class="zone__sub">
+            <h4>Загружено в этой сессии</h4>
+            <table class="grid grid--scroll" id="train-uploads">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Роль</th>
+                  <th>Размер</th>
+                  <th>sha256</th>
+                  <th>Загружен</th>
+                  <th>ID на стенде</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="row">
+            <select id="train-datasets" title="датасеты стенда"></select>
+            <input id="train-dataset-name" placeholder="имя датасета (__TEST__…)" size="28" />
+            <button class="btn btn--primary" id="train-dataset-create" type="button">➕ Создать датасет</button>
+            <button class="btn btn--ghost" id="train-dataset-choose" type="button">✔ Выбрать датасет</button>
+            <button class="btn btn--primary" id="train-dataset-fill" type="button">⇪ Наполнить файлами</button>
+            <button class="btn btn--ghost" id="train-dataset-validate" type="button">✔ Проверен вне пульта</button>
+            <button class="btn btn--ghost" id="train-dataset-delete" type="button">🗑 Удалить датасет</button>
+          </div>
+
+          <div class="zone__sub">
+            <h4>Паспорт сборки</h4>
+            <p class="muted">Пульт не проверяет разметку: он фиксирует, <b>какой</b> датасет использован
+              и из каких файлов собран. Достоверность данных оператор подтверждает вне стенда
+              (кнопка «Проверен вне пульта»), и подтверждение с автором уходит в сессию.</p>
+            <div class="outcomes" id="train-dataset-manifest"></div>
+            <table class="grid grid--scroll" id="train-manifest-files">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Роль</th>
+                  <th>Размер</th>
+                  <th>sha256</th>
+                  <th>ID на стенде</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="muted" id="train-composition-meta"></p>
+            <div class="outcomes" id="train-dataset-composition"></div>
           </div>
         </section>
 

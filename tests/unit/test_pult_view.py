@@ -1076,11 +1076,79 @@ def test_train_view_shows_profile_and_planned_steps() -> None:
     steps = {step["key"]: step for step in data["steps"]}
     assert steps["profile"]["status"] == "готово" and steps["profile"]["ready"] is True
     assert steps["model"]["status"] == "выбрана"
-    assert steps["dataset"]["status"] == "этап Э2" and steps["dataset"]["ready"] is False
+    assert steps["dataset"]["status"] == "не создан" and steps["dataset"]["ready"] is False
     assert steps["training"]["stage"] == "Э3" and steps["onnx"]["stage"] == "Э4"
     assert [item["key"] for item in data["flags"]] == ["only_trained", "only_test", "only_battle"]
     assert data["datasets"] == [{"value": "d-1", "label": "skfu-train"}]
     assert data["profile_rows"][0] == {"label": "Объект испытаний", "value": "Стенд ML"}
+
+
+def _composition_two_files() -> Any:
+    """Состав датасета с двумя файлами (RAW + разметка) — как в учёте пульта."""
+    return composition_api.DatasetComposition(
+        dataset_id="d-1",
+        source=composition_api.SOURCE_LOCAL,
+        name="skfu-train",
+        dataset_type="direct_fill",
+        files=(
+            composition_api.CompositionFile(file_id="f-1", role="RAW", file_name="raw-01.csv"),
+            composition_api.CompositionFile(file_id="f-2", role="markup", file_name="loads-01.csv"),
+        ),
+    )
+
+
+def test_train_view_data_zone_shows_uploads_dataset_and_steps() -> None:
+    """Зона данных Э2.1: паспорта файлов, датасеты, состав, паспорт сборки и шаги."""
+    data = view.train_view(
+        profile={"dataset_id": "d-1", "dataset_label": "skfu-train"},
+        uploads=[
+            {
+                "name": "raw-01.csv",
+                "size": 2_621_440_000,
+                "sha256": "a" * 64,
+                "file_type": "RAW",
+                "file_id": "f-1",
+                "author": "Иванов И.И.",
+            },
+            {"name": "loads-01.csv", "size": 2048, "role": "LOADS", "file_id": "f-2"},
+        ],
+        datasets=[SimpleNamespace(id="d-1", name="skfu-train", type="direct_fill")],
+        manifest={
+            "at": "2026-10-02T10:00:00",
+            "dataset_label": "skfu-train",
+            "file_count": 2,
+            "size_total": 1024,
+            "author": "Иванов И.И.",
+            "note": "проверен вручную",
+            "files": [{"name": "raw-01.csv", "size": 1024, "role": "RAW"}],
+        },
+        composition=_composition_two_files(),
+        steps=[
+            {"step": "files", "status": "загружено 2 файла", "at": "2026-10-02T10:00:00"},
+            {"step": "fill", "status": "наполнение запущено", "task": "t-1"},
+        ],
+    )
+
+    block = data["data"]
+    assert block["upload_count"] == 2 and block["raw_count"] == 1 and block["markup_count"] == 1
+    assert block["uploads"][0]["size_text"] == "2,44 ГБ", "гигабайты — в человекочитаемом виде"
+    assert block["uploads"][0]["sha256_short"] == "a" * 12
+    assert block["uploads"][1]["role_label"] == "разметка (LOADS)"
+    assert block["size_total_text"] == "2,44 ГБ"
+    assert (
+        block["datasets"][0]["name"] == "skfu-train"
+        and block["datasets"][0]["type"] == "direct_fill"
+    )
+    assert block["manifest_rows"][1] == {"label": "Файлов", "value": "2"}
+    assert block["manifest_files"][0]["name"] == "raw-01.csv"
+    assert block["composition"]["files"] == 2
+    assert block["test_prefix"] == "__TEST__" and block["max_upload"] > 2 << 30
+    steps = {step["key"]: step for step in block["steps"]}
+    assert [step["key"] for step in block["steps"]] == ["files", "dataset", "fill", "validated"]
+    assert steps["files"]["status"] == "загружено 2 файла", "журнал шагов важнее вывода по факту"
+    assert steps["dataset"]["status"] == "skfu-train"
+    assert steps["fill"]["status"] == "наполнение запущено"
+    assert steps["validated"]["status"] == "нет отметки оператора"
 
 
 def test_train_view_states_what_is_not_done_yet() -> None:

@@ -39,12 +39,14 @@ from acceptance import runner as runner_api
 from acceptance import session as session_api
 from acceptance.checks import catalog
 from acceptance.checks.registry import CLASS_LABELS, STATUS_ICONS, CheckClass, CheckStatus
+from acceptance.endpoints import TEST_PREFIX
 from acceptance.exchange import curl_command
 from acceptance.queue import MARKER_LAST, MARKER_NEXT, MARKER_RUNNING, QUEUE_ICONS, QUEUE_STATES
 from acceptance.session import TestSession
 from acceptance.tasks_monitor import TaskMonitor, status_color, status_glyph, status_label
 from pult import artifacts as artifacts_api
 from pult import models as models_api
+from pult import uploads as uploads_api
 
 #: Разделитель подписей в «одной строке» (макет печатает ` · `).
 SEPARATOR = " · "
@@ -1802,11 +1804,17 @@ def train_view(
     session_id: str = "",
     configured: bool = True,
     note: str = "",
+    uploads: Iterable[Any] = (),
+    manifest: Mapping[str, Any] | None = None,
+    composition: Any = None,
+    steps: Iterable[Any] = (),
 ) -> dict[str, Any]:
     """Экран «Реальная тренировка»: профиль, отбор моделей, карточка и состояние шагов.
 
-    Шаги Э2–Э4 показываются как запланированные: интерфейс не выглядит сломанным и не
-    обещает того, чего ещё нет. Строки моделей, варианты фильтров и подписи считает
+    Э2 (данные) отдаёт блок `data`: загруженные файлы с паспортами (`size`, `sha256`),
+    датасеты стенда, состав выбранного датасета, паспорт сборки и статусы шагов. Что
+    ещё не реализовано (обучение, ONNX), показано как запланированное — интерфейс не
+    выглядит сломанным и не обещает того, чего нет. Строки, подписи и статусы считает
     сервер — JS только рисует (правило `llm_tasks/31.4` §3).
     """
     values = dict(profile or {})
@@ -1815,18 +1823,39 @@ def train_view(
     dataset_id = str(values.get("dataset_id") or "")
     selected = next((row for row in rows if row["id"] == chosen_id), None)
     chosen_label = str(values.get("model_label") or (selected["name"] if selected else ""))
+    upload_rows = models_api.upload_rows(uploads)
+    dataset_rows = models_api.dataset_rows(datasets)
+    step_states = models_api.latest_steps(steps)
+    composition_row = (
+        composition_api.composition_rows([composition])[0] if composition is not None else {}
+    )
+    # Статусы шагов данных: сначала факт из журнала шагов, иначе — вывод по тому, что
+    # уже видно (загруженные файлы, выбранный датасет, состав, отметка валидации).
+    dataset_status = str(values.get("dataset_label") or dataset_id)
+    filled = str(composition_row.get("files") or "")
+    default_data_status = {
+        "files": (
+            f"{len(upload_rows)} файл(ов) загружено" if upload_rows else "файлы не загружены"
+        ),
+        "dataset": dataset_status or "датасет не создан",
+        "fill": (f"файлов в составе: {filled}" if filled else "наполнение не выполнено"),
+        "validated": str(values.get("dataset_validated_at") or "") or "нет отметки оператора",
+    }
     states = {
         "profile": ("готово" if values.get("object_of_test") else "заполнить"),
         "model": ("выбрана" if chosen_id else "не выбрана"),
-        "dataset": ("выбран" if dataset_id else "этап Э2"),
+        "dataset": (
+            "готово"
+            if dataset_id and values.get("dataset_validated")
+            else ("выбран" if dataset_id else "не создан")
+        ),
         "training": "этап Э3",
         "onnx": "этап Э4",
     }
     notes = {
         "profile": "объект, цель, ответственный и режим нагрузки",
         "model": chosen_label or "выберите модель по свойствам",
-        "dataset": str(values.get("dataset_label") or dataset_id)
-        or "загрузка файлов и наполнение датасета — этап Э2",
+        "dataset": dataset_status or "загрузите файлы и наполните датасет",
         "training": "параметры обучения, задача FSM-1 и метрики «до/после» — этап Э3",
         "onnx": "экспорт ONNX, скачивание и комплект доказательств — этап Э4",
     }
@@ -1886,6 +1915,37 @@ def train_view(
         ],
         "file_count": len(list(files)),
         "note": str(note or ""),
+        "data": {
+            "uploads": upload_rows,
+            "upload_count": len(upload_rows),
+            "raw_count": sum(1 for item in upload_rows if item["role"].upper() == "RAW"),
+            "markup_count": sum(1 for item in upload_rows if item["role"].upper() == "LOADS"),
+            "size_total_text": models_api.human_size(
+                sum(int(item["size"] or 0) for item in upload_rows)
+            ),
+            "datasets": dataset_rows,
+            "dataset_id": dataset_id,
+            "manifest": dict(manifest or {}),
+            "manifest_rows": models_api.manifest_summary(manifest),
+            "manifest_files": models_api.upload_rows(dict(manifest or {}).get("files") or []),
+            "composition": composition_row,
+            "roles": [{"value": key, "label": label} for key, label in models_api.FILE_ROLES],
+            "steps": [
+                {
+                    "key": key,
+                    "title": title,
+                    "status": str((step_states.get(key) or {}).get("status") or "")
+                    or default_data_status.get(key, ""),
+                    "at": str((step_states.get(key) or {}).get("at") or ""),
+                    "note": str((step_states.get(key) or {}).get("note") or ""),
+                    "author": str((step_states.get(key) or {}).get("author") or ""),
+                }
+                for key, title in models_api.FLOW_STEPS
+            ],
+            "max_upload": uploads_api.MAX_UPLOAD,
+            "max_upload_text": models_api.human_size(uploads_api.MAX_UPLOAD),
+            "test_prefix": TEST_PREFIX,
+        },
     }
 
 

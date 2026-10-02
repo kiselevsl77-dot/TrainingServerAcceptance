@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import threading
@@ -43,6 +44,7 @@ from client.http import ApiHttpClient
 from client.schemas import FileMetadataResponse
 from client.settings import TrainingServerSettings
 from pult import jobs as jobs_api
+from pult import uploads as uploads_api
 from pult.server import ApiError, PultApp, Raw, compile_route, serve
 from pult.state import PultState, Runtime
 
@@ -1206,7 +1208,10 @@ def test_run_in_background_returns_job_and_history(pult: PultApp) -> None:
     job = started["job"]
     assert job["check_id"] == check_id
     assert job["label"].startswith(f"{check_id}: ")
-    assert job["status"] in (jobs_api.JOB_QUEUED, jobs_api.JOB_RUNNING)
+    # Задание может успеть завершиться до этой строки: воркер стартует сразу, и под
+    # нагрузкой (полный прогон тестов) он успевает отработать. Проверяем не «ещё не
+    # выполнено», а то, что ответ вернулся **без результатов** — это и есть фон.
+    assert job["status"] in (jobs_api.JOB_QUEUED, jobs_api.JOB_RUNNING, jobs_api.JOB_DONE)
     assert "outcomes" not in started, "фоновый запуск не ждёт результатов"
 
     finished = _wait_job(pult, job["job_id"])
@@ -2159,3 +2164,102 @@ def test_train_profile_needs_session(pult: PultApp) -> None:
 
     assert refused.value.status == 409
     assert "сессия" in refused.value.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Данные К2: файловое тело запроса (Э2.1, `llm_tasks/64` §2)
+# ---------------------------------------------------------------------------
+def _session_id(pult: PultApp) -> str:
+    """Создаёт и запускает сессию: без неё паспорт файла записывать некуда."""
+    created = post(
+        pult,
+        "/api/sessions",
+        info={"title": "Данные К2", "object_of_test": "Тренажёр", "operator_fio": AUTHOR},
+    )
+    post(pult, f"/api/sessions/{created['id']}/start")
+    return str(created["id"])
+
+
+def _upload(app: PultApp, body: bytes, **query: str) -> Any:
+    """Загрузка файла через приложение: тело — поток (как `rfile` сервера), не JSON."""
+    return app.dispatch_stream("/api/data/files", query, io.BytesIO(body), len(body))
+
+
+def test_upload_route_refuses_battle_name_before_streaming(pult: PultApp) -> None:
+    """Боевое имя без режима полной нагрузки отклоняется **до** чтения 2 ГБ (§9 ТЗ)."""
+    _session_id(pult)
+
+    with pytest.raises(ApiError) as refused:
+        _upload(pult, b"chunkID;timestamp\n", file_name="skfu-train-raw-01.csv", file_type="RAW")
+
+    assert refused.value.status == 422
+    assert TEST_PREFIX in refused.value.message
+
+
+def test_upload_route_checks_type_size_and_empty_body(pult: PultApp) -> None:
+    """Тип, лимит и пустое тело проверяются до обращения к стенду и до чтения потока."""
+    _session_id(pult)
+
+    with pytest.raises(ApiError) as wrong_type:
+        _upload(pult, b"x", file_name=f"{TEST_PREFIX}raw.csv", file_type="WAV")
+    assert wrong_type.value.status == 422
+    assert "тип файла" in wrong_type.value.message
+
+    with pytest.raises(ApiError) as empty:
+        _upload(pult, b"", file_name=f"{TEST_PREFIX}raw.csv", file_type="RAW")
+    assert empty.value.status == 400
+    assert "пустое тело" in empty.value.message
+
+    with pytest.raises(ApiError) as oversize:
+        pult.dispatch_stream(
+            "/api/data/files",
+            {"file_name": f"{TEST_PREFIX}big.csv", "file_type": "RAW"},
+            io.BytesIO(b"x"),
+            uploads_api.MAX_UPLOAD + 1,
+        )
+    assert oversize.value.status == 413
+    assert "больше лимита" in oversize.value.message
+
+
+def test_upload_route_needs_session(pult: PultApp) -> None:
+    """Без выбранной сессии загрузка отклоняется: паспорт файла некуда записать."""
+    with pytest.raises(ApiError) as no_session:
+        _upload(pult, b"x", file_name=f"{TEST_PREFIX}raw.csv", file_type="RAW")
+
+    assert no_session.value.status == 409
+    assert "сессия" in no_session.value.message.lower()
+
+
+def test_upload_route_needs_stand(no_stand: PultApp) -> None:
+    """Без адреса стенда загрузка отклоняется понятной ошибкой, а файл не читается."""
+    post(
+        no_stand,
+        "/api/sessions",
+        info={"title": "Данные К2", "object_of_test": "Тренажёр", "operator_fio": AUTHOR},
+    )
+
+    with pytest.raises(ApiError) as no_server:
+        _upload(no_stand, b"x", file_name=f"{TEST_PREFIX}raw.csv", file_type="RAW")
+
+    assert no_server.value.status == 409
+    assert "адрес" in no_server.value.message.lower()
+
+
+def test_stream_dispatch_reports_unknown_file_route(pult: PultApp) -> None:
+    """Неизвестный «файловый» маршрут — 404, а не попытка разобрать тело как JSON."""
+    with pytest.raises(ApiError) as unknown:
+        pult.dispatch_stream("/api/data/unknown", {}, io.BytesIO(b"x"), 1)
+
+    assert unknown.value.status == 404
+    assert "маршрут" in unknown.value.message.lower()
+
+
+def test_datasets_route_reports_unknown_action(pult: PultApp) -> None:
+    """Неизвестное действие с датасетом — понятный список ожидаемых действий."""
+    _session_id(pult)
+
+    with pytest.raises(ApiError) as wrong:
+        post(pult, "/api/datasets", action="наполнить")
+
+    assert wrong.value.status == 422
+    assert "create" in wrong.value.message and "fill" in wrong.value.message

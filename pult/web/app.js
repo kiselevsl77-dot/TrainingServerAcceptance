@@ -1902,6 +1902,194 @@ function renderTrainCard(card) {
   ]);
 }
 
+/** MIME для загрузки: стенд принимает CSV только как `text/csv` (иначе отвечает 400). */
+function uploadContentType(name) {
+  const lower = text(name).toLowerCase();
+  if (lower.endsWith(".csv")) {
+    return "text/csv";
+  }
+  if (lower.endsWith(".json")) {
+    return "application/json";
+  }
+  return "application/octet-stream";
+}
+
+/**
+ * Загрузка файла **сырым телом** с прогрессом (Э2.1, `llm_tasks/64` §2).
+ *
+ * Тело запроса — сам файл, параметры — в query-строке: боевой RAW доходит до 2,18 ГБ,
+ * и только такой способ не тянет его через память браузера. Ответ разбирается тем же
+ * конвертом `{ok, data|error}`, что и у JSON-запросов, поэтому формат ошибок знаком.
+ */
+function uploadFile(file, role, note, onProgress) {
+  return new Promise((resolve, reject) => {
+    const params = new URLSearchParams({
+      file_name: file.name,
+      file_type: role,
+      description: note || "",
+    });
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/data/files?${params.toString()}`);
+    request.setRequestHeader("Content-Type", uploadContentType(file.name));
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+    request.addEventListener("load", () => {
+      let body = {};
+      try {
+        body = JSON.parse(request.responseText);
+      } catch (error) {
+        body = {};
+      }
+      if (body.ok) {
+        resolve(body.data);
+        return;
+      }
+      const failure = body.error || {};
+      reject(new Error(`[${request.status}] ${failure.message || "загрузка не выполнена"}`));
+    });
+    request.addEventListener("error", () => reject(new Error("сеть недоступна: файл не загружен")));
+    request.send(file);
+  });
+}
+
+/** Загрузка выбранных файлов по очереди: стенд принимает пофайлово, не архивом. */
+async function uploadChosenFiles() {
+  const input = document.getElementById("train-upload-file");
+  const role = document.getElementById("train-upload-role").value || "RAW";
+  const note = document.getElementById("train-upload-note").value.trim();
+  const files = Array.from(input.files || []);
+  if (!files.length) {
+    flash("error", "Выберите файл (файлы) для загрузки на стенд");
+    return;
+  }
+  const progress = document.getElementById("train-upload-progress");
+  const status = document.getElementById("train-upload-status");
+  progress.hidden = false;
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const label = `${file.name} (${index + 1}/${files.length})`;
+      status.textContent = `загрузка: ${label}`;
+      const data = await uploadFile(file, role, note, (percent) => {
+        progress.value = percent;
+        status.textContent = `загрузка: ${label} — ${percent}%`;
+      });
+      trainView.data = data;
+      status.textContent = `${label} загружен`;
+    }
+    renderTrain(trainView.data);
+    input.value = "";
+    status.textContent = `загружено файлов: ${files.length}`;
+    flash("ok", `Файлы отправлены на стенд: ${files.length}`);
+  } catch (error) {
+    status.textContent = "";
+    flash("error", error.message);
+  } finally {
+    progress.hidden = true;
+    progress.value = 0;
+  }
+}
+
+/** Действие с датасетом: create/choose/fill/refresh/validate/delete (`POST /api/datasets`). */
+async function actDataset(payload, message) {
+  const data = await act("/api/datasets", payload);
+  if (data) {
+    renderTrain(data.view);
+    flash("ok", message);
+    await refresh();
+  }
+  return data;
+}
+
+/** Отрисовка зоны данных: что залито, датасеты, паспорт сборки и состав (`Э2.1`). */
+function renderTrainData(data) {
+  document.getElementById("train-data-meta").textContent = joinText([
+    `файлов загружено: ${text(data.upload_count)}`,
+    `измерений: ${text(data.raw_count)}`,
+    `разметки: ${text(data.markup_count)}`,
+    data.size_total_text ? `объём: ${text(data.size_total_text)}` : "",
+    data.dataset_id ? `датасет: ${text(data.dataset_id)}` : "датасет не выбран",
+    data.max_upload_text ? `лимит файла: ${text(data.max_upload_text)}` : "",
+  ]);
+  document.getElementById("train-upload-hint").textContent =
+    `Файл уходит на стенд сырым телом, имя — по правилу ${text(data.test_prefix)}… ` +
+    "(боевые имена — только в режиме полной нагрузки). Размер и sha256 считает пульт.";
+
+  const roles = document.getElementById("train-upload-role");
+  const role = roles.value;
+  fillSelect(
+    roles,
+    "",
+    data.roles || [],
+    (item) => item.value,
+    (item) => item.label
+  );
+  roles.value = role || ((data.roles || [])[0] || {}).value || "RAW";
+
+  renderLines("train-data-steps", data.steps || [], (step) =>
+    `${text(step.title)}: ${text(step.status)}` +
+    (step.note ? ` — ${text(step.note)}` : "") +
+    (step.at ? ` (${text(step.at)})` : "")
+  );
+
+  fillTable(document.querySelector("#train-uploads tbody"), data.uploads || [], (row) => [
+    text(row.name),
+    text(row.role_label),
+    text(row.size_text),
+    text(row.sha256_short),
+    text(row.at),
+    text(row.file_id),
+  ]);
+
+  const datasetSelect = document.getElementById("train-datasets");
+  const chosenDataset = datasetSelect.value;
+  fillSelect(
+    datasetSelect,
+    "датасет: не выбран",
+    data.datasets || [],
+    (item) => item.id,
+    (item) => item.name
+  );
+  datasetSelect.value = text(data.dataset_id) || chosenDataset;
+
+  renderLines("train-dataset-manifest", data.manifest_rows || [], (row) =>
+    `${text(row.label)}: ${text(row.value)}`
+  );
+  fillTable(
+    document.querySelector("#train-manifest-files tbody"),
+    data.manifest_files || [],
+    (row) => [
+      text(row.name),
+      text(row.role_label),
+      text(row.size_text),
+      text(row.sha256_short),
+      text(row.file_id),
+    ]
+  );
+
+  const composition = data.composition || {};
+  const compositionMeta = document.getElementById("train-composition-meta");
+  compositionMeta.textContent = Object.keys(composition).length
+    ? joinText([
+        "состав по учёту пульта:",
+        `файлов ${text(composition.files)}`,
+        `RAW ${text(composition.raw)}`,
+        `разметка ${text(composition.markup)}`,
+        text(composition.size),
+        text(composition.source),
+        `задача ${text(composition.task_id)}`,
+      ])
+    : "состав не зафиксирован: наполните датасет или нажмите «Перечитать состав»";
+
+  const chosen = Boolean(text(data.dataset_id));
+  ["train-dataset-fill", "train-dataset-validate", "train-dataset-delete"].forEach((id) => {
+    document.getElementById(id).disabled = !chosen;
+  });
+}
+
 /** Отрисовка вкладки «Реальная тренировка» целиком (сервер — источник правды). */
 function renderTrain(data) {
   trainView.data = data;
@@ -1927,6 +2115,7 @@ function renderTrain(data) {
     `${text(row.label)}: ${text(row.value) || "—"}`
   );
   trainSetInputs(profile);
+  renderTrainData(data.data || {});
 
   const options = data.options || {};
   fillSelect(
@@ -2143,6 +2332,43 @@ function bind() {
   });
   document.getElementById("train-choose-clear").addEventListener("click", () =>
     actTrain({ action: "clear", kind: "model" }, "Выбор модели снят")
+  );
+
+  // Данные (Э2.1 К2): загрузка файлов сырым телом, датасет и паспорт сборки
+  document.getElementById("train-upload").addEventListener("click", uploadChosenFiles);
+  document.getElementById("train-files-refresh").addEventListener("click", () => refreshTrain(true));
+  document.getElementById("train-dataset-refresh").addEventListener("click", () =>
+    actDataset(
+      { action: "refresh", dataset_id: document.getElementById("train-datasets").value },
+      "Состав датасета перечитан"
+    )
+  );
+  document.getElementById("train-dataset-create").addEventListener("click", () =>
+    actDataset(
+      { action: "create", name: document.getElementById("train-dataset-name").value },
+      "Датасет создан и выбран для прогона"
+    )
+  );
+  document.getElementById("train-dataset-choose").addEventListener("click", () => {
+    const value = document.getElementById("train-datasets").value;
+    const rows = ((trainView.data || {}).data || {}).datasets || [];
+    const row = rows.find((item) => item.id === value) || {};
+    actDataset(
+      { action: "choose", dataset_id: value, label: text(row.name) },
+      `Датасет выбран: ${text(row.name) || value}`
+    );
+  });
+  document.getElementById("train-dataset-fill").addEventListener("click", () =>
+    actDataset({ action: "fill" }, "Наполнение датасета запущено (задача `dataset-fill`)")
+  );
+  document.getElementById("train-dataset-validate").addEventListener("click", () =>
+    actDataset({ action: "validate" }, "Отметка «проверен вне пульта» записана в сессию")
+  );
+  document.getElementById("train-dataset-delete").addEventListener("click", () =>
+    actDataset(
+      { action: "delete", dataset_id: document.getElementById("train-datasets").value },
+      "Датасет удалён со стенда"
+    )
   );
 
   // «Результаты»: данные стенда, протокол, отчёт и завершение сессии (`SCR-401`, `SCR-404`)

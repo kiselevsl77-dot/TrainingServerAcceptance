@@ -48,6 +48,7 @@ from acceptance import runner as runner_api
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.checks import catalog
+from acceptance.endpoints import TEST_PREFIX
 from acceptance.exchange import execute_request
 from acceptance.runner import (
     execute_call,
@@ -61,6 +62,7 @@ from client.errors import ClientError
 from pult import artifacts as artifacts_api
 from pult import jobs as jobs_api
 from pult import models as models_api
+from pult import uploads as uploads_api
 from pult import view
 from pult.state import READ_ERRORS, STAND_NOT_CONFIGURED, TASK_LIMIT, PultState
 
@@ -227,6 +229,20 @@ class PultApp:
         if verb != "GET":
             raise ApiError(f"метод {verb} для статики не поддерживается", kind="http", status=405)
         return self.static(path)
+
+    def dispatch_stream(self, path: str, query: Mapping[str, str], stream: Any, length: int) -> Any:
+        """Маршрутизация запросов с **файловым** телом (без JSON-обёртки).
+
+        Отдельно от `dispatch`, потому что тело такого запроса нельзя прочитать в
+        память: обработчик получает поток и длину и решает, что с ними делать
+        (`pult.uploads.save_stream`). Параметры — в query-строке (`llm_tasks/64` §2).
+        """
+        for pattern, name in COMPILED_STREAM:
+            if pattern.match(path) is None:
+                continue
+            handler: Callable[..., Any] = getattr(self, name)
+            return handler(query=dict(query), stream=stream, length=int(length))
+        raise ApiError(f"маршрут загрузки файла {path} не найден", kind="http", status=404)
 
     def static(self, path: str) -> Raw:
         """Файл интерфейса из `pult/web`; выйти за пределы каталога нельзя.
@@ -1533,9 +1549,18 @@ class PultApp:
         runtime = self.state.runtime()
         profile = dict(getattr(session, "ml_profile", None) or {}) if session is not None else {}
         session_id = "" if session is None else str(session.session_id)
+        uploads = (
+            list(getattr(session, "uploaded_files", None) or []) if session is not None else []
+        )
+        steps = list(getattr(session, "flow_steps", None) or []) if session is not None else []
         if runtime is None:
             return view.train_view(
-                profile=profile, configured=False, session_id=session_id, note=STAND_NOT_CONFIGURED
+                profile=profile,
+                configured=False,
+                session_id=session_id,
+                note=STAND_NOT_CONFIGURED,
+                uploads=uploads,
+                steps=steps,
             )
         models, models_error = self.state.models(refresh=_flag(query.get("refresh"), False))
         files, _files_error = self.state.files()
@@ -1561,6 +1586,26 @@ class PultApp:
         )
         wanted = str(query.get("model") or "").strip() or str(profile.get("model_id") or "")
         card_model = next((item for item in models if str(item.id) == wanted), None)
+        # Зона данных (Э2.1): паспорт сборки и состав берём из учёта пульта. Состав читается
+        # в режиме `local`: страница не должна ждать стенд (`refresh` — отдельное действие).
+        dataset_id = str(profile.get("dataset_id") or "")
+        manifest = (
+            session_api.dataset_manifest(session, dataset_id)
+            if session is not None and dataset_id
+            else None
+        )
+        composition = None
+        if session is not None and dataset_id:
+            composition = composition_api.read_composition(
+                session,
+                runtime.apis,
+                dataset_id,
+                mode=composition_api.MODE_LOCAL,
+                name=str(profile.get("dataset_label") or ""),
+                dataset_type="direct_fill",
+                files=files,
+                allow_heuristic=False,
+            )
         notes = [
             part
             for part in (
@@ -1584,6 +1629,10 @@ class PultApp:
             ),
             session_id=session_id,
             note="; ".join(notes),
+            uploads=uploads,
+            manifest=manifest,
+            composition=composition,
+            steps=steps,
         )
 
     def api_train(self, *, query: Mapping[str, str], payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1664,6 +1713,414 @@ class PultApp:
         answer = self._train_view(session, query)
         answer["profile"] = dict(session.ml_profile or {})
         return answer
+
+    # -- данные «Реальной тренировки»: файлы и датасет (Э2.1 К2) -------------
+    def _require_test_name(self, name: str, *, what: str, session: TestSession) -> str:
+        """Проверяет правило имён §9 ТЗ: без режима полной нагрузки — только `__TEST__…`.
+
+        На общем стенде пульт создаёт сущности только с префиксом `__TEST__`
+        (`acceptance.endpoints.TEST_PREFIX`). Боевое имя разрешено лишь когда оператор
+        уже подтвердил режим полной нагрузки — подтверждение с автором и временем
+        лежит в профиле прогона (Э5 добавит двойное подтверждение).
+        """
+        value = str(name or "").strip()
+        if not value:
+            raise ApiError(f"не задано имя: {what} не может быть безымянным", status=422)
+        if value.startswith(TEST_PREFIX):
+            return value
+        if (session.ml_profile or {}).get("full_load"):
+            return value
+        raise ApiError(
+            f"имя {what} должно начинаться с `{TEST_PREFIX}` (§9 ТЗ): {value}. "
+            "На общем стенде боевые имена разрешены только в режиме полной нагрузки "
+            "(подтвердите режим в профиле прогона).",
+            status=422,
+        )
+
+    def api_data_upload(
+        self,
+        *,
+        query: Mapping[str, str],
+        stream: Any = None,
+        length: int = 0,
+    ) -> dict[str, Any]:
+        """`POST /api/data/files` — потоковая загрузка файла данных на стенд (Э2.1).
+
+        Тело запроса — **файл**, а не JSON (`llm_tasks/64` §2): боевой RAW доходит до
+        2,18 ГБ, поэтому пульт пишет поток во временный файл порциями, считая `sha256`,
+        и отправляет его на стенд файловым объектом (`httpx` стримит). Разбор
+        `multipart/form-data` не делается намеренно: оба конца наши, а параметры
+        (`file_name`, `file_type`, `description`) идут в query-строке.
+
+        Паспорт файла (имя, размер, `sha256`, `file_id` стенда) остаётся в сессии —
+        это ответ отчёта на вопрос «что именно ушло в датасет».
+        """
+        session = self.session()
+        runtime = self.runtime()
+        file_name = str(query.get("file_name") or "").strip()
+        file_type = str(query.get("file_type") or "RAW").strip().upper()
+        description = str(query.get("description") or "").strip()
+        roles = {key for key, _label in models_api.FILE_ROLES}
+        if file_type not in roles:
+            raise ApiError(
+                f"неизвестный тип файла: {file_type or '—'}; ожидалось "
+                + " или ".join(sorted(roles)),
+                status=422,
+            )
+        name = self._require_test_name(file_name, what="файла", session=session)
+        try:
+            saved = uploads_api.save_stream(stream, int(length or 0), file_name=name)
+        except uploads_api.UploadError as exc:
+            raise ApiError(exc.message, kind="validation", status=exc.status) from exc
+        try:
+            meta = runtime.apis.files.upload(
+                file_name=saved.name,
+                path=saved.path,
+                file_type=file_type,
+                description=description,
+            )
+        except ClientError as exc:
+            raise self.fail(exc) from exc
+        finally:
+            saved.discard()
+        entry = session_api.add_uploaded_file(
+            session,
+            name=str(meta.file_name),
+            size=int(meta.size),
+            sha256=saved.sha256,
+            file_type=file_type,
+            file_id=str(meta.id),
+            author=self._author(),
+        )
+        session_api.add_flow_step(
+            session,
+            step="files",
+            status=f"загружено: {entry['name']}",
+            note=f"{saved.size} Б, sha256 {saved.sha256[:12]}…",
+            author=self._author(),
+            file_id=str(meta.id),
+            size=saved.size,
+        )
+        self.save(session)
+        self.state.invalidate("files", "datasets", "tasks")
+        answer = self._train_view(session, query)
+        answer["file"] = {
+            "id": str(meta.id),
+            "file_name": str(meta.file_name),
+            "size": int(meta.size),
+            "size_text": models_api.human_size(int(meta.size)),
+            "sha256": saved.sha256,
+            "file_type": file_type,
+        }
+        return answer
+
+    def api_datasets_action(
+        self, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`POST /api/datasets` — действия с датасетом К2: создать → выбрать → наполнить.
+
+        Действия (по одному на кнопку интерфейса):
+
+        * `create` — `POST /api/datasets/` с именем (§9: `__TEST__…` вне полной нагрузки);
+        * `choose` — выбрать существующий датасет стенда (профиль прогона);
+        * `fill` — наполнить выбранными файлами (`POST /api/datasets/fill/{id}`, 202).
+          Факт «что именно отправлено» записывается **до** вызова: стенд не возвращает
+          ни состав, ни `task_id`, поэтому только учёт пульта знает правду;
+        * `refresh` — перечитать состав с учётом стенда (режим `auto`);
+        * `validate` — отметить «датасет проверен вне пульта» и зафиксировать паспорт
+          сборки (решение заказчика №6: валидация внешняя, пульт хранит факт);
+        * `delete` — удалить датасет и снять выбор, если он был выбран.
+        """
+        session = self.session()
+        runtime = self.runtime()
+        action = str(payload.get("action") or "").strip()
+        author = self._author()
+        dataset_id = str(payload.get("dataset_id") or "").strip() or str(
+            (session.ml_profile or {}).get("dataset_id") or ""
+        )
+        files, _files_error = self.state.files()
+        answer: dict[str, Any] = {"action": action, "dataset_id": dataset_id}
+
+        if action == "create":
+            name = self._require_test_name(
+                str(payload.get("name") or "").strip(), what="датасета", session=session
+            )
+            try:
+                created = runtime.apis.datasets.create_dataset(
+                    name=name,
+                    description=str(payload.get("description") or "").strip() or None,
+                    dataset_type="direct_fill",
+                )
+            except ClientError as exc:
+                raise self.fail(exc) from exc
+            dataset_id = str(created.id)
+            session_api.update_ml_profile(
+                session, dataset_id=dataset_id, dataset_label=str(created.name or name)
+            )
+            session_api.add_flow_step(
+                session,
+                step="dataset",
+                status=f"создан: {created.name or name}",
+                note=f"id {dataset_id}, тип {created.type or 'direct_fill'}",
+                author=author,
+            )
+            answer["dataset"] = {
+                "id": dataset_id,
+                "name": str(created.name or name),
+                "type": str(created.type or "direct_fill"),
+            }
+        elif action == "choose":
+            if not dataset_id:
+                raise ApiError("Не указан датасет: нужен `dataset_id`", status=422)
+            label = str(payload.get("label") or "").strip() or str(
+                payload.get("name") or dataset_id
+            )
+            session_api.update_ml_profile(session, dataset_id=dataset_id, dataset_label=label)
+            session_api.add_flow_step(
+                session, step="dataset", status=f"выбран: {label}", author=author
+            )
+        elif action == "fill":
+            if not dataset_id:
+                raise ApiError(
+                    "Нечего наполнять: сначала создайте или выберите датасет", status=422
+                )
+            raw_ids = [str(item) for item in (payload.get("raw_file_ids") or [])]
+            markup_ids = [str(item) for item in (payload.get("markup_file_ids") or [])]
+            if not raw_ids and not markup_ids:
+                raw_ids = self._uploaded_ids(session, payload, file_type="RAW")
+                markup_ids = self._uploaded_ids(session, payload, file_type="LOADS")
+            if not raw_ids:
+                raise ApiError("Не выбраны файлы измерений (RAW): наполнять нечем", status=422)
+            label = str((session.ml_profile or {}).get("dataset_label") or dataset_id)
+            composition_api.record_fill(
+                session,
+                dataset_id=dataset_id,
+                raw_file_ids=raw_ids,
+                markup_file_ids=markup_ids,
+                name=label,
+                dataset_type="direct_fill",
+                operator=author,
+                note="наполнение из пульта (Э2.1)",
+                files=files,
+            )
+            try:
+                runtime.apis.datasets.fill_dataset(
+                    dataset_id, raw_file_ids=raw_ids, markup_file_ids=markup_ids
+                )
+            except ClientError as exc:
+                raise self.fail(exc) from exc
+            task = self._newest_fill_task(dataset_id)
+            session_api.add_dataset_manifest(
+                session,
+                dataset_id=dataset_id,
+                dataset_label=label,
+                files=self._manifest_files(session, raw_ids, markup_ids),
+                note=str(payload.get("note") or "").strip(),
+                author=author,
+            )
+            session_api.add_flow_step(
+                session,
+                step="fill",
+                status="наполнение запущено" if task else "задача наполнения не видна",
+                note=(
+                    f"RAW: {len(raw_ids)}, разметка: {len(markup_ids)}"
+                    + (
+                        f"; задача {task['id']}"
+                        if task
+                        else "; стенд не отдал `task_id` (ответ 202)"
+                    )
+                ),
+                author=author,
+                task_id=str((task or {}).get("id") or ""),
+                raw=len(raw_ids),
+                markup=len(markup_ids),
+            )
+            answer["task"] = dict(task or {})
+            answer["raw_file_ids"] = raw_ids
+            answer["markup_file_ids"] = markup_ids
+        elif action == "refresh":
+            if not dataset_id:
+                raise ApiError("Не выбран датасет: нечего перечитывать", status=422)
+            label = str((session.ml_profile or {}).get("dataset_label") or dataset_id)
+            composition = composition_api.read_composition(
+                session,
+                runtime.apis,
+                dataset_id,
+                mode=composition_api.MODE_AUTO,
+                name=label,
+                dataset_type="direct_fill",
+                files=files,
+            )
+            record = composition_api.record_composition(session, composition)
+            session_api.add_flow_step(
+                session,
+                step="fill",
+                status=f"состав: {composition.source_label}",
+                note=f"файлов {composition.files_count} ({composition.note or 'без пояснений'})",
+                author=author,
+                source=composition.source,
+            )
+            answer["composition"] = record
+        elif action == "validate":
+            if not dataset_id:
+                raise ApiError("Не выбран датасет: отмечать нечего", status=422)
+            manifest = session_api.dataset_manifest(session, dataset_id) or {
+                "files": [],
+                "file_count": 0,
+            }
+            session_api.update_ml_profile(session, dataset_validated=True)
+            session_api.add_flow_step(
+                session,
+                step="validated",
+                status="проверен вне пульта",
+                note=f"отметка оператора; файлов в паспорте: {manifest.get('file_count') or 0}",
+                author=author,
+            )
+            answer["manifest"] = dict(manifest)
+        elif action == "delete":
+            if not dataset_id:
+                raise ApiError("Не указан датасет: нужен `dataset_id`", status=422)
+            try:
+                runtime.apis.datasets.delete_dataset(dataset_id)
+            except ClientError as exc:
+                raise self.fail(exc) from exc
+            if str((session.ml_profile or {}).get("dataset_id") or "") == dataset_id:
+                session_api.update_ml_profile(
+                    session, dataset_id="", dataset_label="", dataset_validated=""
+                )
+            session_api.add_flow_step(
+                session, step="dataset", status="удалён", note=f"id {dataset_id}", author=author
+            )
+            answer["deleted"] = dataset_id
+        else:
+            raise ApiError(
+                f"неизвестное действие с датасетом: {action or '—'}; ожидалось "
+                "`create`, `choose`, `fill`, `refresh`, `validate` или `delete`",
+                status=422,
+            )
+
+        self.save(session)
+        self.state.invalidate("datasets", "tasks")
+        answer["view"] = self._train_view(session, query)
+        return answer
+
+    def api_dataset(
+        self, dataset_id: str, *, query: Mapping[str, str], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """`GET /api/datasets/{dataset_id}` — карточка данных: метаданные, паспорт, состав.
+
+        Состав по умолчанию читается из учёта пульта (`local`) — страница не ждёт стенд;
+        `?refresh=1` спрашивает стенд (режим `auto`): это отдельное действие оператора.
+        """
+        session = self.session()
+        runtime = self.state.runtime()
+        files, files_error = self.state.files()
+        manifest = session_api.dataset_manifest(session, dataset_id)
+        meta = next(
+            (
+                row
+                for row in models_api.dataset_rows(self.state.datasets()[0])
+                if row["id"] == dataset_id
+            ),
+            {},
+        )
+        if not meta and runtime is not None:
+            try:
+                found = runtime.apis.datasets.get_dataset(dataset_id)
+            except READ_ERRORS as exc:
+                meta = {
+                    "id": dataset_id,
+                    "name": "",
+                    "error": str(exc).strip() or exc.__class__.__name__,
+                }
+            else:
+                meta = models_api.dataset_rows([found])[0]
+        composition = None
+        if runtime is not None:
+            composition = composition_api.read_composition(
+                session,
+                runtime.apis,
+                dataset_id,
+                mode=(
+                    composition_api.MODE_AUTO
+                    if _flag(query.get("refresh"), False)
+                    else composition_api.MODE_LOCAL
+                ),
+                name=str(meta.get("name") or ""),
+                dataset_type=str(meta.get("type") or "direct_fill"),
+                files=files,
+                allow_heuristic=False,
+            )
+        return {
+            "dataset_id": str(dataset_id),
+            "meta": meta,
+            "manifest": dict(manifest or {}),
+            "manifest_rows": models_api.manifest_summary(manifest),
+            "manifest_files": models_api.upload_rows(dict(manifest or {}).get("files") or []),
+            "composition": (
+                composition_api.composition_rows([composition])[0] if composition else {}
+            ),
+            "note": f"реестр файлов не прочитан: {files_error}" if files_error else "",
+        }
+
+    def _uploaded_ids(
+        self, session: TestSession, payload: Mapping[str, Any], *, file_type: str
+    ) -> list[str]:
+        """Идентификаторы выбранных файлов сессии по роли (`RAW`/`LOADS`).
+
+        `selected` в запросе — имена файлов (оператор видит именно их), пустой список
+        означает «все загруженные файлы этой роли»: обычно так и наполняют датасет.
+        """
+        wanted = {str(item) for item in (payload.get("selected") or [])}
+        ids: list[str] = []
+        for item in session.uploaded_files:
+            role = str(item.get("role") or item.get("file_type") or "").upper()
+            if role != file_type:
+                continue
+            if wanted and str(item.get("name") or "") not in wanted:
+                continue
+            file_id = str(item.get("file_id") or "")
+            if file_id:
+                ids.append(file_id)
+        return ids
+
+    def _newest_fill_task(self, dataset_id: str) -> dict[str, Any] | None:
+        """Свежая задача `dataset-fill` по датасету (`202` не возвращает `task_id`).
+
+        Стенд не связывает ответ `fill` с задачей, поэтому задача ищется в реестре
+        `$Задач`; если воркер её не разбирает (дефект стенда), здесь будет `None`, и
+        экран честно скажет «задача наполнения не видна».
+        """
+        tasks, _count, error = self.state.tasks(task_type="dataset-fill", refresh=True)
+        if error:
+            return None
+        found = [item for item in tasks if composition_api.task_matches_dataset(item, dataset_id)]
+        if not found:
+            return None
+        newest = max(found, key=lambda item: str(getattr(item, "created_at", "") or ""))
+        return {
+            "id": str(getattr(newest, "id", "") or ""),
+            "type": str(getattr(newest, "task_type", "") or ""),
+            "status": str(getattr(newest, "status", "") or ""),
+            "created_at": str(getattr(newest, "created_at", "") or ""),
+        }
+
+    def _manifest_files(
+        self, session: TestSession, raw_ids: Sequence[str], markup_ids: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        """Строки паспорта сборки: паспорта файлов сессии, разложенные по ролям.
+
+        Роль берётся из отправленного списка, а не из паспорта файла: она отвечает на
+        вопрос «чем этот файл был в **этом** датасете».
+        """
+        roles = {**dict.fromkeys(raw_ids, "RAW"), **dict.fromkeys(markup_ids, "LOADS")}
+        rows: list[dict[str, Any]] = []
+        for item in session.uploaded_files:
+            file_id = str(item.get("file_id") or "")
+            if file_id not in roles:
+                continue
+            rows.append({**dict(item), "role": roles[file_id]})
+        return rows
 
     # -- действия по пункту, лента обмена ------------------------------------
     def api_check_action(
@@ -2203,12 +2660,22 @@ class PultHandler(BaseHTTPRequestHandler):
         self._serve("POST")
 
     def _serve(self, method: str) -> None:
-        """Разбирает запрос, вызывает приложение и отправляет ответ."""
+        """Разбирает запрос, вызывает приложение и отправляет ответ.
+
+        Запрос с **файловым** телом (`STREAM_ROUTES`) уходит в `dispatch_stream`: тело
+        такого запроса нельзя читать в память — боевой RAW доходит до 2,18 ГБ
+        (`llm_tasks/64` §2), поэтому обработчик получает поток и длину.
+        """
         parts = urlsplit(self.path)
         try:
-            payload = self._body() if method == "POST" else {}
             query = {key: values[-1] for key, values in parse_qs(parts.query).items()}
-            result = self.server.app.dispatch(method, parts.path, query, payload)
+            if (method, parts.path) in STREAM_PATHS:
+                result = self.server.app.dispatch_stream(
+                    parts.path, query, self.rfile, self._stream_length()
+                )
+            else:
+                payload = self._body() if method == "POST" else {}
+                result = self.server.app.dispatch(method, parts.path, query, payload)
         except ApiError as exc:
             self._error(exc)
             return
@@ -2217,6 +2684,13 @@ class PultHandler(BaseHTTPRequestHandler):
             self._error(ApiError(str(exc) or exc.__class__.__name__, kind="server", status=500))
             return
         self._ok(result)
+
+    def _stream_length(self) -> int:
+        """Длина файлового тела запроса; пустое тело — понятная ошибка, а не «файл 0 Б»."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            raise ApiError("тело запроса пустое: файл не передан", kind="http", status=400)
+        return length
 
     def _body(self) -> dict[str, Any]:
         """Тело POST: JSON-объект (пустое тело — пустой словарь)."""
@@ -2334,6 +2808,9 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/models/{model_id}", "api_model"),
     ("GET", "/api/train", "api_train"),
     ("POST", "/api/train", "api_train_action"),
+    ("POST", "/api/data/files", "api_data_upload"),
+    ("GET", "/api/datasets/{dataset_id}", "api_dataset"),
+    ("POST", "/api/datasets", "api_datasets_action"),
     ("GET", "/api/report/readiness", "api_report_readiness"),
     ("POST", "/api/report/build", "api_report_build"),
 )
@@ -2355,6 +2832,21 @@ def compile_route(pattern: str) -> re.Pattern[str]:
 #: Скомпилированные маршруты: (метод, шаблон, имя обработчика).
 COMPILED: tuple[tuple[str, re.Pattern[str], str], ...] = tuple(
     (method, compile_route(pattern), name) for method, pattern, name in ROUTES
+)
+
+#: Маршруты, где тело запроса — **файл**, а не JSON (`llm_tasks/64` §2): параметры идут
+#: в query-строке, тело пишется во временный файл порциями. Разбор `multipart/form-data`
+#: не делается намеренно: оба конца (страница и сервер) наши.
+STREAM_ROUTES: tuple[tuple[str, str], ...] = (("/api/data/files", "api_data_upload"),)
+
+#: Скомпилированные «файловые» маршруты: (шаблон, имя обработчика).
+COMPILED_STREAM: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (compile_route(pattern), name) for pattern, name in STREAM_ROUTES
+)
+
+#: Пары «метод + путь» для файловых запросов: их тело пишется на диск, а не разбирается.
+STREAM_PATHS: frozenset[tuple[str, str]] = frozenset(
+    ("POST", pattern) for pattern, _name in STREAM_ROUTES
 )
 
 

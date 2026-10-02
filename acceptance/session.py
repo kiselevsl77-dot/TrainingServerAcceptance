@@ -18,6 +18,7 @@ import json
 import platform
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +28,7 @@ from uuid import uuid4
 from acceptance.config import DEFAULT_POLL_INTERVAL
 from acceptance.paths import ROOT, SESSION_DIR, ensure_dirs
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 TOOL_VERSION = "0.1.0"
 
 #: История версий схемы файла сессии:
@@ -55,7 +56,12 @@ TOOL_VERSION = "0.1.0"
 #:   v9 — добавлен `ml_profile` (профиль «Реальной тренировки», контекст К2): объект и
 #:        цель прогона, ответственный, режим полной нагрузки с подтверждением, выбранные
 #:        датасет и модель, отметка «датасет валидирован вне пульта» (`llm_tasks/59` §2).
-#: Файлы v1–v8 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
+#:   v10 — добавлены `dataset_manifests` (паспорта датасетов К2: какие файлы, их размеры
+#:        и `sha256`, кто и когда собрал), `uploaded_files` (паспорта загруженных файлов:
+#:        имя, размер, `sha256`, тип, `file_id`) и `flow_steps` (журнал шагов «Реальной
+#:        тренировки»: загрузка → датасет → наполнение → проверка → обучение → ONNX) —
+#:        доказательство хода прогона для отчёта (`llm_tasks/64`).
+#: Файлы v1–v9 читаются без правок: отсутствующие поля заполняются значениями по умолчанию.
 
 #: Происхождение наблюдаемой задачи: запущена пультом или вне него (BR-R5, TC-TASK-08).
 ORIGIN_PULT = "пульт"
@@ -156,6 +162,18 @@ class TestSession:
     #: ответственный, режим полной нагрузки с подтверждением, выбранные датасет и модель,
     #: отметка «датасет валидирован вне пульта» (`llm_tasks/59` §2).
     ml_profile: dict[str, Any] = field(default_factory=dict)
+    #: Паспорта датасетов К2 (схема v10): файлы с размерами и `sha256`, кто и когда собрал.
+    #: Пульт не «валидирует» данные (это делает человек вне стенда) — он фиксирует факт:
+    #: **какой** датасет использован и из чего он собран (`llm_tasks/64` §0).
+    dataset_manifests: list[dict[str, Any]] = field(default_factory=list)
+    #: Журнал шагов «Реальной тренировки» (схема v10): загрузка файлов, создание и
+    #: наполнение датасета, подтверждение валидации, обучение, проверка, экспорт ONNX.
+    #: Каждая запись — время, шаг, статус и пояснение: ход прогона видно в отчёте.
+    flow_steps: list[dict[str, Any]] = field(default_factory=list)
+    #: Загруженные в этой сессии файлы стенда (схема v10): имя, размер, `sha256`, тип
+    #: и `file_id`. Паспорт файла нужен отчёту («что именно ушло в датасет») и экрану
+    #: наполнения датасета — какие файлы доступны для `fill` (`llm_tasks/64`).
+    uploaded_files: list[dict[str, Any]] = field(default_factory=list)
     history: list[dict[str, Any]] = field(default_factory=list)
 
     # -- свойства ------------------------------------------------------------
@@ -228,6 +246,9 @@ class TestSession:
             "skip_done": self.skip_done,
             "check_history": self.check_history,
             "ml_profile": self.ml_profile,
+            "dataset_manifests": self.dataset_manifests,
+            "flow_steps": self.flow_steps,
+            "uploaded_files": self.uploaded_files,
             "history": self.history,
         }
 
@@ -265,6 +286,9 @@ class TestSession:
                 for key, value in (data.get("check_history") or {}).items()
             },
             ml_profile=dict(data.get("ml_profile") or {}),
+            dataset_manifests=[dict(item) for item in (data.get("dataset_manifests") or [])],
+            flow_steps=[dict(item) for item in (data.get("flow_steps") or [])],
+            uploaded_files=[dict(item) for item in (data.get("uploaded_files") or [])],
             history=[dict(item) for item in (data.get("history") or [])],
         )
 
@@ -396,6 +420,147 @@ def update_ml_profile(session: TestSession, **values: Any) -> dict[str, Any]:
     if changed:
         session.add_history("ml_profile_updated", f"Профиль прогона: {', '.join(changed)}")
     return profile
+
+
+def add_uploaded_file(
+    session: TestSession,
+    *,
+    name: str,
+    size: int,
+    sha256: str = "",
+    file_type: str = "",
+    file_id: str = "",
+    role: str = "",
+    author: str = "",
+) -> dict[str, Any]:
+    """Фиксирует загруженный файл: имя, размер, `sha256`, тип и `file_id` стенда.
+
+    Паспорт файла отвечает отчёту на вопрос «что именно ушло в датасет» — без повторного
+    скачивания и пересчёта гигабайтов. Повторная загрузка **того же имени** заменяет
+    прежнюю запись: интересна последняя версия файла, а не история попыток. `role`
+    (`RAW`/`LOADS`) определяет, в какой список попадёт файл при наполнении датасета.
+    """
+    entry: dict[str, Any] = {
+        "at": now_iso(),
+        "name": str(name),
+        "size": int(size or 0),
+        "sha256": str(sha256 or ""),
+        "file_type": str(file_type or ""),
+        "file_id": str(file_id or ""),
+        "role": str(role or file_type or ""),
+        "author": str(author or ""),
+    }
+    session.uploaded_files = [
+        item for item in session.uploaded_files if str(item.get("name") or "") != entry["name"]
+    ]
+    session.uploaded_files.append(entry)
+    session.add_history(
+        "file_uploaded",
+        f"Файл {entry['name']} загружен на стенд ({entry['size']} Б)",
+        name=entry["name"],
+        size=entry["size"],
+        file_id=entry["file_id"],
+        sha256=entry["sha256"],
+    )
+    return entry
+
+
+def add_dataset_manifest(
+    session: TestSession,
+    *,
+    dataset_id: str,
+    dataset_label: str = "",
+    files: Sequence[Mapping[str, Any]] = (),
+    note: str = "",
+    author: str = "",
+) -> dict[str, Any]:
+    """Фиксирует паспорт датасета: какие файлы в него загружены и с какими хэшами.
+
+    Валидация данных — ответственность человека **вне** стенда (решение заказчика №6,
+    первоисточник — 1.2: «средствами комплекса достоверность разметки не проверяется»),
+    поэтому пульт хранит не вердикт, а факт: какой датасет использован и из чего собран.
+    Повторный паспорт по тому же датасету **заменяет** прежний: интересна последняя
+    сборка, а не история загрузок (иначе отчёт распухает).
+
+    Args:
+        session: сессия испытаний (паспорта живут в ней — `dataset_manifests`).
+        dataset_id: идентификатор датасета стенда.
+        dataset_label: человекочитаемое имя (как его видит оператор).
+        files: строки состава (обычно `name`, `size`, `sha256`, `file_id`, `file_type`).
+        note: пояснение оператора к сборке.
+        author: кто собрал (ФИО оператора).
+
+    Returns:
+        Запись паспорта (та, что попала в сессию).
+    """
+    rows: list[dict[str, Any]] = [dict(item) for item in files]
+    entry: dict[str, Any] = {
+        "at": now_iso(),
+        "dataset_id": str(dataset_id),
+        "dataset_label": str(dataset_label or dataset_id),
+        "files": rows,
+        "file_count": len(rows),
+        "size_total": sum(int(item.get("size") or 0) for item in rows),
+        "author": str(author or ""),
+        "note": str(note or ""),
+    }
+    manifests = [
+        item
+        for item in session.dataset_manifests
+        if str(item.get("dataset_id") or "") != entry["dataset_id"]
+    ]
+    manifests.append(entry)
+    session.dataset_manifests = manifests
+    session.add_history(
+        "dataset_manifest",
+        f"Паспорт датасета {entry['dataset_label']}: файлов {entry['file_count']}",
+        dataset_id=entry["dataset_id"],
+        file_count=entry["file_count"],
+        size_total=entry["size_total"],
+    )
+    return entry
+
+
+def dataset_manifest(session: TestSession, dataset_id: str) -> dict[str, Any] | None:
+    """Паспорт указанного датасета или None (для экрана «Реальной тренировки»)."""
+    wanted = str(dataset_id or "")
+    for item in session.dataset_manifests:
+        if str(item.get("dataset_id") or "") == wanted:
+            return dict(item)
+    return None
+
+
+def add_flow_step(
+    session: TestSession,
+    *,
+    step: str,
+    status: str,
+    note: str = "",
+    author: str = "",
+    **payload: Any,
+) -> dict[str, Any]:
+    """Записывает шаг «Реальной тренировки» в журнал сессии (схема v10).
+
+    Журнал шагов — доказательство хода прогона: он переживает перезапуск пульта и
+    попадает в отчёт, поэтому у каждой записи есть время, автор и пояснение. Статусы
+    и подписи шагов задаёт вызывающая сторона (интерфейс), модуль их не придумывает.
+    """
+    record: dict[str, Any] = {
+        "at": now_iso(),
+        "step": str(step),
+        "status": str(status),
+        "note": str(note or ""),
+        "author": str(author or ""),
+        "payload": dict(payload),
+    }
+    session.flow_steps.append(record)
+    session.add_history(
+        "flow_step",
+        f"Шаг «{record['step']}»: {record['status']}",
+        step=record["step"],
+        status=record["status"],
+    )
+    return record
 
 
 def close_session(session: TestSession, *, conclusion: str | None = None) -> TestSession:

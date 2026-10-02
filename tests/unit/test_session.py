@@ -311,24 +311,102 @@ def test_schema_v1_file_is_read_with_defaults():
     assert restored.markup_stats == {}
 
 
-def test_current_schema_version_is_nine():
-    """Схема сессии — v9: добавлен профиль «Реальной тренировки» (`ml_profile`).
+def test_current_schema_version_is_ten():
+    """Схема сессии — v10: добавлены паспорта датасетов и журнал шагов К2.
 
-    Профиль (объект и цель прогона, ответственный, режим полной нагрузки с подтверждением,
-    выбранные датасет и модель, отметка «датасет валидирован вне пульта») живёт в сессии,
-    а не в браузере: он переживает перезапуск пульта и попадает в отчёт (`llm_tasks/59`).
-    Правила v8 остаются в силе: очередь прогона не хранится, есть ревизия и режим.
+    Паспорта (`dataset_manifests`) фиксируют, **какой** датасет собран и из каких файлов
+    (размер, `sha256`), а `flow_steps` — ход прогона: загрузка → датасет → наполнение →
+    подтверждение валидации → обучение → проверка → ONNX. Пульт не «валидирует» данные
+    (это делает человек вне стенда), он хранит факт использования (`llm_tasks/64`).
+    Правила v8–v9 остаются в силе: очередь не хранится, профиль прогона — в сессии.
     """
-    assert SCHEMA_VERSION == 9
+    assert SCHEMA_VERSION == 10
     payload = _session(Path(".")).to_dict()
 
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["programme"] == {}
     assert payload["run_revision"] == 0
     assert payload["skip_done"] is True
     assert payload["check_history"] == {}
     assert payload["ml_profile"] == {}
+    assert payload["dataset_manifests"] == []
+    assert payload["flow_steps"] == []
+    assert payload["uploaded_files"] == []
     assert "queue" not in payload, "очередь вычисляется и в сессии не хранится (v8)"
+
+
+def test_uploaded_file_keeps_passport_and_replaces_same_name():
+    """Паспорт загруженного файла: размер и `sha256`; повторная загрузка заменяет запись."""
+    session = _session(Path("."))
+
+    session_api.add_uploaded_file(
+        session,
+        name="raw-01.csv",
+        size=1024,
+        sha256="c" * 64,
+        file_type="RAW",
+        file_id="f-1",
+        author="Иванов И.И.",
+    )
+    session_api.add_uploaded_file(
+        session, name="loads-01.csv", size=64, file_type="LOADS", file_id="f-2"
+    )
+    session_api.add_uploaded_file(
+        session, name="raw-01.csv", size=2048, file_type="RAW", file_id="f-3"
+    )
+
+    assert [item["name"] for item in session.uploaded_files] == ["loads-01.csv", "raw-01.csv"]
+    assert session.uploaded_files[-1]["size"] == 2048
+    assert session.uploaded_files[-1]["file_id"] == "f-3"
+    assert session.uploaded_files[0]["role"] == "LOADS"
+    assert [item["event"] for item in session.history].count("file_uploaded") == 3
+
+
+def test_dataset_manifest_replaces_previous_assembly():
+    """Паспорт датасета фиксирует состав сборки; повторная сборка заменяет прежнюю."""
+    session = _session(Path("."))
+
+    session_api.add_dataset_manifest(
+        session,
+        dataset_id="d-1",
+        dataset_label="skfu-train",
+        files=[
+            {"name": "raw-01.csv", "size": 100, "sha256": "a" * 64, "file_id": "f-1"},
+            {"name": "loads-01.csv", "size": 20, "sha256": "b" * 64, "file_id": "f-2"},
+        ],
+        author="Иванов И.И.",
+    )
+    assert session.dataset_manifests[0]["file_count"] == 2
+    assert session.dataset_manifests[0]["size_total"] == 120
+    assert session.dataset_manifests[0]["author"] == "Иванов И.И."
+    assert session.dataset_manifests[0]["at"], "у паспорта есть время сборки"
+
+    session_api.add_dataset_manifest(
+        session, dataset_id="d-1", dataset_label="skfu-train", files=[{"name": "raw-02.csv"}]
+    )
+
+    assert len(session.dataset_manifests) == 1, "интересна последняя сборка, а не история"
+    assert session.dataset_manifests[0]["files"][0]["name"] == "raw-02.csv"
+    assert session_api.dataset_manifest(session, "d-1")["file_count"] == 1
+    assert session_api.dataset_manifest(session, "нет-такого") is None
+    assert [item["event"] for item in session.history].count("dataset_manifest") == 2
+
+
+def test_flow_steps_keep_order_and_author():
+    """Журнал шагов К2 переживает сериализацию: ход прогона восстанавливается из файла."""
+    session = _session(Path("."))
+    session_api.add_flow_step(
+        session, step="files", status="загружено", note="2 файла", author="Иванов И.И."
+    )
+    session_api.add_flow_step(session, step="dataset", status="наполняется", task="t-1")
+
+    restored = SessionModel.from_dict(session.to_dict())
+    steps = [item["step"] for item in restored.flow_steps]
+
+    assert steps == ["files", "dataset"]
+    assert restored.flow_steps[0]["author"] == "Иванов И.И."
+    assert restored.flow_steps[1]["payload"] == {"task": "t-1"}
+    assert [item["event"] for item in restored.history].count("flow_step") == 2
 
 
 def test_ml_profile_updates_and_clears_choices():
