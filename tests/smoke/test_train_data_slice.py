@@ -38,6 +38,7 @@ from acceptance.api import Apis
 from acceptance.config import PultConfig
 from acceptance.http_log import Journal, LoggingTransport
 from acceptance.logging_setup import setup_logging
+from acceptance.ml_samples import RAW_COLUMNS, SAMPLE_SIGNAL_FIELDS, raw_row
 from client.http import ApiHttpClient
 from client.settings import TrainingServerSettings
 from pult.server import PultApp, serve
@@ -46,8 +47,13 @@ from pult.state import PultState, Runtime
 BASE_URL = "http://test.local"
 AUTHOR = "Петров П.П."
 WEB_DIR = Path(__file__).resolve().parents[2] / "pult" / "web"
-RAW_BODY = b"chunkID;timestamp;U_A_signal\n1;2026-10-02T10:00:00;AAAA\n"
-MARKUP_BODY = b"chunkID;label\n1;miner\n"
+
+#: Тела загрузки — по каноническим заголовкам стенда: пульт проверяет формат до отправки
+#: файла (`pult/datafile_format.py`), поэтому «минимальный» CSV в срезе больше не проходит.
+RAW_BODY = (
+    ";".join(RAW_COLUMNS) + "\n" + raw_row(dict.fromkeys(SAMPLE_SIGNAL_FIELDS, "AAAA")) + "\n"
+).encode("utf-8")
+MARKUP_BODY = b"markupId;chunkID;LoadID;Ph_n;Category\n1;1;Antminer_S19;A;miner\n"
 
 #: Части multipart-запроса от `httpx`: поле, имя файла (если есть) и значение.
 _PART = re.compile(

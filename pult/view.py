@@ -1818,6 +1818,10 @@ def train_view(
     сервер — JS только рисует (правило `llm_tasks/31.4` §3).
     """
     values = dict(profile or {})
+    # Реестр файлов материализуется один раз: он нужен и счётчику, и выбору файлов стенда
+    # для наполнения датасета (Э2.1, правки по приёмке К2).
+    file_list = list(files)
+    registry = models_api.registry_rows(file_list)
     rows = model_rows(models)
     chosen_id = str(values.get("model_id") or "")
     dataset_id = str(values.get("dataset_id") or "")
@@ -1913,9 +1917,10 @@ def train_view(
             }
             for item in datasets
         ],
-        "file_count": len(list(files)),
+        "file_count": len(file_list),
         "note": str(note or ""),
         "data": {
+            "registry": registry,
             "uploads": upload_rows,
             "upload_count": len(upload_rows),
             "raw_count": sum(1 for item in upload_rows if item["role"].upper() == "RAW"),

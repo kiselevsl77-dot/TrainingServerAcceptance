@@ -517,6 +517,7 @@
             <span class="hint" id="train-upload-status"></span>
           </div>
           <p class="muted" id="train-upload-hint"></p>
+          <div class="outcomes" id="train-upload-results"></div>
 
           <div class="zone__sub">
             <h4>Загружено в этой сессии</h4>
@@ -534,6 +535,22 @@
               <tbody></tbody>
             </table>
           </div>
+
+          <details class="zone__sub" id="train-registry-zone">
+            <summary id="train-registry-count">Файлы стенда для датасета</summary>
+            <p class="muted">Выберите файлы, уже лежащие на стенде: они уйдут в наполнение датасета
+              вместе с загруженными в этой сессии (реестр грузить заново не нужно).</p>
+            <div class="row">
+              <div class="zone__sub">
+                <h4>измерения (RAW)</h4>
+                <select id="train-registry-raw" multiple size="6"></select>
+              </div>
+              <div class="zone__sub">
+                <h4>разметка (LOADS)</h4>
+                <select id="train-registry-markup" multiple size="6"></select>
+              </div>
+            </div>
+          </details>
 
           <div class="row">
             <select id="train-datasets" title="датасеты стенда"></select>

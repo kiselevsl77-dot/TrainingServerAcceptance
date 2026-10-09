@@ -25,16 +25,26 @@ import tempfile
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import Protocol
 
 __all__ = [
     "CHUNK",
     "MAX_UPLOAD",
+    "ReadableStream",
     "SavedUpload",
     "UploadError",
     "safe_name",
     "save_stream",
 ]
+
+
+class ReadableStream(Protocol):
+    """Поток только для чтения: подходит и `rfile` сервера, и обёртка заголовка файла."""
+
+    def read(self, size: int = -1) -> bytes:
+        """Отдаёт порцию тела не крупнее `size` байт."""
+        ...
+
 
 #: Лимит размера загружаемого файла (по умолчанию 3 ГиБ): самый большой RAW в реестре
 #: стенда — 2,18 ГБ. Лимит защищает пульт от «случайного» ISO, а не от боевого файла.
@@ -93,7 +103,7 @@ def safe_name(value: str) -> str:
 
 
 def save_stream(
-    stream: BinaryIO,
+    stream: ReadableStream,
     length: int,
     *,
     file_name: str,

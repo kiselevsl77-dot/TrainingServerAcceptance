@@ -1955,7 +1955,11 @@ function uploadFile(file, role, note, onProgress) {
   });
 }
 
-/** Загрузка выбранных файлов по очереди: стенд принимает пофайлово, не архивом. */
+/** Загрузка выбранных файлов по очереди: стенд принимает пофайлово, не архивом.
+ *
+ * Ошибка одного файла не прерывает остальные: каждый результат попадает в таблицу
+ * под формой (роль по факту, отказ с причиной), а не «пачкой» прячется в одном flash.
+ */
 async function uploadChosenFiles() {
   const input = document.getElementById("train-upload-file");
   const role = document.getElementById("train-upload-role").value || "RAW";
@@ -1968,29 +1972,76 @@ async function uploadChosenFiles() {
   const progress = document.getElementById("train-upload-progress");
   const status = document.getElementById("train-upload-status");
   progress.hidden = false;
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      const label = `${file.name} (${index + 1}/${files.length})`;
-      status.textContent = `загрузка: ${label}`;
+  const results = [];
+  let last = null;
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const label = `${file.name} (${index + 1}/${files.length})`;
+    status.textContent = `загрузка: ${label}`;
+    try {
       const data = await uploadFile(file, role, note, (percent) => {
         progress.value = percent;
         status.textContent = `загрузка: ${label} — ${percent}%`;
       });
-      trainView.data = data;
-      status.textContent = `${label} загружен`;
+      last = data;
+      const uploaded = (data && data.file) || {};
+      results.push({ name: file.name, ok: true, role: uploaded.role_label || role, note: uploaded.size_text || "" });
+    } catch (error) {
+      results.push({ name: file.name, ok: false, role: role, note: error.message });
     }
-    renderTrain(trainView.data);
-    input.value = "";
-    status.textContent = `загружено файлов: ${files.length}`;
-    flash("ok", `Файлы отправлены на стенд: ${files.length}`);
-  } catch (error) {
-    status.textContent = "";
-    flash("error", error.message);
-  } finally {
-    progress.hidden = true;
     progress.value = 0;
   }
+  progress.hidden = true;
+  if (last) {
+    trainView.data = last;
+    renderTrain(last);
+    input.value = "";
+  }
+  renderUploadResults(results);
+  const okCount = results.filter((item) => item.ok).length;
+  status.textContent = `загружено: ${okCount} из ${results.length}`;
+  if (okCount === results.length) {
+    flash("ok", `Файлы отправлены на стенд: ${okCount}`);
+  } else {
+    flash("error", `Загружено ${okCount} из ${results.length}: подробности под формой загрузки`);
+  }
+}
+
+/** Итоги загрузки по файлам: роль (по факту), размер или причина отказа (Э2.1). */
+function renderUploadResults(results) {
+  const box = document.getElementById("train-upload-results");
+  box.textContent = "";
+  (results || []).forEach((item) => {
+    const line = document.createElement("div");
+    line.className = `outcome outcome--${item.ok ? "ok" : "bad"}`;
+    line.textContent = item.ok
+      ? `✔ ${text(item.name)} → ${text(item.role)}${item.note ? " · " + text(item.note) : ""}`
+      : `✖ ${text(item.name)} → ${text(item.note)}`;
+    box.appendChild(line);
+  });
+}
+
+/** Отмеченные значения множественного выбора: `id` реестра (пустой «все» отбрасывается). */
+function selectedOptions(element) {
+  return Array.from((element && element.selectedOptions) || [])
+    .map((option) => option.value)
+    .filter(Boolean);
+}
+
+/** Файлы реестра стенда для выбора в датасет: `id` и «имя · размер» (Э2.1). */
+function fillRegistry(elementId, rows, fileType) {
+  const element = document.getElementById(elementId);
+  const chosen = new Set(selectedOptions(element));
+  element.textContent = "";
+  (rows || [])
+    .filter((row) => (fileType === "RAW" ? row.file_type === "RAW" : row.file_type !== "RAW"))
+    .forEach((row) => {
+      const option = document.createElement("option");
+      option.value = text(row.id);
+      option.textContent = `${text(row.file_name)} · ${text(row.size_text)}`;
+      option.selected = chosen.has(text(row.id));
+      element.appendChild(option);
+    });
 }
 
 /** Действие с датасетом: create/choose/fill/refresh/validate/delete (`POST /api/datasets`). */
@@ -2015,6 +2066,8 @@ function renderTrainData(data) {
     data.max_upload_text ? `лимит файла: ${text(data.max_upload_text)}` : "",
   ]);
   document.getElementById("train-upload-hint").textContent =
+    "Роль «авто» определяется по заголовку файла (измерения или разметка), поэтому " +
+    "смешанную загрузку можно делать одним проходом; пульт проверяет формат до отправки. " +
     `Файл уходит на стенд сырым телом, имя — по правилу ${text(data.test_prefix)}… ` +
     "(боевые имена — только в режиме полной нагрузки). Размер и sha256 считает пульт.";
 
@@ -2028,6 +2081,14 @@ function renderTrainData(data) {
     (item) => item.label
   );
   roles.value = role || ((data.roles || [])[0] || {}).value || "RAW";
+
+  const registry = data.registry || [];
+  fillRegistry("train-registry-raw", registry, "RAW");
+  fillRegistry("train-registry-markup", registry, "LOADS");
+  document.getElementById("train-registry-count").textContent =
+    "Файлы стенда для датасета · RAW " +
+    `${registry.filter((row) => row.file_type === "RAW").length} · разметка ` +
+    `${registry.filter((row) => row.file_type !== "RAW").length}`;
 
   renderLines("train-data-steps", data.steps || [], (step) =>
     `${text(step.title)}: ${text(step.status)}` +
@@ -2358,9 +2419,16 @@ function bind() {
       `Датасет выбран: ${text(row.name) || value}`
     );
   });
-  document.getElementById("train-dataset-fill").addEventListener("click", () =>
-    actDataset({ action: "fill" }, "Наполнение датасета запущено (задача `dataset-fill`)")
-  );
+  document.getElementById("train-dataset-fill").addEventListener("click", () => {
+    const raw = selectedOptions(document.getElementById("train-registry-raw"));
+    const markup = selectedOptions(document.getElementById("train-registry-markup"));
+    actDataset(
+      { action: "fill", raw_file_ids: raw, markup_file_ids: markup },
+      raw.length || markup.length
+        ? `Наполнение запущено: файлов стенда RAW ${raw.length}, разметка ${markup.length}`
+        : "Наполнение датасета запущено (задача `dataset-fill`)"
+    );
+  });
   document.getElementById("train-dataset-validate").addEventListener("click", () =>
     actDataset({ action: "validate" }, "Отметка «проверен вне пульта» записана в сессию")
   );

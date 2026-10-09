@@ -426,9 +426,13 @@ def chosen_model(models: Sequence[Any], profile: Mapping[str, Any] | None = None
 # ---------------------------------------------------------------------------
 #: Роли файлов данных стенда: измерения (`RAW`) и разметка (`LOADS`). Роль определяет,
 #: в какой список попадёт файл при наполнении датасета (`POST /api/datasets/fill/{id}`).
+#: `AUTO` — не роль стенда, а режим формы: пульт определяет роль по заголовку файла
+#: (`pult.datafile_format`), поэтому смешанную загрузку (измерения + разметка) можно
+#: делать одной «пачкой», не переключая выпадашку между проходами.
 FILE_ROLES: tuple[tuple[str, str], ...] = (
     ("RAW", "измерения (RAW)"),
     ("LOADS", "разметка (LOADS)"),
+    ("AUTO", "авто (по заголовку)"),
 )
 
 #: Шаги журнала К2, которые показывает экран (порядок — порядок работы оператора).
@@ -482,6 +486,37 @@ def upload_rows(files: Iterable[Any]) -> list[dict[str, Any]]:
                 "file_id": str(data.get("file_id") or ""),
                 "at": str(data.get("at") or ""),
                 "author": str(data.get("author") or ""),
+            }
+        )
+    return rows
+
+
+def registry_rows(
+    files: Iterable[Any], *, roles: Sequence[str] = ("RAW", "LOADS")
+) -> list[dict[str, Any]]:
+    """Файлы реестра стенда для выбора в датасет (Э2.1): `id`, имя, роль и размер.
+
+    Нужны, чтобы наполнять датасет **уже лежащими на стенде** файлами, а не только что
+    загруженными в этой сессии: реестр (`GET /api/data/files`) читается целиком, роль
+    берётся из `file_type` стенда (`markup`-файлы стенд помечает `LOADS`).
+    """
+    allowed = {str(role).upper() for role in roles}
+    rows: list[dict[str, Any]] = []
+    for item in files:
+        data = _payload(item)
+        file_type = str(data.get("file_type") or "").upper()
+        if file_type not in allowed:
+            continue
+        size = data.get("size")
+        rows.append(
+            {
+                "id": str(data.get("id") or ""),
+                "file_name": str(data.get("file_name") or ""),
+                "file_type": file_type,
+                "role_label": role_label(file_type),
+                "size": "" if size is None else str(size),
+                "size_text": human_size(size),
+                "import_date": str(data.get("import_date") or ""),
             }
         )
     return rows

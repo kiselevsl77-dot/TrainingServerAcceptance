@@ -60,6 +60,7 @@ from acceptance.session import TestSession
 from acceptance.tasks_monitor import TASK_COMMANDS, TaskMonitor
 from client.errors import ClientError
 from pult import artifacts as artifacts_api
+from pult import datafile_format as datafile_api
 from pult import jobs as jobs_api
 from pult import models as models_api
 from pult import uploads as uploads_api
@@ -1737,6 +1738,42 @@ class PultApp:
             status=422,
         )
 
+    def _resolve_role(self, file_type: str, head: bytes, *, saved: uploads_api.SavedUpload) -> str:
+        """Определяет роль файла и проверяет заголовок до отправки на стенд (Э2.1).
+
+        `AUTO` — роль по заголовку (`datafile_format.detect_role`), иначе — выбранная
+        оператором роль. Заголовок сверяется с обязательными колонками роли; при
+        несоответствии файл на стенд не уходит (иначе стенд ответит обезличенным
+        `CSV header is missing required columns`). Временный файл при отказе удаляется здесь
+        же, потому что вызов ещё не дошёл до `finally` отправки.
+        """
+        header = datafile_api.parse_header(datafile_api.first_line(head))
+        selected = str(file_type or "").strip().upper()
+        role = selected
+        if selected == "AUTO":
+            detected = datafile_api.detect_role(header)
+            if detected is None:
+                saved.discard()
+                raise ApiError(
+                    "формат файла не распознан: ожидались колонки измерений "
+                    f"({', '.join(datafile_api.RAW_REQUIRED[:3])}, …) или разметки "
+                    f"({', '.join(datafile_api.LOADS_REQUIRED)}). "
+                    "Выберите роль вручную или проверьте заголовок CSV.",
+                    kind="validation",
+                    status=422,
+                )
+            role = detected
+        missing = datafile_api.missing_columns(header, role)
+        if missing:
+            saved.discard()
+            raise ApiError(
+                f"заголовок CSV не соответствует формату «{datafile_api.role_label(role)}»: "
+                f"нет обязательных колонок: {', '.join(missing)}",
+                kind="validation",
+                status=422,
+            )
+        return role
+
     def api_data_upload(
         self,
         *,
@@ -1768,15 +1805,21 @@ class PultApp:
                 status=422,
             )
         name = self._require_test_name(file_name, what="файла", session=session)
+        # Заголовок снимается «на лету» во время потоковой записи: файл в память не берём.
+        recorder = datafile_api.HeaderRecorder(stream)
         try:
-            saved = uploads_api.save_stream(stream, int(length or 0), file_name=name)
+            saved = uploads_api.save_stream(recorder, int(length or 0), file_name=name)
         except uploads_api.UploadError as exc:
             raise ApiError(exc.message, kind="validation", status=exc.status) from exc
+        # Роль и формат проверяются до отправки на стенд: смешанную «пачку» (измерения +
+        # разметка) можно грузить одним проходом, а ошибка формата остаётся понятной
+        # (иначе стенд отвечает обезличенным `CSV header is missing required columns`).
+        role = self._resolve_role(file_type, recorder.head, saved=saved)
         try:
             meta = runtime.apis.files.upload(
                 file_name=saved.name,
                 path=saved.path,
-                file_type=file_type,
+                file_type=role,
                 description=description,
             )
         except ClientError as exc:
@@ -1788,7 +1831,7 @@ class PultApp:
             name=str(meta.file_name),
             size=int(meta.size),
             sha256=saved.sha256,
-            file_type=file_type,
+            file_type=role,
             file_id=str(meta.id),
             author=self._author(),
         )
@@ -1810,7 +1853,8 @@ class PultApp:
             "size": int(meta.size),
             "size_text": models_api.human_size(int(meta.size)),
             "sha256": saved.sha256,
-            "file_type": file_type,
+            "file_type": role,
+            "role_label": models_api.role_label(role),
         }
         return answer
 
@@ -1914,7 +1958,7 @@ class PultApp:
                 session,
                 dataset_id=dataset_id,
                 dataset_label=label,
-                files=self._manifest_files(session, raw_ids, markup_ids),
+                files=self._manifest_files(session, raw_ids, markup_ids, files=files),
                 note=str(payload.get("note") or "").strip(),
                 author=author,
             )
@@ -2106,20 +2150,49 @@ class PultApp:
         }
 
     def _manifest_files(
-        self, session: TestSession, raw_ids: Sequence[str], markup_ids: Sequence[str]
+        self,
+        session: TestSession,
+        raw_ids: Sequence[str],
+        markup_ids: Sequence[str],
+        *,
+        files: Sequence[Any] = (),
     ) -> list[dict[str, Any]]:
-        """Строки паспорта сборки: паспорта файлов сессии, разложенные по ролям.
+        """Строки паспорта сборки: паспорта файлов, разложенные по ролям.
 
         Роль берётся из отправленного списка, а не из паспорта файла: она отвечает на
-        вопрос «чем этот файл был в **этом** датасете».
+        вопрос «чем этот файл был в **этом** датасете». Сначала берутся паспорта файлов
+        сессии (там есть `sha256` загрузки); для файлов, выбранных **из реестра стенда**
+        (а не загруженных в этой сессии), строка собирается из метаданных реестра — иначе
+        паспорт «потерял» бы их.
         """
         roles = {**dict.fromkeys(raw_ids, "RAW"), **dict.fromkeys(markup_ids, "LOADS")}
         rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
         for item in session.uploaded_files:
             file_id = str(item.get("file_id") or "")
             if file_id not in roles:
                 continue
             rows.append({**dict(item), "role": roles[file_id]})
+            seen.add(file_id)
+        registry = {str(getattr(entry, "id", "") or ""): entry for entry in files}
+        for file_id, role in roles.items():
+            if file_id in seen:
+                continue
+            entry = registry.get(file_id)
+            if entry is None:
+                continue
+            rows.append(
+                {
+                    "name": str(getattr(entry, "file_name", "") or ""),
+                    "size": int(getattr(entry, "size", 0) or 0),
+                    "sha256": "",
+                    "file_id": file_id,
+                    "file_type": role,
+                    "role": role,
+                    "at": "",
+                    "author": "",
+                }
+            )
         return rows
 
     # -- действия по пункту, лента обмена ------------------------------------

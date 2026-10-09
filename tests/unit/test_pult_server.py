@@ -31,7 +31,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from acceptance import paths, tasks_monitor
+from acceptance import ml_samples, paths, tasks_monitor
 from acceptance import session as session_api
 from acceptance import sets as sets_api
 from acceptance.api import Apis
@@ -2263,3 +2263,163 @@ def test_datasets_route_reports_unknown_action(pult: PultApp) -> None:
 
     assert wrong.value.status == 422
     assert "create" in wrong.value.message and "fill" in wrong.value.message
+
+
+def _upload_handler(request: httpx.Request) -> httpx.Response:
+    """Стенд, принимающий файл данных: отвечает метаданными загрузки (201)."""
+    path = request.url.path
+    if path.endswith("/version"):
+        return httpx.Response(200, json={"branch": "dev", "revision": "83319ae1234"})
+    if path == "/api/data/file" and request.method == "POST":
+        body = request.read()
+        match = re.search(rb'name="file_type"\r\n\r\n([^\r\n]+)', body)
+        file_type = match.group(1).decode("utf-8") if match else "RAW"
+        return httpx.Response(
+            201,
+            json={
+                "id": str(uuid4()),
+                "file_name": "uploaded.csv",
+                "size": len(body),
+                "s3_path": f"/{file_type}/uploaded.csv",
+                "import_date": "2026-10-02T10:00:00",
+                "file_type": file_type,
+            },
+        )
+    return _handler(request)
+
+
+@pytest.fixture
+def upload_stand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PultApp:
+    """Пульт со стендом, принимающим загрузку: проверяется успешный путь сохранения файла."""
+    return _app(tmp_path, monkeypatch, _upload_handler)
+
+
+def _raw_body() -> bytes:
+    """Достоверный RAW-CSV по каноническому заголовку стенда (`ml_samples`)."""
+    return (
+        ";".join(ml_samples.RAW_COLUMNS)
+        + "\n"
+        + ml_samples.raw_row(dict.fromkeys(ml_samples.SAMPLE_SIGNAL_FIELDS, "AAAA"))
+        + "\n"
+    ).encode()
+
+
+def _markup_body() -> bytes:
+    """Достоверный markup-CSV по формату стенда (`markupId;chunkID;LoadID;Ph_n;Category`)."""
+    return b"markupId;chunkID;LoadID;Ph_n;Category\n1;1;Antminer_S19;A;miner\n"
+
+
+def test_upload_auto_detects_role_from_header(upload_stand: PultApp) -> None:
+    """Роль «авто» определяется по заголовку: смешанную загрузку можно не разбивать."""
+    _session_id(upload_stand)
+
+    answer = _upload(
+        upload_stand, _markup_body(), file_name=f"{TEST_PREFIX}loads.csv", file_type="AUTO"
+    )
+
+    assert answer["file"]["file_type"] == "LOADS"
+    assert answer["file"]["role_label"] == "разметка (LOADS)"
+
+
+def test_upload_accepts_valid_raw(upload_stand: PultApp) -> None:
+    """Достоверный RAW проходит проверку формата и уходит на стенд с ролью RAW."""
+    _session_id(upload_stand)
+
+    answer = _upload(upload_stand, _raw_body(), file_name=f"{TEST_PREFIX}raw.csv", file_type="RAW")
+
+    assert answer["file"]["file_type"] == "RAW"
+    assert answer["data"]["upload_count"] == 1
+
+
+def test_upload_rejects_wrong_format_with_column_names(pult: PultApp) -> None:
+    """markup под ролью RAW отклоняется до стенда: названы отсутствующие колонки (не 502)."""
+    _session_id(pult)
+
+    with pytest.raises(ApiError) as wrong:
+        _upload(pult, _markup_body(), file_name=f"{TEST_PREFIX}loads.csv", file_type="RAW")
+
+    assert wrong.value.status == 422
+    assert "обязательных колонок" in wrong.value.message
+    assert "U_A_signal" in wrong.value.message
+
+
+def test_upload_auto_rejects_unrecognized_format(pult: PultApp) -> None:
+    """Файл, у которого заголовок не похож ни на RAW, ни на markup, отклоняется понятно."""
+    _session_id(pult)
+
+    with pytest.raises(ApiError) as unknown:
+        _upload(pult, b"a;b\n1;2\n", file_name=f"{TEST_PREFIX}unknown.csv", file_type="AUTO")
+
+    assert unknown.value.status == 422
+    assert "не распознан" in unknown.value.message
+
+
+def test_train_view_lists_registry_files(pult: PultApp, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Экран «Реальной тренировки» отдаёт файлы реестра стенда для выбора в датасет (Э2.1)."""
+    files = [
+        FileMetadataResponse(
+            id=uuid4(),
+            file_name="raw-01.csv",
+            size=2048,
+            s3_path="/raw/1",
+            import_date=datetime(2026, 10, 2, 10, 0, 0),
+            file_type="RAW",
+        ),
+        FileMetadataResponse(
+            id=uuid4(),
+            file_name="loads-01.csv",
+            size=64,
+            s3_path="/loads/1",
+            import_date=datetime(2026, 10, 2, 10, 0, 0),
+            file_type="LOADS",
+        ),
+    ]
+    monkeypatch.setattr(PultState, "files", lambda self, refresh=False: (files, None))
+    _session_id(pult)
+
+    registry = get(pult, "/api/train")["data"]["registry"]
+
+    assert [row["file_name"] for row in registry] == ["raw-01.csv", "loads-01.csv"]
+    assert registry[0]["role_label"] == "измерения (RAW)"
+    assert registry[1]["role_label"] == "разметка (LOADS)"
+
+
+def test_manifest_files_include_registry_files(pult: PultApp) -> None:
+    """Паспорт сборки не теряет файлы, выбранные из реестра, а не загруженные в сессии."""
+    _session_id(pult)
+    session = pult.state.current_session()
+    assert session is not None
+    session_api.add_uploaded_file(
+        session, name="raw-uploaded.csv", size=10, file_id="uploaded-1", file_type="RAW"
+    )
+    reg_raw = uuid4()
+    reg_markup = uuid4()
+    registry = [
+        FileMetadataResponse(
+            id=reg_raw,
+            file_name="raw-from-registry.csv",
+            size=100,
+            s3_path="/raw/reg",
+            import_date=datetime(2026, 10, 2, 10, 0, 0),
+            file_type="RAW",
+        ),
+        FileMetadataResponse(
+            id=reg_markup,
+            file_name="loads-from-registry.csv",
+            size=50,
+            s3_path="/loads/reg",
+            import_date=datetime(2026, 10, 2, 10, 0, 0),
+            file_type="LOADS",
+        ),
+    ]
+
+    rows = pult._manifest_files(
+        session, ["uploaded-1", str(reg_raw)], [str(reg_markup)], files=registry
+    )
+    by_id = {row["file_id"]: row for row in rows}
+
+    assert set(by_id) == {"uploaded-1", str(reg_raw), str(reg_markup)}
+    assert by_id["uploaded-1"]["size"] == 10
+    assert by_id[str(reg_raw)]["role"] == "RAW"
+    assert by_id[str(reg_raw)]["name"] == "raw-from-registry.csv"
+    assert by_id[str(reg_markup)]["role"] == "LOADS"
